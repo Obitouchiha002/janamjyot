@@ -51,6 +51,7 @@ interface FileData {
   chat_messages: any[];
   feedback: any[];
   login_codes: any[];
+  chat_memory: Record<string, string>;
   settings: Record<string, any>;
 }
 
@@ -77,6 +78,7 @@ let fileData: FileData = {
   chat_messages: [],
   feedback: [],
   login_codes: [],
+  chat_memory: {},
   settings: {},
 };
 let fileLoaded = false;
@@ -94,6 +96,7 @@ function loadFile() {
       fileData.chat_messages ??= [];
       fileData.feedback ??= [];
       fileData.login_codes ??= [];
+      fileData.chat_memory ??= {};
       fileData.settings ??= {};
       const charts = Object.keys(fileData.chart_calculations).length;
       console.log(`[db] loaded ${charts} saved chart(s) from ${STORE_PATH}`);
@@ -245,6 +248,16 @@ CREATE TABLE IF NOT EXISTS app_users (
 -- Forgot-password support (added later; safe on existing databases).
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_token   TEXT;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_expires TIMESTAMPTZ;
+
+-- Long-term memory for the astrologer chat: a short, rolling set of notes about
+-- the person, kept PER CHART (not per astrologer) so every astrologer knows what
+-- they have already been told. The raw transcript stays in chat_messages; this
+-- is the distilled version that gets injected into prompts.
+CREATE TABLE IF NOT EXISTS chat_memory (
+  chart_id    UUID PRIMARY KEY REFERENCES chart_calculations(id) ON DELETE CASCADE,
+  notes       TEXT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Passwordless e-mail sign-in codes. Kept in their OWN table (not on app_users)
 -- because a first-time user has no account row yet when the code is sent.
@@ -531,6 +544,42 @@ export async function setPasswordReset(userId: string, tokenHash: string, expire
   u.reset_token = tokenHash;
   u.reset_expires = expiresAtIso;
   saveFile();
+}
+
+// ── Astrologer chat: long-term memory ──────────────────────────────────────
+
+/** The rolling notes about this person, or "" if nothing is remembered yet. */
+export async function getChatMemory(chartId: string): Promise<string> {
+  if (USE_PG) {
+    const { rows } = await pool!.query(`SELECT notes FROM chat_memory WHERE chart_id = $1`, [chartId]);
+    return rows[0]?.notes ?? "";
+  }
+  return (fileData.chat_memory ?? {})[chartId] ?? "";
+}
+
+export async function saveChatMemory(chartId: string, notes: string): Promise<void> {
+  const trimmed = String(notes || "").trim().slice(0, 1200); // keep prompts lean
+  if (!trimmed) return;
+  if (USE_PG) {
+    await pool!.query(
+      `INSERT INTO chat_memory (chart_id, notes, updated_at) VALUES ($1,$2,now())
+       ON CONFLICT (chart_id) DO UPDATE SET notes = $2, updated_at = now()`,
+      [chartId, trimmed],
+    );
+    return;
+  }
+  fileData.chat_memory ??= {};
+  fileData.chat_memory[chartId] = trimmed;
+  saveFile();
+}
+
+/** Forget everything remembered about a chart (used by "New chat"). */
+export async function clearChatMemory(chartId: string): Promise<void> {
+  if (USE_PG) {
+    await pool!.query(`DELETE FROM chat_memory WHERE chart_id = $1`, [chartId]);
+    return;
+  }
+  if (fileData.chat_memory) { delete fileData.chat_memory[chartId]; saveFile(); }
 }
 
 // ── Passwordless e-mail login codes ────────────────────────────────────────
@@ -1192,6 +1241,7 @@ export async function deleteChart(chartId: string): Promise<void> {
   }
   fileData.ai_reports = fileData.ai_reports.filter((r) => !removedChartIds.has(r.chart_id));
   fileData.chat_messages = fileData.chat_messages.filter((m) => !removedChartIds.has(m.chart_id));
+  if (fileData.chat_memory) for (const id of removedChartIds) delete fileData.chat_memory[id];
   saveFile();
 }
 

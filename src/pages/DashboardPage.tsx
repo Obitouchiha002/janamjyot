@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { ShareCardHost } from '@/components/mobile/ShareCardSheet';
+import { haptic } from '@/lib/native';
 import { useParams } from 'react-router-dom';
 import {
   FileText, LayoutGrid, Clock, CircleDot, Heart, Globe2, Layers, Gem,
-  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp,
+  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2,
 } from 'lucide-react';
 import TodayCard from '@/components/TodayCard';
 import { Pressable } from '@/components/mobile/Pressable';
@@ -23,6 +25,7 @@ export default function DashboardPage() {
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [failed, setFailed] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     fetch(`/api/chart/${chartId}`)
@@ -104,6 +107,16 @@ export default function DashboardPage() {
             <FileText className="h-[17px] w-[17px]" /> Reports
           </Pressable>
         </div>
+
+        {/* Share card — a poster of their own chart, with the site link on it. */}
+        <Pressable
+          onClick={() => { haptic.tap(); setSharing(true); }}
+          subtle
+          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-accent/50 py-3 text-[13px] font-bold text-accent"
+        >
+          <Share2 className="h-[16px] w-[16px]" />
+          Share my Kundli
+        </Pressable>
       </section>
 
       {/* daily guidance — the everyday hook */}
@@ -180,6 +193,20 @@ export default function DashboardPage() {
           ))}
         </div>
       </section>
+
+      {/* Animated preview + share sheet for the Kundli card. */}
+      <ShareCardHost
+        open={sharing}
+        onClose={() => setSharing(false)}
+        data={{
+          name: data.birth_details?.name ?? '',
+          lagna: data.ascendant?.sign ?? '',
+          rashi: data.planets?.find((p: any) => p.planet === 'Moon')?.sign ?? '',
+          nakshatra: data.summary?.nakshatra || data.ascendant?.nakshatra || '',
+          dasha: `${data.dashas?.current_mahadasha ?? ''}-${data.dashas?.current_antardasha ?? ''}`.replace(/^-|-$/g, ''),
+          planets: (data.planets ?? []).map((p: any) => ({ planet: p.planet, house: p.house })),
+        }}
+      />
     </div>
   );
 }

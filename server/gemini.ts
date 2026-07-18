@@ -378,6 +378,7 @@ export async function answerAsAstrologer(args: {
   chart: any;
   question: string;
   userName?: string;
+  memory?: string;
   language: string;
   personaPrompt: string;
   focusCategory: Category;
@@ -400,7 +401,10 @@ D11, the full dasha timeline, and "live_transit" = planets right now vs their
 natal lagna & moon). The "focus" block is what matters most for your speciality,
 but cross-reference the charts and use dasha + live_transit for present/future.
 ${JSON.stringify(packet, null, 2)}
-${convo ? `\nThis consultation so far:\n${convo}\n` : ""}
+${args.memory ? `\nWHAT YOU ALREADY KNOW ABOUT THIS PERSON (your own notes from past
+conversations — use it naturally, like a family astrologer who remembers them.
+Do NOT recite it back or say "as you told me earlier" every time):
+${args.memory}\n` : ""}${convo ? `\nThis consultation so far:\n${convo}\n` : ""}
 The person's first name is "${args.userName || ""}" — use it sparingly and ONLY
 if it is non-empty; never write a placeholder like [Name].
 
@@ -739,6 +743,49 @@ ${JSON.stringify(context, null, 2)}`;
   } catch {
     return { error: "Failed to parse timeline", raw: text };
   }
+}
+
+/**
+ * Update the rolling notes an astrologer keeps about a person.
+ *
+ * Runs AFTER the reply has already been sent (fire-and-forget), so it never
+ * adds latency to the conversation. Cheap model settings on purpose — this is
+ * bookkeeping, not a reading.
+ */
+export async function updateChatNotes(args: {
+  existingNotes: string;
+  question: string;
+  reply: string;
+}): Promise<string> {
+  const prompt = `You keep short private notes about a person so an astrologer can
+remember them next time they talk. Update the notes with anything durable from
+this exchange.
+
+KEEP (things that stay true and change the advice):
+- their situation: work, business, studies, marital status, family, health worries
+- what they are actually worried about or hoping for
+- decisions they are weighing, and anything they said they would do
+- what they have already been told, so it is not repeated
+
+DROP: greetings, small talk, astrology you told them (that is recomputed each
+time), anything that expires quickly.
+
+RULES:
+- Output ONLY the updated notes: short "- " bullets, max 8 bullets, max 200 words.
+- Merge with the existing notes; do not duplicate. Drop what is now outdated.
+- Third person, plain and factual. No astrology jargon, no advice.
+- If nothing durable came up, return the existing notes UNCHANGED.
+
+EXISTING NOTES:
+${args.existingNotes || "(none yet)"}
+
+THEY SAID: ${args.question}
+ASTROLOGER REPLIED: ${args.reply}
+
+Updated notes:`;
+
+  const out = await llmGenerate(prompt, { temperature: 0.3, thinkingBudget: 0 });
+  return String(out || "").trim();
 }
 
 /** Warm, specific summary for a Kundli (compatibility) match result. */

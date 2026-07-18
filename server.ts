@@ -29,6 +29,9 @@ import {
   insertChatMessage,
   getChatHistory,
   clearChatHistory,
+  getChatMemory,
+  saveChatMemory,
+  clearChatMemory,
   createUser,
   getUserByEmail,
   getUserById,
@@ -101,6 +104,7 @@ import {
   generateLifeReport,
   generateMatchSummary,
   generateMatchReport,
+  updateChatNotes,
   generateDailyHoroscope,
   generateDailyTip,
   generateDailyGuidance,
@@ -1932,9 +1936,13 @@ async function handleConsult(req: express.Request, res: express.Response) {
       text: m.response_json?.bubbles ? (m.response_json.bubbles as string[]).join(" ") : (m.message ?? ""),
     }));
 
+    // Long-term memory: what previous conversations established about them,
+    // shared across ALL astrologers so they don't each start from zero.
+    const memory = await getChatMemory(chartId).catch(() => "");
+
     await insertChatMessage({ chartId, role: "user", message: question, context });
     const bubbles = await answerAsAstrologer({
-      chart, question, language, transit,
+      chart, question, language, transit, memory,
       // First name only — enough for a warm address, and without it the model
       // was writing a literal "[Name]" placeholder into the reply.
       userName: chart.birth_details?.name?.split(" ")?.[0] || "",
@@ -1945,6 +1953,12 @@ async function handleConsult(req: express.Request, res: express.Response) {
     await insertChatMessage({ chartId, role: "assistant", message: bubbles.join("\n"), context, responseJson: { bubbles, astrologer } });
 
     res.json({ bubbles, astrologer, disclaimer: persona.disclaimer ?? null });
+
+    // Refresh the long-term notes AFTER responding — this is bookkeeping, so it
+    // must never make the user wait for their reply.
+    updateChatNotes({ existingNotes: memory, question, reply: bubbles.join(" ") })
+      .then((notes) => (notes && notes !== memory ? saveChatMemory(chartId, notes) : undefined))
+      .catch((e) => console.warn("[consult] memory update skipped:", e?.message));
   } catch (err: any) {
     console.error("[consult] error:", err?.message);
     const quota = /429|quota|rate limit/i.test(err?.message ?? "");
@@ -2005,6 +2019,9 @@ app.delete("/api/chat-history/:chartId", async (req, res) => {
   try {
     const context = typeof req.query.context === "string" ? req.query.context : undefined;
     await clearChatHistory(req.params.chartId, context);
+    // "New chat" must feel genuinely new — drop the remembered notes too, or the
+    // astrologer keeps referring to a conversation the user just deleted.
+    await clearChatMemory(req.params.chartId).catch(() => {});
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: "Something went wrong. Please try again." });
