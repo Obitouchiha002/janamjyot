@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" fill="none">
+  <defs>
+    <linearGradient id="jj-navy" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D1B3D"/><stop offset="1" stop-color="#050B1E"/>
+    </linearGradient>
+    <linearGradient id="jj-gold" x1="42" y1="30" x2="66" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2D17C"/><stop offset="0.5" stop-color="#D8AB4E"/><stop offset="1" stop-color="#A87522"/>
+    </linearGradient>
+    <radialGradient id="jj-glow" cx="54" cy="72" r="24" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2D17C" stop-opacity="0.55"/><stop offset="1" stop-color="#F2D17C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- plate + border -->
+  <rect x="1.5" y="1.5" width="105" height="105" rx="26" fill="url(#jj-navy)"/>
+  <rect x="3.2" y="3.2" width="101.6" height="101.6" rx="24" fill="none" stroke="#D8AB4E" stroke-width="1.4" stroke-opacity="0.9"/>
+
+  <!-- orbit arc with dots -->
+  <path d="M28 58 A28 28 0 0 1 80 58" fill="none" stroke="#D8AB4E" stroke-width="1.1" stroke-opacity="0.75"/>
+  <circle cx="30.5" cy="52" r="2.6" fill="#D8AB4E"/>
+  <circle cx="34" cy="41" r="1.7" fill="#F2D17C"/>
+  <circle cx="77.5" cy="52" r="2.2" fill="#D8AB4E"/>
+  <circle cx="74" cy="41" r="1.6" fill="#F2D17C"/>
+
+  <!-- top star -->
+  <path d="M54 22 L56.4 33 L54 35 L51.6 33 Z M54 22 L51.6 33 L40 35 L51.6 37 Z M54 22 L56.4 33 L68 35 L56.4 37 Z M54 48 L51.6 37 L54 35 L56.4 37 Z" fill="#F2D17C"/>
+  <circle cx="54" cy="35" r="1.6" fill="#FFFFFF"/>
+
+  <!-- radiating lines behind flame -->
+  <g stroke="#D8AB4E" stroke-width="0.7" stroke-opacity="0.5">
+    <path d="M54 44 L54 52"/><path d="M44 48 L48 55"/><path d="M64 48 L60 55"/>
+    <path d="M38 54 L44 59"/><path d="M70 54 L64 59"/>
+  </g>
+
+  <!-- glow -->
+  <ellipse cx="54" cy="72" rx="20" ry="24" fill="url(#jj-glow)"/>
+
+  <!-- flame (diya): outer curl + inner flame -->
+  <path d="M54 46
+           C61 55 66 60 66 70
+           C66 80 60 86 54 86
+           C48 86 42 80 42 70
+           C42 62 47 57 51 52
+           C50 60 53 64 57 66
+           C58 60 56 52 54 46 Z" fill="url(#jj-gold)"/>
+  <!-- crescent sweep under the flame -->
+  <path d="M40 66 C40 82 47 90 54 92 C48 86 46 78 47 70 Z" fill="url(#jj-gold)"/>
+  <path d="M68 66 C68 82 61 90 54 92 C60 86 62 78 61 70 Z" fill="url(#jj-gold)"/>
+  <!-- inner bright flame + star base -->
+  <path d="M54 66 C57 70 58 74 58 78 C58 83 56 86 54 86 C52 86 50 83 50 78 C50 74 51 70 54 66 Z" fill="#F2D17C"/>
+  <path d="M54 72 L55.4 80 L54 96 L52.6 80 Z M54 78 L50 79.6 L46 80 L50 80.4 Z M54 78 L58 79.6 L62 80 L58 80.4 Z" fill="#FDE8B8"/>
+  <circle cx="54" cy="80" r="2" fill="#FFFFFF"/>
+</svg>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#F8F5EF" />
+    <title>JanamJyot</title>
+    <script>
+      // Apply saved theme before paint to avoid a flash of the wrong theme.
+      try {
+        var t = localStorage.getItem("va_theme") || "classic";
+        if (t === "dark") t = "midnight";
+        if (t === "light") t = "classic";
+        document.documentElement.setAttribute("data-theme", t);
+        if (t === "midnight" || t === "royal" || t === "cosmic") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    </script>
+    <style>
+      /* ── Boot loader ─────────────────────────────────────────────────────
+         Animated startup screen: the JanamJyot logo + name with planets
+         orbiting around it. Shows the instant the webview loads (right after
+         the native splash) and fades out once React has painted its first
+         screen. Pure CSS so it needs no bundle. */
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 26px;
+        background: #f8f5ef;
+        transition: opacity 0.45s ease;
+      }
+      #boot-loader.hide { opacity: 0; pointer-events: none; }
+      @media (prefers-color-scheme: dark) { #boot-loader { background: #0b0718; } }
+
+      #boot-loader .stage {
+        position: relative;
+        width: 240px;
+        height: 240px;
+        display: grid;
+        place-items: center;
+      }
+      #boot-loader .ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        border: 1px solid rgba(201, 162, 74, 0.35);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+      }
+      #boot-loader .r1 { width: 130px; height: 130px; animation: bl-spin 3.2s linear infinite; }
+      #boot-loader .r2 { width: 186px; height: 186px; border-style: dashed; animation: bl-spin 6s linear infinite reverse; }
+      #boot-loader .r3 { width: 238px; height: 238px; border-color: rgba(201, 162, 74, 0.2); animation: bl-spin 9s linear infinite; }
+      #boot-loader .planet {
+        position: absolute;
+        top: -5px;
+        left: 50%;
+        width: 10px;
+        height: 10px;
+        margin-left: -5px;
+        border-radius: 50%;
+        box-shadow: 0 0 10px 1px rgba(217, 119, 6, 0.5);
+      }
+      #boot-loader .r1 .planet { background: #d97706; }
+      #boot-loader .r2 .planet { background: #7c3aed; width: 8px; height: 8px; }
+      #boot-loader .r3 .planet { background: #059669; width: 7px; height: 7px; }
+      #boot-loader .logo { position: relative; width: 84px; height: 84px; filter: drop-shadow(0 10px 22px rgba(217, 119, 6, 0.28)); animation: bl-pulse 2.6s ease-in-out infinite; }
+
+      #boot-loader .brand { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: #1e293b; }
+      #boot-loader .brand span { color: #d97706; font-weight: 300; }
+      @media (prefers-color-scheme: dark) { #boot-loader .brand { color: #ede8f7; } }
+      #boot-loader .tag { margin-top: -14px; font-family: -apple-system, sans-serif; font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #9a8f7f; }
+      #boot-loader .dots span { animation: bl-blink 1.4s infinite; }
+      #boot-loader .dots span:nth-child(2) { animation-delay: 0.2s; }
+      #boot-loader .dots span:nth-child(3) { animation-delay: 0.4s; }
+
+      @keyframes bl-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+      @keyframes bl-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      @keyframes bl-blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-loader .ring, #boot-loader .logo { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot-loader">
+      <div class="stage">
+        <div class="ring r1"><span class="planet"></span></div>
+        <div class="ring r2"><span class="planet"></span></div>
+        <div class="ring r3"><span class="planet"></span></div>
+        <svg class="logo" viewBox="0 0 108 108" fill="none" aria-label="JanamJyot">
+          <defs>
+            <linearGradient id="bl-plate" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#0D1B3D" /><stop offset="1" stop-color="#050B1E" />
+            </linearGradient>
+            <linearGradient id="bl-gold" x1="42" y1="30" x2="66" y2="92" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#F2D17C" /><stop offset="0.5" stop-color="#D8AB4E" /><stop offset="1" stop-color="#A87522" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="104" height="104" rx="26" fill="url(#bl-plate)" />
+          <rect x="3.4" y="3.4" width="101.2" height="101.2" rx="24" fill="none" stroke="#D8AB4E" stroke-width="1.3" stroke-opacity="0.9" />
+          <path d="M28 58 A28 28 0 0 1 80 58" fill="none" stroke="#D8AB4E" stroke-width="1.1" stroke-opacity="0.7" />
+          <circle cx="30.5" cy="52" r="2.4" fill="#D8AB4E" /><circle cx="77.5" cy="52" r="2" fill="#D8AB4E" />
+          <path d="M54 24 L56 33 L54 35 L52 33 Z M54 24 L52 33 L44 35 L52 37 Z M54 24 L56 33 L64 35 L56 37 Z M54 46 L52 37 L54 35 L56 37 Z" fill="#F2D17C" />
+          <ellipse cx="54" cy="72" rx="19" ry="23" fill="#F2D17C" opacity="0.14" />
+          <path d="M54 46 C61 55 66 60 66 70 C66 80 60 86 54 86 C48 86 42 80 42 70 C42 62 47 57 51 52 C50 60 53 64 57 66 C58 60 56 52 54 46 Z" fill="url(#bl-gold)" />
+          <path d="M54 66 C57 70 58 74 58 78 C58 83 56 86 54 86 C52 86 50 83 50 78 C50 74 51 70 54 66 Z" fill="#F2D17C" />
+          <path d="M54 72 L55.4 80 L54 94 L52.6 80 Z" fill="#FDE8B8" /><circle cx="54" cy="80" r="1.8" fill="#fff" />
+        </svg>
+      </div>
+      <div class="brand">Janam<span>Jyot</span></div>
+      <div class="tag">Reading the skies<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+    </div>
+
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <script>
+      // Remove the boot loader once React has painted its first real screen.
+      // App.tsx renders null while the session resolves, so #root only gets a
+      // child element when the app is actually ready — that is our signal. A
+      // safety timeout hides it regardless after 8s.
+      (function () {
+        var root = document.getElementById("root");
+        var loader = document.getElementById("boot-loader");
+        if (!root || !loader) return;
+        var done = false;
+        var start = Date.now();
+        var MIN_MS = 1400; // keep the animation on screen long enough to be seen
+        function hideNow() {
+          loader.classList.add("hide");
+          setTimeout(function () { loader && loader.remove(); }, 500);
+        }
+        function finish() {
+          if (done) return;
+          done = true;
+          var waited = Date.now() - start;
+          if (waited >= MIN_MS) hideNow();
+          else setTimeout(hideNow, MIN_MS - waited);
+        }
+        if (root.firstElementChild) { finish(); return; }
+        var obs = new MutationObserver(function () {
+          if (root.firstElementChild) { obs.disconnect(); finish(); }
+        });
+        obs.observe(root, { childList: true });
+        setTimeout(finish, 8000);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VedicAstra — Project Documentation</title>
+<style>
+  :root{
+    --navy:#1E293B; --navy2:#0f172a; --amber:#D97706; --amber-soft:#fef3e2;
+    --cream:#F8F5EF; --ink:#1f2937; --muted:#6b7280;
+    --line:#e2e8f0; --green:#15803d; --red:#b91c1c; --card:#ffffff;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#f1ece3; line-height:1.6; font-size:14px;
+  }
+  .page{
+    width:210mm; min-height:297mm; margin:14px auto; background:#fff; padding:26mm 20mm;
+    box-shadow:0 6px 30px rgba(15,23,42,.12); position:relative;
+  }
+  h1,h2,h3,h4{ color:var(--navy); line-height:1.25; }
+  h2{ font-size:24px; margin:0 0 4px; }
+  h3{ font-size:17px; margin:26px 0 8px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  h3 .n{ color:var(--amber); font-weight:800; margin-right:8px; }
+  h4{ font-size:14px; margin:16px 0 4px; }
+  p{ margin:8px 0; }
+  a{ color:var(--amber); }
+  code{ background:#f3f4f6; padding:1px 5px; border-radius:4px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:#0f172a; }
+  .muted{ color:var(--muted); }
+  .accent{ color:var(--amber); }
+  ul{ margin:8px 0; padding-left:20px; } li{ margin:4px 0; }
+
+  /* cover */
+  .cover{ display:flex; flex-direction:column; justify-content:center; min-height:245mm; text-align:center; }
+  .logo{ width:74px; height:74px; border-radius:18px; background:var(--amber); color:#fff; font-weight:800;
+    font-size:40px; display:flex; align-items:center; justify-content:center; margin:0 auto 22px; box-shadow:0 8px 24px rgba(217,119,6,.35); }
+  .cover h1{ font-size:46px; margin:0; letter-spacing:-1px; }
+  .cover h1 span{ color:var(--amber); font-weight:300; }
+  .cover .sub{ font-size:18px; color:var(--muted); margin-top:10px; }
+  .cover .band{ margin-top:34px; padding:18px; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+    display:inline-block; min-width:60%; }
+  .cover .dev{ font-size:15px; } .cover .dev b{ color:var(--amber); }
+
+  .tag{ display:inline-block; background:var(--amber-soft); color:var(--amber); font-weight:700;
+    font-size:11px; padding:3px 10px; border-radius:999px; letter-spacing:.5px; text-transform:uppercase; }
+
+  /* callouts */
+  .box{ border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:12px 0; background:#fcfbf8; }
+  .box.problem{ border-left:5px solid var(--red); }
+  .box.solution{ border-left:5px solid var(--green); background:#f6fbf6; }
+  .box.note{ border-left:5px solid var(--amber); background:var(--amber-soft); }
+  .box h4{ margin:0 0 4px; }
+  .box.problem h4{ color:var(--red); } .box.solution h4{ color:var(--green); }
+
+  /* grid cards */
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:12px 0; }
+  .feat{ border:1px solid var(--line); border-radius:12px; padding:12px 14px; background:#fff; }
+  .feat .ic{ font-size:20px; } .feat b{ display:block; color:var(--navy); margin:4px 0 2px; }
+  .feat small{ color:var(--muted); }
+
+  table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th{ background:var(--navy); color:#fff; text-align:left; padding:8px 10px; font-size:12px; }
+  td{ border-bottom:1px solid var(--line); padding:7px 10px; vertical-align:top; }
+  tr:nth-child(even) td{ background:#faf9f6; }
+
+  .timeline{ border-left:3px solid var(--amber); margin:14px 0 14px 8px; padding-left:20px; }
+  .timeline .item{ position:relative; margin-bottom:16px; }
+  .timeline .item::before{ content:""; position:absolute; left:-26px; top:4px; width:11px; height:11px;
+    background:#fff; border:3px solid var(--amber); border-radius:50%; }
+  .timeline .item b{ color:var(--navy); }
+
+  .kpi{ display:flex; gap:10px; flex-wrap:wrap; margin:12px 0; }
+  .kpi div{ flex:1; min-width:120px; border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; }
+  .kpi .big{ font-size:26px; font-weight:800; color:var(--amber); }
+  .kpi small{ color:var(--muted); }
+
+  .foot{ position:absolute; bottom:12mm; left:20mm; right:20mm; display:flex; justify-content:space-between;
+    font-size:10.5px; color:#94a3b8; border-top:1px solid var(--line); padding-top:6px; }
+
+  @media print{
+    body{ background:#fff; }
+    .page{ margin:0; box-shadow:none; width:auto; min-height:auto; padding:18mm 16mm; page-break-after:always; }
+    .no-print{ display:none; }
+    a{ color:var(--navy); text-decoration:none; }
+  }
+  .hint{ max-width:210mm; margin:14px auto; padding:12px 16px; background:#fff7ed; border:1px solid #fed7aa;
+    border-radius:10px; color:#92400e; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="hint no-print">
+  📄 <b>To save as PDF:</b> press <b>Ctrl/Cmd + P</b> → Destination <b>“Save as PDF”</b> → Layout Portrait, Margins “Default”, enable <b>“Background graphics”</b> → Save. (This banner won’t appear in the PDF.)
+</div>
+
+<!-- ===================== COVER ===================== -->
+<section class="page cover">
+  <div class="logo">V</div>
+  <h1>Vedic<span>Astra</span></h1>
+  <div class="sub">A Complete Vedic Astrology Platform — Charts, Predictions &amp; AI Guidance</div>
+  <div class="band">
+    <div class="tag">Project Documentation</div>
+    <p class="dev" style="margin-top:14px">Designed &amp; Developed by <b>Vansh Kashyap</b></p>
+    <p class="muted" style="font-size:13px;margin:2px 0">Full build journey · architecture · features · challenges &amp; solutions</p>
+  </div>
+  <p class="muted" style="margin-top:40px;font-size:12px">Version 1.0 &nbsp;·&nbsp; Confidential — Internal Documentation</p>
+  <div class="foot"><span>VedicAstra — Documentation</span><span>Vansh Kashyap</span></div>
+</section>
+
+<!-- ===================== CONTENTS ===================== -->
+<section class="page">
+  <h2>Table of Contents</h2>
+  <table>
+    <tr><th style="width:40px">#</th><th>Section</th></tr>
+    <tr><td>1</td><td>Project Overview</td></tr>
+    <tr><td>2</td><td>Technology Stack</td></tr>
+    <tr><td>3</td><td>System Architecture</td></tr>
+    <tr><td>4</td><td>The Astrology Engine (Original &amp; Accurate)</td></tr>
+    <tr><td>5</td><td>Feature Set</td></tr>
+    <tr><td>6</td><td>The Multi-AI Engine (never runs out)</td></tr>
+    <tr><td>7</td><td>Accounts, Authentication &amp; Admin Dashboard</td></tr>
+    <tr><td>8</td><td>Step-by-Step Build Journey</td></tr>
+    <tr><td>9</td><td>Problems Faced &amp; How They Were Solved</td></tr>
+    <tr><td>10</td><td>Accuracy &amp; Independent Verification</td></tr>
+    <tr><td>11</td><td>Security &amp; Privacy</td></tr>
+    <tr><td>12</td><td>Pre-Launch Checklist</td></tr>
+  </table>
+  <div class="foot"><span>VedicAstra — Documentation</span><span>2</span></div>
+</section>
+
+<!-- ===================== 1. OVERVIEW ===================== -->
+<section class="page">
+  <h3><span class="n">1</span> Project Overview</h3>
+  <p>VedicAstra is a full-featured Vedic astrology web application. It generates a person’s birth chart
+  entirely from a built-in astronomy engine (no paid chart API required), and layers an AI guidance system
+  on top that interprets the chart in a warm, human, and <b>specific</b> way.</p>
+  <p>The product is built so a single operator only needs to paste API keys — everything else (chart
+  calculation, divisional charts, dashas, transits, matching, panchang, remedies and AI chat) works out of the box.</p>
+  <div class="kpi">
+    <div><div class="big">40+</div><small>features &amp; pages</small></div>
+    <div><div class="big">~0.01°</div><small>chart accuracy</small></div>
+    <div><div class="big">12</div><small>languages</small></div>
+    <div><div class="big">16</div><small>AI fallbacks</small></div>
+  </div>
+  <h4>Who it’s for</h4>
+  <p>End users seeking accurate kundli, predictions, marriage matching, daily panchang &amp; muhurat; and an
+  admin/operator who controls the platform from a dedicated dashboard.</p>
+  <div class="foot"><span>1 · Project Overview</span><span>3</span></div>
+</section>
+
+<!-- ===================== 2. TECH STACK ===================== -->
+<section class="page">
+  <h3><span class="n">2</span> Technology Stack</h3>
+  <table>
+    <tr><th>Layer</th><th>Technology</th><th>Why</th></tr>
+    <tr><td>Frontend</td><td>React 19 + Vite + React Router 7</td><td>Fast, modern SPA</td></tr>
+    <tr><td>Styling</td><td>Tailwind CSS v4 + Shadcn UI</td><td>Clean, themeable design (5 themes + dark mode)</td></tr>
+    <tr><td>Backend</td><td>Node.js + Express (TypeScript, via tsx/esbuild)</td><td>All secrets &amp; logic stay server-side</td></tr>
+    <tr><td>Astronomy</td><td>astronomy-engine (Swiss-Ephemeris-grade)</td><td>Exact planetary positions for any date</td></tr>
+    <tr><td>AI</td><td>Gemini, Groq, Anthropic/Bedrock, Ollama (local)</td><td>Multi-provider auto-fallback</td></tr>
+    <tr><td>Voice</td><td>ElevenLabs (premium) + Web Speech (free fallback)</td><td>Realistic “Listen” in Hindi &amp; English</td></tr>
+    <tr><td>Storage</td><td>JSON file store (Postgres-ready)</td><td>Works with zero DB setup; scalable later</td></tr>
+    <tr><td>Auth</td><td>Custom (scrypt + JWT, Node crypto)</td><td>No external dependency; Firebase-ready</td></tr>
+    <tr><td>PDF</td><td>jsPDF (lazy-loaded)</td><td>Life report export with charts</td></tr>
+  </table>
+  <div class="box note"><h4>Design principle</h4>The frontend <b>never</b> sees any secret key. Every Prokerala/AI/voice/email
+  call happens on the backend; the browser only talks to our own <code>/api/*</code> routes.</div>
+  <div class="foot"><span>2 · Technology Stack</span><span>4</span></div>
+</section>
+
+<!-- ===================== 3. ARCHITECTURE ===================== -->
+<section class="page">
+  <h3><span class="n">3</span> System Architecture</h3>
+  <p>A single Express server serves the React app, exposes a secured <code>/api</code>, runs the astrology
+  engine, and brokers all third-party calls. Secrets live only in server environment variables.</p>
+  <svg viewBox="0 0 760 430" width="100%" style="margin:10px 0;border:1px solid #e2e8f0;border-radius:12px;background:#fbfaf7">
+    <!-- browser -->
+    <rect x="40" y="40" width="200" height="90" rx="10" fill="#1E293B"/>
+    <text x="140" y="78" fill="#fff" font-size="15" font-weight="700" text-anchor="middle">Browser (React)</text>
+    <text x="140" y="100" fill="#cbd5e1" font-size="11" text-anchor="middle">UI · Auth token · charts</text>
+    <!-- express -->
+    <rect x="300" y="30" width="190" height="110" rx="10" fill="#D97706"/>
+    <text x="395" y="70" fill="#fff" font-size="15" font-weight="700" text-anchor="middle">Express API</text>
+    <text x="395" y="90" fill="#fff7ed" font-size="11" text-anchor="middle">auth · gate · routes</text>
+    <text x="395" y="106" fill="#fff7ed" font-size="11" text-anchor="middle">(secrets here)</text>
+    <!-- engine -->
+    <rect x="560" y="20" width="170" height="70" rx="10" fill="#0f172a"/>
+    <text x="645" y="50" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Astrology Engine</text>
+    <text x="645" y="68" fill="#cbd5e1" font-size="10" text-anchor="middle">astronomy-engine</text>
+    <!-- AI -->
+    <rect x="560" y="110" width="170" height="70" rx="10" fill="#334155"/>
+    <text x="645" y="140" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">AI Providers</text>
+    <text x="645" y="158" fill="#cbd5e1" font-size="10" text-anchor="middle">Gemini·Groq·Bedrock·Ollama</text>
+    <!-- store -->
+    <rect x="300" y="200" width="190" height="70" rx="10" fill="#475569"/>
+    <text x="395" y="230" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Data Store</text>
+    <text x="395" y="248" fill="#cbd5e1" font-size="10" text-anchor="middle">users · charts · reports</text>
+    <!-- external -->
+    <rect x="560" y="200" width="170" height="70" rx="10" fill="#64748b"/>
+    <text x="645" y="230" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">ElevenLabs · SMTP</text>
+    <text x="645" y="248" fill="#cbd5e1" font-size="10" text-anchor="middle">voice · email</text>
+    <!-- arrows -->
+    <line x1="240" y1="85" x2="300" y2="85" stroke="#1E293B" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="490" y1="70" x2="560" y2="55" stroke="#D97706" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="490" y1="95" x2="560" y2="140" stroke="#D97706" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="395" y1="140" x2="395" y2="200" stroke="#D97706" stroke-width="2" marker-end="url(#a)"/>
+    <line x1="490" y1="225" x2="560" y2="232" stroke="#D97706" stroke-width="2" marker-end="url(#a)"/>
+    <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/></marker></defs>
+    <text x="270" y="78" fill="#64748b" font-size="10">/api</text>
+  </svg>
+  <div class="grid">
+    <div class="feat"><b>Sidereal · Lahiri</b><small>Whole-sign houses, true-of-date longitudes</small></div>
+    <div class="feat"><b>Server-side only</b><small>Keys never exposed to the browser</small></div>
+    <div class="feat"><b>Stateless auth</b><small>Signed JWT + per-user data isolation</small></div>
+    <div class="feat"><b>Graceful fallback</b><small>AI &amp; voice degrade, never hard-fail</small></div>
+  </div>
+  <div class="foot"><span>3 · System Architecture</span><span>5</span></div>
+</section>
+
+<!-- ===================== 4. ENGINE ===================== -->
+<section class="page">
+  <h3><span class="n">4</span> The Astrology Engine (Original &amp; Accurate)</h3>
+  <p>Instead of depending on a paid chart API, VedicAstra computes everything itself using the pure-JS
+  <code>astronomy-engine</code> (Swiss-Ephemeris-grade) and the classical Lahiri ayanamsa.</p>
+  <h4>What it computes</h4>
+  <ul>
+    <li>True-of-date geocentric ecliptic longitudes for all 9 grahas + Ascendant</li>
+    <li>Sidereal positions via Lahiri ayanamsa (23.8523° + 50.2388″/yr from J2000)</li>
+    <li>Whole-sign houses, nakshatra + pada, retrograde detection</li>
+    <li>Divisional charts (D1, D9, D10, D6, D11 …) using BPHS &amp; parivritti rules</li>
+    <li>Vimshottari Mahadasha / Antardasha timeline</li>
+    <li>Live transits (gochar), Ashtakavarga bindus, Panchang elements, RA/Declination/Shara</li>
+  </ul>
+  <div class="box solution"><h4>Validated</h4>For the reference Alwar chart, every planet and the Ascendant match
+  AstroSage &amp; Prokerala within <b>~0.01°</b>, and the Vimshottari dasha dates match too.</div>
+  <div class="foot"><span>4 · Astrology Engine</span><span>6</span></div>
+</section>
+
+<!-- ===================== 5. FEATURES ===================== -->
+<section class="page">
+  <h3><span class="n">5</span> Feature Set</h3>
+  <div class="grid3">
+    <div class="feat"><div class="ic">🪔</div><b>Birth Chart</b><small>D1 + divisionals, North-Indian</small></div>
+    <div class="feat"><div class="ic">⏳</div><b>Dashas</b><small>Vimshottari timeline</small></div>
+    <div class="feat"><div class="ic">🌍</div><b>Live Transit</b><small>Animated sky wheel + detail</small></div>
+    <div class="feat"><div class="ic">💞</div><b>Kundli Matching</b><small>Ashtakoot 36-point</small></div>
+    <div class="feat"><div class="ic">📅</div><b>Daily Panchang</b><small>Tithi, Rahu Kaal, Choghadiya</small></div>
+    <div class="feat"><div class="ic">⏰</div><b>Muhurat Finder</b><small>Calendar + ceremony timings</small></div>
+    <div class="feat"><div class="ic">✨</div><b>Yoga Detection</b><small>Raj, Dhana, Gaja Kesari…</small></div>
+    <div class="feat"><div class="ic">📊</div><b>Ashtakavarga</b><small>Sign strength bar charts</small></div>
+    <div class="feat"><div class="ic">💎</div><b>Remedies</b><small>Gem, mantra, daan — per chart</small></div>
+    <div class="feat"><div class="ic">☀️</div><b>Aaj Ka Din</b><small>Daily personalised snapshot</small></div>
+    <div class="feat"><div class="ic">📜</div><b>Life Report</b><small>Pro PDF with charts</small></div>
+    <div class="feat"><div class="ic">💬</div><b>Ask AI</b><small>4-phase: answer·past·present·future</small></div>
+    <div class="feat"><div class="ic">🧩</div><b>Life Sectors</b><small>80 ready questions, 8 areas</small></div>
+    <div class="feat"><div class="ic">🔔</div><b>Transit &amp; Dasha Alerts</b><small>What’s changing now</small></div>
+    <div class="feat"><div class="ic">🔊</div><b>Voice Output</b><small>ElevenLabs TTS, multilingual</small></div>
+  </div>
+  <h4>Experience</h4>
+  <p>5 professional themes + dark mode, 12-language AI answers with <b>bold key points</b> and concrete
+  examples, hover/entrance animations, and a clean responsive UI.</p>
+  <div class="foot"><span>5 · Feature Set</span><span>7</span></div>
+</section>
+
+<!-- ===================== 6. MULTI-AI ===================== -->
+<section class="page">
+  <h3><span class="n">6</span> The Multi-AI Engine (never runs out)</h3>
+  <p>The biggest early pain was the AI quota dying in a single message. The fix: a layered fallback chain that
+  auto-switches the instant a provider hits its limit.</p>
+  <svg viewBox="0 0 720 120" width="100%" style="margin:10px 0">
+    <g font-size="11" font-weight="700" text-anchor="middle">
+      <rect x="8"  y="40" width="150" height="44" rx="8" fill="#D97706"/><text x="83"  y="60" fill="#fff">Gemini ×12</text><text x="83" y="75" fill="#fff7ed" font-size="9">3 keys × 4 models</text>
+      <rect x="178" y="40" width="120" height="44" rx="8" fill="#334155"/><text x="238" y="66" fill="#fff">Groq ×2</text>
+      <rect x="318" y="40" width="130" height="44" rx="8" fill="#475569"/><text x="383" y="66" fill="#fff">Bedrock (Claude)</text>
+      <rect x="468" y="40" width="150" height="44" rx="8" fill="#0f172a"/><text x="543" y="60" fill="#fff">Ollama (local)</text><text x="543" y="75" fill="#cbd5e1" font-size="9">no limit · offline</text>
+      <line x1="158" y1="62" x2="178" y2="62" stroke="#94a3b8" stroke-width="2"/>
+      <line x1="298" y1="62" x2="318" y2="62" stroke="#94a3b8" stroke-width="2"/>
+      <line x1="448" y1="62" x2="468" y2="62" stroke="#94a3b8" stroke-width="2"/>
+    </g>
+  </svg>
+  <ul>
+    <li><b>12 independent Gemini buckets</b> (3 keys × flash/flash-lite models) — each has its own daily free quota.</li>
+    <li><b>Groq</b> (fast, free) → <b>Bedrock/Claude</b> (paid) → <b>Ollama</b> local model as the final, limitless safety net.</li>
+    <li>On any 429/quota error the next provider is tried automatically — chat never fully stops.</li>
+    <li>Admin can toggle each AI feature off for cost control.</li>
+  </ul>
+  <div class="box note"><h4>Voice</h4>“Listen” uses ElevenLabs’ fast multilingual model (turbo, streamed); if credits/keys are
+  unavailable it silently falls back to the browser’s free voice.</div>
+  <div class="foot"><span>6 · Multi-AI Engine</span><span>8</span></div>
+</section>
+
+<!-- ===================== 7. AUTH/ADMIN ===================== -->
+<section class="page">
+  <h3><span class="n">7</span> Accounts, Authentication &amp; Admin Dashboard</h3>
+  <h4>Users</h4>
+  <ul>
+    <li>Email + password signup/login (scrypt-hashed passwords, signed JWT sessions)</li>
+    <li>The whole app is gated behind login; each user sees <b>only their own</b> charts (data isolation, verified)</li>
+  </ul>
+  <h4>Admin Dashboard (control everything)</h4>
+  <table>
+    <tr><th>Tab</th><th>What it does</th></tr>
+    <tr><td>Overview</td><td>Live stats (users, charts, reports, chats) + recent signups &amp; charts</td></tr>
+    <tr><td>Users</td><td>Promote/demote admin, suspend/unsuspend, delete user + data</td></tr>
+    <tr><td>System &amp; AI</td><td>Engine/DB info + live per-provider AI health</td></tr>
+    <tr><td>Controls</td><td>Maintenance pause, announcement banner, feature flags (cost control)</td></tr>
+  </table>
+  <div class="box note"><h4>Operator control</h4>A disclosed “maintenance” switch lets the admin pause the app for regular
+  users while keeping full admin access — a clean, legitimate operational control.</div>
+  <div class="foot"><span>7 · Auth &amp; Admin</span><span>9</span></div>
+</section>
+
+<!-- ===================== 8. JOURNEY ===================== -->
+<section class="page">
+  <h3><span class="n">8</span> Step-by-Step Build Journey</h3>
+  <div class="timeline">
+    <div class="item"><b>Phase 1 — Foundation.</b> Set up the Vite + React + Express stack; integrated birth-detail input with place autocomplete (no need to know latitude/longitude/timezone).</div>
+    <div class="item"><b>Phase 2 — Real charts.</b> Started with the Prokerala API, then built our <b>own astronomy engine</b> to remove the dependency and guarantee accuracy.</div>
+    <div class="item"><b>Phase 3 — Interpretation.</b> Added the AI layer (“Acharya” persona), normalized chart data, and the multi-provider fallback so quota never dies.</div>
+    <div class="item"><b>Phase 4 — Depth.</b> Divisional charts, dashas, live transit (animated wheel), Ask-AI 4-phase answers, Life Sectors, and a polished PDF Life Report.</div>
+    <div class="item"><b>Phase 5 — Advanced tools.</b> Kundli Matching, Daily Panchang + horoscope, Muhurat finder, Yoga detection, Ashtakavarga, Remedies, “Aaj Ka Din”.</div>
+    <div class="item"><b>Phase 6 — Experience.</b> 5 themes + dark mode, voice output (ElevenLabs), help &amp; support with direct email, multi-language answers.</div>
+    <div class="item"><b>Phase 7 — Platform.</b> Accounts + login, per-user data isolation, and a full admin dashboard for launch.</div>
+  </div>
+
+  <h4>Approximate Development Effort</h4>
+  <table>
+    <tr><th>Phase</th><th>Work</th><th>Approx. time</th></tr>
+    <tr><td>1</td><td>Foundation (stack, birth input, place autocomplete)</td><td>~6 hrs</td></tr>
+    <tr><td>2</td><td>Astrology engine + charts (own, validated)</td><td>~10 hrs</td></tr>
+    <tr><td>3</td><td>AI interpretation + multi-provider fallback</td><td>~8 hrs</td></tr>
+    <tr><td>4</td><td>Divisionals, dashas, transit, report PDF, sectors</td><td>~12 hrs</td></tr>
+    <tr><td>5</td><td>Matching, panchang, muhurat, yogas, ashtakavarga, remedies, Aaj Ka Din</td><td>~14 hrs</td></tr>
+    <tr><td>6</td><td>Themes, dark mode, voice (TTS), help, languages</td><td>~6 hrs</td></tr>
+    <tr><td>7</td><td>Accounts, auth, data isolation, admin dashboard</td><td>~8 hrs</td></tr>
+    <tr><td>—</td><td>Testing, accuracy verification &amp; bug-fixing (throughout)</td><td>~8 hrs</td></tr>
+    <tr><td colspan="2"><b>Total approximate effort</b></td><td><b>~72 hours</b> (≈ 9–10 working days)</td></tr>
+  </table>
+  <p class="muted" style="font-size:12px">Note: figures are an approximate, phase-wise estimate of focused development time.</p>
+  <div class="foot"><span>8 · Build Journey &amp; Effort</span><span>10</span></div>
+</section>
+
+<!-- ===================== 9. PROBLEMS ===================== -->
+<section class="page">
+  <h3><span class="n">9</span> Problems Faced &amp; How They Were Solved</h3>
+
+  <div class="box problem"><h4>1 · “Chart galat ban raha hai”</h4>Charts were occasionally wrong.</div>
+  <div class="box solution"><h4>Root cause &amp; fix</h4>Two issues: (a) the Prokerala API rate-limited at 5 calls/60s causing intermittent
+  failures, and (b) an AM/PM time-entry bug (6:40 AM stored as 11:40). Fixed with retry/back-off, then by replacing the API with our own engine, and a clear 12-hour time picker.</div>
+
+  <div class="box problem"><h4>2 · Sanskrit sign names broke houses</h4>Signs like “Tula” weren’t recognised, so houses computed wrong.</div>
+  <div class="box solution"><h4>Fix</h4>A sign-alias map (Tula→Libra, Mesha→Aries …) normalizes every spelling to a canonical index; houses are derived from the Ascendant, not the raw provider field.</div>
+
+  <div class="box problem"><h4>3 · AI quota died in one message</h4>The top model had a tiny free quota.</div>
+  <div class="box solution"><h4>Fix</h4>Flash-first ordering + 3 keys × 4 models = 12 independent daily buckets, then Groq → Bedrock → local Ollama. Practically impossible to exhaust in a day.</div>
+
+  <div class="box problem"><h4>4 · Microphone “not secure”</h4>Voice input needs HTTPS.</div>
+  <div class="box solution"><h4>Fix</h4>Added a self-signed HTTPS server alongside HTTP for local use (2048-bit, SHA-256), so the mic works on localhost and LAN.</div>
+
+  <div class="box problem"><h4>5 · Premium AI/voice limits &amp; billing</h4>The Claude key was an AWS Bedrock key (payment-gated), and ElevenLabs was slow.</div>
+  <div class="box solution"><h4>Fix</h4>Auto-detected Bedrock keys and routed correctly; made Ollama the limitless local fallback; switched TTS to the streamed turbo model for speed.</div>
+
+  <div class="foot"><span>9 · Problems &amp; Solutions</span><span>11</span></div>
+</section>
+
+<section class="page">
+  <h3 style="border:none"><span class="n">9</span> Problems &amp; Solutions <span class="muted" style="font-size:13px">(continued)</span></h3>
+
+  <div class="box problem"><h4>6 · Missing Ascendant index</h4>Yogas, Ashtakavarga &amp; Remedies used the wrong Lagna reference.</div>
+  <div class="box solution"><h4>Fix</h4>Derived the Ascendant sign index from its name everywhere, restoring correct Lagna-lord, yoga and bindu calculations.</div>
+
+  <div class="box problem"><h4>7 · Muhurat showed every day</h4>Marriage muhurat appeared even in months when weddings don’t occur.</div>
+  <div class="box solution"><h4>Fix</h4>Added the real seasonal rules — <b>Kharmas</b>, <b>Chaturmas</b>, <b>Guru/Shukra Ast</b> (combustion), Vivah-nakshatra &amp; tithi checks. Cross-checked against published panchang (Aug/Sep/Oct correctly empty; Nov dates matched).</div>
+
+  <div class="box problem"><h4>8 · “Aaj Ka Din” regenerated on every refresh</h4>Wasted AI quota.</div>
+  <div class="box solution"><h4>Fix</h4>The daily snapshot is generated once per day per user and cached; every refresh returns the same report.</div>
+
+  <div class="box problem"><h4>9 · Messy PDF</h4>The Life Report PDF felt cramped and plain.</div>
+  <div class="box solution"><h4>Fix</h4>Redesigned with a clean header, birth details, D1/D9 charts, dasha tables, bold highlights, an end summary, and lazy-loaded jsPDF (smaller app bundle).</div>
+
+  <div class="foot"><span>9 · Problems &amp; Solutions</span><span>12</span></div>
+</section>
+
+<!-- ===================== 10. ACCURACY ===================== -->
+<section class="page">
+  <h3><span class="n">10</span> Accuracy &amp; Independent Verification</h3>
+  <p>Accuracy was treated as non-negotiable and cross-checked against independent sources.</p>
+  <table>
+    <tr><th>What</th><th>Checked against</th><th>Result</th></tr>
+    <tr><td>Planet &amp; Ascendant positions</td><td>AstroSage + Prokerala</td><td>Match within ~0.01°</td></tr>
+    <tr><td>Transit RA / Declination / Shara</td><td>Reference ephemeris table</td><td>Match within ~0.02°</td></tr>
+    <tr><td>Ashtakavarga (Sarvashtakavarga)</td><td>Classical BPHS total</td><td>Exactly 337 bindus</td></tr>
+    <tr><td>Vivah Muhurat (months)</td><td>GaneshaSpeaks Panchang</td><td>Seasons match (Aug/Sep/Oct empty)</td></tr>
+    <tr><td>Vivah Muhurat (Nov 2026 days)</td><td>GaneshaSpeaks Panchang</td><td>21, 24, 25, 26 captured</td></tr>
+  </table>
+  <div class="box note"><h4>Honest scope</h4>Core astronomy (charts, dasha, transit, panchang, matching) is exact for any date —
+  near or 10+ years out — because it is true ephemeris maths, not a lookup table. The marriage-muhurat day shortlist
+  is highly accurate but still advises confirming the exact Vivah Lagna with a jyotishi, since panchang sources
+  themselves differ slightly by ayanamsa &amp; method.</div>
+  <div class="foot"><span>10 · Accuracy</span><span>13</span></div>
+</section>
+
+<!-- ===================== 11. SECURITY ===================== -->
+<section class="page">
+  <h3><span class="n">11</span> Security &amp; Privacy</h3>
+  <ul>
+    <li><b>All secrets server-side</b> — Prokerala, Gemini, Groq, Bedrock, ElevenLabs, SMTP keys never reach the browser.</li>
+    <li><b>Hashed passwords</b> (scrypt) and signed JWT sessions; suspended accounts are blocked.</li>
+    <li><b>Per-user data isolation</b> — a user can only access their own charts (ownership enforced on every route).</li>
+    <li><b>Admin-only controls</b> — stats, user management and feature flags require the admin role.</li>
+    <li><b>Private by design</b> — data is stored locally to the deployment; nothing is shared with third parties beyond the AI calls the user initiates.</li>
+  </ul>
+  <div class="box note"><h4>Before public launch</h4>Set a strong <code>AUTH_SECRET</code>, lock CORS to the real domain, add
+  rate-limiting + security headers, move to a persistent database, and publish Privacy / Terms / Disclaimer pages.</div>
+  <div class="foot"><span>11 · Security &amp; Privacy</span><span>14</span></div>
+</section>
+
+<!-- ===================== 12. CHECKLIST ===================== -->
+<section class="page">
+  <h3><span class="n">12</span> Pre-Launch Checklist</h3>
+  <table>
+    <tr><th>#</th><th>Step</th><th>Priority</th></tr>
+    <tr><td>1</td><td>Set strong <code>AUTH_SECRET</code> + <code>ADMIN_EMAIL</code>; move secrets to host env</td><td>Must</td></tr>
+    <tr><td>2</td><td>Rate limiting + CORS lock + security headers (Helmet)</td><td>Must</td></tr>
+    <tr><td>3</td><td>Privacy Policy, Terms, Disclaimer pages</td><td>Must</td></tr>
+    <tr><td>4</td><td>Persistent database (Postgres / Firebase) — file store resets on most hosts</td><td>Must</td></tr>
+    <tr><td>5</td><td>Production build + full flow test (signup → chart → AI → PDF → admin)</td><td>Must</td></tr>
+    <tr><td>6</td><td>Hosting + domain + real HTTPS; <code>NODE_ENV=production</code></td><td>Must</td></tr>
+    <tr><td>7</td><td>Error monitoring (Sentry) + uptime + analytics</td><td>Should</td></tr>
+    <tr><td>8</td><td>Database backups</td><td>Should</td></tr>
+    <tr><td>9</td><td>Create admin account; set announcement &amp; feature flags</td><td>Must</td></tr>
+    <tr><td>10</td><td>Payments (Razorpay), SEO/landing, PWA, notifications</td><td>Later</td></tr>
+  </table>
+  <div style="margin-top:40px;text-align:center;color:#94a3b8">
+    <div class="logo" style="width:46px;height:46px;font-size:24px;margin-bottom:10px">V</div>
+    <p style="margin:0;color:var(--navy);font-weight:700">VedicAstra</p>
+    <p class="muted" style="margin:2px 0;font-size:12px">Documentation · Designed &amp; Developed by Vansh Kashyap</p>
+  </div>
+  <div class="foot"><span>12 · Pre-Launch Checklist</span><span>15</span></div>
+</section>
+
+</body>
+</html>

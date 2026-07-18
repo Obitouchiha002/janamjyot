@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ replaced the "draw a splash drawable as the window background"
+  trick with a real platform splash. Configuring it here is what stops the OS
+  from showing its own default (white) icon-on-background screen before ours.
+-->
+<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splashBackground</item>
+        <!-- The mipmap foreground PNG has padding, so it sits cleanly inside the
+             Android-12 splash's circular mask (the edge-to-edge vector clipped). -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

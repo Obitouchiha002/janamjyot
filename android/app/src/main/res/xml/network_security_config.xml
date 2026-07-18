@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Production traffic is HTTPS (vedicastra.vercel.app), so cleartext stays OFF
+  everywhere by default. The only exception is the local dev backend reached
+  from the Android emulator (10.0.2.2 = host loopback) and localhost, so a
+  debug build pointed at a local server can talk to it. This does not weaken
+  any real/remote endpoint.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

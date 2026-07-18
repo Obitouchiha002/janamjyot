@@ -1,0 +1,6 @@
+{
+  "name": "Vedic Astra",
+  "description": "Professional Vedic Astrology App generating real charts with AI insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

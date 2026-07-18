@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JanamJyot</string>
+    <string name="title_activity_main">JanamJyot</string>
+    <string name="package_name">com.vanshkashyap.vedicastra</string>
+    <string name="custom_url_scheme">com.vanshkashyap.vedicastra</string>
+    <!-- Google Sign-In: the OAuth **Web** client id (same one the server verifies against). -->
+    <string name="server_client_id">594636087513-0eq9pft3vtm7l9gd723db8sq1jmpc47h.apps.googleusercontent.com</string>
+</resources>

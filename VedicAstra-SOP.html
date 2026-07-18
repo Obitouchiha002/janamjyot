@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VedicAstra — Standard Operating Procedure (SOP)</title>
+<style>
+  :root{ --navy:#1E293B; --amber:#D97706; --amber-soft:#fef3e2; --ink:#1f2937; --muted:#6b7280; --line:#e2e8f0; --green:#15803d; --red:#b91c1c; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:#f1ece3; line-height:1.6; font-size:14px; }
+  .page{ width:210mm; min-height:297mm; margin:14px auto; background:#fff; padding:24mm 20mm; box-shadow:0 6px 30px rgba(15,23,42,.12); position:relative; }
+  h1,h2,h3,h4{ color:var(--navy); line-height:1.25; }
+  h2{ font-size:24px; margin:0 0 4px; }
+  h3{ font-size:17px; margin:24px 0 8px; padding-bottom:6px; border-bottom:2px solid var(--line); }
+  h3 .n{ color:var(--amber); font-weight:800; margin-right:8px; }
+  h4{ font-size:14px; margin:14px 0 4px; }
+  p{ margin:8px 0; } ul,ol{ margin:8px 0; padding-left:22px; } li{ margin:5px 0; }
+  code{ background:#f3f4f6; padding:1px 5px; border-radius:4px; font-family:ui-monospace,Menlo,monospace; font-size:12.5px; color:#0f172a; }
+  .muted{ color:var(--muted); }
+  .tag{ display:inline-block; background:var(--amber-soft); color:var(--amber); font-weight:700; font-size:11px; padding:3px 10px; border-radius:999px; letter-spacing:.5px; text-transform:uppercase; }
+  .logo{ width:74px; height:74px; border-radius:18px; background:var(--amber); color:#fff; font-weight:800; font-size:40px; display:flex; align-items:center; justify-content:center; margin:0 auto 22px; box-shadow:0 8px 24px rgba(217,119,6,.35); }
+  .cover{ display:flex; flex-direction:column; justify-content:center; min-height:245mm; text-align:center; }
+  .cover h1{ font-size:42px; margin:0; letter-spacing:-1px; } .cover h1 span{ color:var(--amber); font-weight:300; }
+  .cover .sub{ font-size:18px; color:var(--muted); margin-top:10px; }
+  .box{ border:1px solid var(--line); border-radius:12px; padding:13px 16px; margin:12px 0; background:#fcfbf8; }
+  .box.do{ border-left:5px solid var(--green); background:#f6fbf6; } .box.dont{ border-left:5px solid var(--red); background:#fdf6f6; }
+  .box.note{ border-left:5px solid var(--amber); background:var(--amber-soft); }
+  .box h4{ margin:0 0 4px; } .box.do h4{ color:var(--green); } .box.dont h4{ color:var(--red); }
+  table{ width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th{ background:var(--navy); color:#fff; text-align:left; padding:8px 10px; font-size:12px; }
+  td{ border-bottom:1px solid var(--line); padding:7px 10px; vertical-align:top; }
+  tr:nth-child(even) td{ background:#faf9f6; }
+  ol.steps{ counter-reset:s; list-style:none; padding-left:0; }
+  ol.steps>li{ position:relative; padding:8px 0 8px 40px; border-bottom:1px dashed var(--line); }
+  ol.steps>li::before{ counter-increment:s; content:counter(s); position:absolute; left:0; top:8px; width:26px; height:26px; background:var(--amber); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
+  .foot{ position:absolute; bottom:12mm; left:20mm; right:20mm; display:flex; justify-content:space-between; font-size:10.5px; color:#94a3b8; border-top:1px solid var(--line); padding-top:6px; }
+  .hint{ max-width:210mm; margin:14px auto; padding:12px 16px; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; color:#92400e; font-size:13px; }
+  @media print{ body{ background:#fff; } .page{ margin:0; box-shadow:none; width:auto; min-height:auto; padding:18mm 16mm; page-break-after:always; } .no-print{ display:none; } }
+</style>
+</head>
+<body>
+
+<div class="hint no-print">📄 <b>Save as PDF:</b> press <b>Ctrl/Cmd + P</b> → “Save as PDF” → enable <b>“Background graphics”</b> → Save.</div>
+
+<!-- COVER -->
+<section class="page cover">
+  <div class="logo">V</div>
+  <h1>Vedic<span>Astra</span></h1>
+  <div class="sub">Standard Operating Procedure (SOP)</div>
+  <div style="margin-top:30px"><span class="tag">Operations Manual</span></div>
+  <p style="margin-top:18px">Run, operate, maintain &amp; troubleshoot the platform</p>
+  <p class="muted" style="font-size:13px">Prepared by <b style="color:var(--amber)">Vansh Kashyap</b> &nbsp;·&nbsp; Version 1.0</p>
+  <div class="foot"><span>VedicAstra — SOP</span><span>Vansh Kashyap</span></div>
+</section>
+
+<!-- CONTENTS -->
+<section class="page">
+  <h2>Contents</h2>
+  <table>
+    <tr><th style="width:40px">#</th><th>Procedure</th></tr>
+    <tr><td>1</td><td>Purpose &amp; Scope</td></tr>
+    <tr><td>2</td><td>Roles &amp; Responsibilities</td></tr>
+    <tr><td>3</td><td>Environment Setup &amp; Required Keys</td></tr>
+    <tr><td>4</td><td>Running the App (Dev &amp; Production)</td></tr>
+    <tr><td>5</td><td>Daily Operations</td></tr>
+    <tr><td>6</td><td>Admin Procedures</td></tr>
+    <tr><td>7</td><td>API Keys &amp; Quota Management</td></tr>
+    <tr><td>8</td><td>Troubleshooting (step-by-step)</td></tr>
+    <tr><td>9</td><td>Backup &amp; Data Safety</td></tr>
+    <tr><td>10</td><td>Deployment Procedure</td></tr>
+    <tr><td>11</td><td>Security Do’s &amp; Don’ts</td></tr>
+    <tr><td>12</td><td>Escalation &amp; Support</td></tr>
+  </table>
+  <div class="foot"><span>VedicAstra — SOP</span><span>2</span></div>
+</section>
+
+<!-- 1 -->
+<section class="page">
+  <h3><span class="n">1</span> Purpose &amp; Scope</h3>
+  <p>This SOP defines the standard steps to install, run, operate, maintain and troubleshoot the VedicAstra
+  platform. It is intended for the operator/admin and any developer maintaining the system.</p>
+  <h4>System summary</h4>
+  <ul>
+    <li>One Node/Express server serves the React app and a secured <code>/api</code>.</li>
+    <li>All astrology is computed by a built-in engine; AI providers and voice are brokered server-side.</li>
+    <li>Accounts + login + a per-user data model, with an admin dashboard for control.</li>
+  </ul>
+
+  <h3><span class="n">2</span> Roles &amp; Responsibilities</h3>
+  <table>
+    <tr><th>Role</th><th>Responsibilities</th></tr>
+    <tr><td>Admin / Operator</td><td>Manage users, monitor usage &amp; AI health, set maintenance/announcement, toggle features, watch API costs.</td></tr>
+    <tr><td>Developer</td><td>Deploy, rotate keys, fix issues, run backups, manage the database &amp; hosting.</td></tr>
+    <tr><td>User</td><td>Sign up, create charts, use features. Sees only their own data.</td></tr>
+  </table>
+  <div class="foot"><span>1–2 · Purpose &amp; Roles</span><span>3</span></div>
+</section>
+
+<!-- 3 -->
+<section class="page">
+  <h3><span class="n">3</span> Environment Setup &amp; Required Keys</h3>
+  <p>All configuration lives in <code>.env.local</code> (git-ignored, server-side only). Fill these before running.</p>
+  <table>
+    <tr><th>Key</th><th>Purpose</th><th>Required?</th></tr>
+    <tr><td>AUTH_SECRET</td><td>Signs login sessions — set a strong random value</td><td>Yes (prod)</td></tr>
+    <tr><td>ADMIN_EMAIL</td><td>This email becomes admin on signup</td><td>Yes</td></tr>
+    <tr><td>GEMINI_API_KEY(_2/_3)</td><td>Primary AI (multiple keys = more quota)</td><td>Yes</td></tr>
+    <tr><td>GROQ_API_KEY</td><td>Fast free AI backup</td><td>Recommended</td></tr>
+    <tr><td>ANTHROPIC_API_KEY / BEDROCK_*</td><td>Claude/Bedrock paid backup</td><td>Optional</td></tr>
+    <tr><td>OLLAMA_MODEL</td><td>Local AI (no-limit final fallback)</td><td>Optional</td></tr>
+    <tr><td>ELEVENLABS_API_KEY / VOICE_ID</td><td>Premium “Listen” voice</td><td>Optional</td></tr>
+    <tr><td>SMTP_USER / SMTP_PASS</td><td>Help-form email (Gmail app password)</td><td>Optional</td></tr>
+    <tr><td>DATABASE_URL</td><td>Postgres (else local file store)</td><td>Prod recommended</td></tr>
+  </table>
+  <div class="box note"><h4>Install</h4><code>npm install</code> once. Node 18+ required.</div>
+  <div class="foot"><span>3 · Environment Setup</span><span>4</span></div>
+</section>
+
+<!-- 4 -->
+<section class="page">
+  <h3><span class="n">4</span> Running the App</h3>
+  <h4>Development</h4>
+  <ol class="steps">
+    <li>Open a terminal in the project folder.</li>
+    <li>Run <code>npm run dev</code>.</li>
+    <li>Open <code>http://localhost:3000</code>. (For microphone/voice on other devices use <code>https://localhost:3443</code> and accept the one-time warning.)</li>
+  </ol>
+  <div class="box note"><h4>Important</h4>The server does <b>not</b> auto-reload on backend (<code>server.ts</code>) changes. After editing backend code or <code>.env.local</code>, <b>stop and restart</b> <code>npm run dev</code>.</div>
+  <h4>Production</h4>
+  <ol class="steps">
+    <li>Set <code>NODE_ENV=production</code> and all secrets in the host’s environment.</li>
+    <li>Build: <code>npm run build</code>.</li>
+    <li>Start: <code>npm start</code> (serves the built app + API).</li>
+  </ol>
+  <div class="foot"><span>4 · Running the App</span><span>5</span></div>
+</section>
+
+<!-- 5 -->
+<section class="page">
+  <h3><span class="n">5</span> Daily Operations</h3>
+  <ol class="steps">
+    <li>Confirm the site loads and login works.</li>
+    <li>Open <b>Admin → Overview</b>: check new signups, charts created, totals.</li>
+    <li>Open <b>Admin → System &amp; AI</b>: verify at least one AI provider shows status <b>“ok”</b>; watch quota hits.</li>
+    <li>If a paid provider is near its limit (ElevenLabs credits / Bedrock), consider turning that feature off in <b>Controls</b>.</li>
+    <li>Respond to any Help messages received by email.</li>
+  </ol>
+  <div class="box do"><h4>Healthy signs</h4>AI status “ok” or “quota” with auto-recovery; chat &amp; reports returning; no error spikes.</div>
+  <div class="foot"><span>5 · Daily Operations</span><span>6</span></div>
+</section>
+
+<!-- 6 -->
+<section class="page">
+  <h3><span class="n">6</span> Admin Procedures</h3>
+  <h4>Manage a user</h4>
+  <ol class="steps">
+    <li>Go to <b>Admin → Users</b>.</li>
+    <li>Promote/demote admin (shield icon), Suspend/Unsuspend, or Delete (with confirm).</li>
+    <li>Suspended users are immediately blocked from the app.</li>
+  </ol>
+  <h4>Pause the app (maintenance)</h4>
+  <ol class="steps">
+    <li><b>Admin → Controls → App Status</b>: type a message, click <b>Pause App</b>.</li>
+    <li>Regular users see the message; admins keep full access. Click <b>App Live</b> to resume.</li>
+  </ol>
+  <h4>Announcement banner</h4>
+  <ol class="steps">
+    <li><b>Controls → Announcement</b>: type a message, click <b>Show banner</b> (appears for all signed-in users). <b>Hide</b> to remove.</li>
+  </ol>
+  <h4>Cost control (feature flags)</h4>
+  <ol class="steps">
+    <li><b>Controls → Feature flags</b>: toggle AI Chat / Reports / Voice / Horoscope / Match.</li>
+    <li>Turned-off features fail gracefully (voice falls back to free browser voice).</li>
+  </ol>
+  <div class="foot"><span>6 · Admin Procedures</span><span>7</span></div>
+</section>
+
+<!-- 7 -->
+<section class="page">
+  <h3><span class="n">7</span> API Keys &amp; Quota Management</h3>
+  <ul>
+    <li><b>Gemini (free):</b> each (key × model) pair has its own daily quota. The app already lists 3 keys × 4 flash models = 12 buckets. If chat slows, add another Google account’s key as <code>GEMINI_API_KEY_3</code> and restart.</li>
+    <li><b>Ollama (local):</b> if installed and set via <code>OLLAMA_MODEL</code>, it’s the limitless final fallback (offline, free, slower).</li>
+    <li><b>ElevenLabs (paid):</b> watch credits; if exhausted, the app auto-uses the free browser voice — no breakage. Rotate the key in <code>.env.local</code> and restart.</li>
+    <li><b>Bedrock/Claude:</b> requires a valid AWS payment method; if it returns a payment error, leave it as backup — the free providers serve normally.</li>
+  </ul>
+  <div class="box note"><h4>Rotating any key</h4>Update the value in <code>.env.local</code> (or host env) → restart the server. Keys are never exposed to the browser.</div>
+  <div class="foot"><span>7 · Keys &amp; Quota</span><span>8</span></div>
+</section>
+
+<!-- 8 -->
+<section class="page">
+  <h3><span class="n">8</span> Troubleshooting (step-by-step)</h3>
+  <table>
+    <tr><th>Symptom</th><th>Action</th></tr>
+    <tr><td>AI not replying / “quota” error</td><td>Wait ~1 min (auto-fallback). Check Admin → System &amp; AI. Add another Gemini key or enable Ollama. Restart server.</td></tr>
+    <tr><td>Chart looks wrong</td><td>Verify date is <code>YYYY-MM-DD</code>, time AM/PM correct, and the right place was picked from suggestions. Recreate the chart.</td></tr>
+    <tr><td>Microphone “not secure”</td><td>Open via <code>http://localhost:3000</code> or <code>https://localhost:3443</code> (accept warning). Mic needs a secure origin.</td></tr>
+    <tr><td>Voice (Listen) silent/slow</td><td>Check ELEVENLABS key/credits; otherwise it falls back to browser voice. Verify the feature flag is ON.</td></tr>
+    <tr><td>Help email not sending</td><td>Set <code>SMTP_USER</code> + a Gmail <b>app password</b> in <code>SMTP_PASS</code>; restart. Until then it opens the user’s email app.</td></tr>
+    <tr><td>Login fails / 401 loop</td><td>Ensure <code>AUTH_SECRET</code> is stable (don’t change it in prod). Restart after changing env.</td></tr>
+    <tr><td>Backend change not taking effect</td><td>Restart <code>npm run dev</code> — backend doesn’t hot-reload.</td></tr>
+    <tr><td>Users/charts disappeared after deploy</td><td>The host’s filesystem is ephemeral — switch to Postgres or a persistent volume.</td></tr>
+  </table>
+  <div class="foot"><span>8 · Troubleshooting</span><span>9</span></div>
+</section>
+
+<!-- 9 + 10 -->
+<section class="page">
+  <h3><span class="n">9</span> Backup &amp; Data Safety</h3>
+  <ul>
+    <li><b>File store:</b> data lives in <code>.data/store.json</code>. Back it up regularly (copy the file). It is auto-backed-up if it becomes corrupt.</li>
+    <li><b>Postgres:</b> enable the provider’s automated daily backups.</li>
+    <li>Never commit <code>.env.local</code> or <code>.data/</code> to git.</li>
+  </ul>
+
+  <h3><span class="n">10</span> Deployment Procedure</h3>
+  <ol class="steps">
+    <li>Choose a host (Railway/Render/VPS) with a <b>persistent</b> database or volume.</li>
+    <li>Set all secrets in the host environment (incl. strong <code>AUTH_SECRET</code>).</li>
+    <li>Build (<code>npm run build</code>) and start (<code>npm start</code>).</li>
+    <li>Attach a domain; enable HTTPS (host/Let’s Encrypt).</li>
+    <li>Lock CORS to the domain; add rate-limiting &amp; security headers.</li>
+    <li>Sign up the admin account; set announcement/flags; smoke-test the full flow.</li>
+  </ol>
+  <div class="foot"><span>9–10 · Backup &amp; Deploy</span><span>10</span></div>
+</section>
+
+<!-- 11 + 12 -->
+<section class="page">
+  <h3><span class="n">11</span> Security Do’s &amp; Don’ts</h3>
+  <div class="box do"><h4>Do</h4>
+    <ul style="margin:0">
+      <li>Keep all keys in env / host secrets only.</li>
+      <li>Use a strong, stable <code>AUTH_SECRET</code> in production.</li>
+      <li>Back up data before each deploy; rotate keys if leaked.</li>
+      <li>Use feature flags to cap paid AI/voice usage.</li>
+    </ul>
+  </div>
+  <div class="box dont"><h4>Don’t</h4>
+    <ul style="margin:0">
+      <li>Don’t commit <code>.env.local</code> or expose keys in the frontend.</li>
+      <li>Don’t leave CORS open in production.</li>
+      <li>Don’t rely on the file store on an ephemeral host.</li>
+      <li>Don’t change <code>AUTH_SECRET</code> in prod (logs everyone out).</li>
+    </ul>
+  </div>
+
+  <h3><span class="n">12</span> Escalation &amp; Support</h3>
+  <p>For platform issues, contact the developer:</p>
+  <p><b>Developer:</b> <span style="color:var(--amber);font-weight:700">Vansh Kashyap</span> &nbsp;·&nbsp; via the in-app <b>Help &amp; Support</b> page.</p>
+
+  <div style="margin-top:40px;text-align:center;color:#94a3b8">
+    <div class="logo" style="width:46px;height:46px;font-size:24px;margin-bottom:10px">V</div>
+    <p style="margin:0;color:var(--navy);font-weight:700">VedicAstra — SOP v1.0</p>
+    <p class="muted" style="margin:2px 0;font-size:12px">Prepared by Vansh Kashyap</p>
+  </div>
+  <div class="foot"><span>11–12 · Security &amp; Support</span><span>11</span></div>
+</section>
+
+</body>
+</html>

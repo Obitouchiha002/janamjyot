@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher / splash mark — the VedicAstra logo: a navy celestial disc with a
+  gold "V", a four-point star, and a gold compass ring with cardinal points,
+  on the cream launcher background.
+
+  Adaptive icons are masked (~18dp can be eaten per edge), so the ring and mark
+  stay inside the middle of the 108x108 canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- navy celestial disc -->
+    <path
+        android:fillColor="#17203F"
+        android:pathData="M24,54 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
+
+    <!-- outer compass ring (gold) -->
+    <path
+        android:strokeColor="#C9A24A"
+        android:strokeWidth="1.8"
+        android:fillColor="#00000000"
+        android:pathData="M54,16 A38,38 0 1,1 53.9,16" />
+
+    <!-- inner ring (gold, faint) -->
+    <path
+        android:strokeColor="#C9A24A"
+        android:strokeWidth="0.8"
+        android:strokeAlpha="0.5"
+        android:fillColor="#00000000"
+        android:pathData="M54,30 A24,24 0 1,1 53.9,30" />
+
+    <!-- four-point star -->
+    <path
+        android:fillColor="#E7C766"
+        android:pathData="M54,31 L56,38 L63,40 L56,42 L54,49 L52,42 L45,40 L52,38 Z" />
+
+    <!-- the gold V -->
+    <path
+        android:fillColor="#CBA344"
+        android:pathData="M41,44 L48,44 L54,60 L60,44 L67,44 L57,73 L51,73 Z" />
+
+    <!-- cardinal points on the ring -->
+    <path android:fillColor="#C9A24A" android:pathData="M54,16 m-2.8,0 a2.8,2.8 0 1,0 5.6,0 a2.8,2.8 0 1,0 -5.6,0" />
+    <path android:fillColor="#C9A24A" android:pathData="M54,92 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    <path android:fillColor="#17203F" android:pathData="M92,54 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    <path android:fillColor="#17203F" android:pathData="M16,54 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+</vector>

@@ -1,0 +1,13 @@
+# Secrets — never upload (env vars are set in the Vercel dashboard instead)
+.env
+.env.*
+!.env.example
+
+# Local data / build artifacts (Vercel rebuilds; Postgres holds the data)
+.data
+dist
+node_modules
+
+# Local docs
+VedicAstra-Documentation.html
+VedicAstra-SOP.html

@@ -1,0 +1,459 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: #1E293B;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #F8F5EF;
+  --color-secondary-foreground: #1E293B;
+  --color-accent: #D97706;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-background: #F8F5EF;
+  --color-foreground: #111827;
+  --color-card: #ffffff;
+  --color-card-foreground: #111827;
+  --color-border: #E2E8F0;
+  --color-input: #E2E8F0;
+  --color-ring: #D97706;
+  --color-muted: #F3F4F6;
+  --color-muted-foreground: #6B7280;
+}
+
+/* Enable class-based dark mode (dark themes add `.dark` on <html>). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── THEMES ─────────────────────────────────────────────────────────────
+   Each theme overrides the design tokens, so every component that uses them
+   (cards, inputs, chat, tables, badges) switches automatically. Colors are
+   chosen for strong, professional contrast within each theme. */
+
+/* Classic Cream (default) */
+[data-theme="classic"] {
+  --color-primary: #1E293B; --color-primary-foreground: #ffffff;
+  --color-secondary: #F1ECE1; --color-secondary-foreground: #1E293B;
+  --color-accent: #D97706; --color-accent-foreground: #ffffff;
+  --color-background: #F8F5EF; --color-foreground: #111827;
+  --color-card: #ffffff; --color-card-foreground: #111827;
+  --color-border: #E2E8F0; --color-input: #E2E8F0;
+  --color-muted: #F3F4F6; --color-muted-foreground: #6B7280; --color-ring: #D97706;
+}
+
+/* Vedic Parchment — Drikpanchang style (saffron / maroon / sand) */
+[data-theme="drikpanchang"] {
+  --color-primary: #6e1414; --color-primary-foreground: #fff7ec;
+  --color-secondary: #ecd9a8; --color-secondary-foreground: #5a2a0a;
+  --color-accent: #c2410c; --color-accent-foreground: #fff7ec;
+  --color-background: #f3e6c4; --color-foreground: #3a1f0a;
+  --color-card: #f9efd6; --color-card-foreground: #3a1f0a;
+  --color-border: #d9bd84; --color-input: #e7d3a0;
+  --color-muted: #ecdcb4; --color-muted-foreground: #7c5a2a; --color-ring: #c2410c;
+}
+
+/* Emerald Mint */
+[data-theme="emerald"] {
+  --color-primary: #065f46; --color-primary-foreground: #ffffff;
+  --color-secondary: #d6f3e4; --color-secondary-foreground: #064e3b;
+  --color-accent: #0d9488; --color-accent-foreground: #ffffff;
+  --color-background: #eefaf3; --color-foreground: #0f291f;
+  --color-card: #ffffff; --color-card-foreground: #0f291f;
+  --color-border: #bfe6d2; --color-input: #bfe6d2;
+  --color-muted: #e2f5ec; --color-muted-foreground: #4b7a65; --color-ring: #0d9488;
+}
+
+/* Midnight Slate (dark) */
+[data-theme="midnight"] {
+  --color-primary: #1E293B; --color-primary-foreground: #ffffff;
+  --color-secondary: #1b2536; --color-secondary-foreground: #e5e7eb;
+  --color-accent: #f59e0b; --color-accent-foreground: #1a1305;
+  --color-background: #0b1220; --color-foreground: #e5e7eb;
+  --color-card: #131c2e; --color-card-foreground: #e5e7eb;
+  --color-border: #2b3a52; --color-input: #2b3a52;
+  --color-muted: #1b2536; --color-muted-foreground: #94a3b8; --color-ring: #f59e0b;
+}
+
+/* Royal Indigo (dark) */
+[data-theme="royal"] {
+  --color-primary: #4338ca; --color-primary-foreground: #ffffff;
+  --color-secondary: #241b52; --color-secondary-foreground: #e8e6f7;
+  --color-accent: #a78bfa; --color-accent-foreground: #1a1530;
+  --color-background: #0f0a24; --color-foreground: #e8e6f7;
+  --color-card: #1b1540; --color-card-foreground: #e8e6f7;
+  --color-border: #342a63; --color-input: #342a63;
+  --color-muted: #241b52; --color-muted-foreground: #a99fd6; --color-ring: #a78bfa;
+}
+
+/* Structural fixes for components that hardcode white surfaces / navy text, so
+   they follow the theme. (Unlayered rules beat Tailwind's utility layer.) */
+.dark .bg-white,
+[data-theme="drikpanchang"] .bg-white { background-color: var(--color-card); }
+.dark .text-primary { color: var(--color-foreground); }
+.dark .text-gray-300 { color: #cbd5e1; }
+.dark .text-gray-400 { color: #94a3b8; }
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* ── Report animations & highlights ─────────────────────────────────────── */
+@keyframes va-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.va-rise { animation: va-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes va-grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.va-grow-x { transform-origin: left center; animation: va-grow-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Important (bold) words — just bold, no highlight background. */
+.va-key { font-weight: 700; color: var(--color-foreground); }
+
+/* Premium hover lift for cards. */
+.va-card-hover { transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease; will-change: transform; }
+.va-card-hover:hover { transform: translateY(-3px) scale(1.012); box-shadow: 0 16px 36px -16px rgba(15, 23, 42, 0.32); }
+
+.va-tile-hover { transition: transform 0.22s ease, box-shadow 0.22s ease; }
+.va-tile-hover:hover { transform: scale(1.018); box-shadow: 0 10px 24px -12px rgba(15, 23, 42, 0.22); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE APP LAYER
+   Everything below only exists in the Android/Capacitor build. It turns the
+   scrolling website into something that reads as a native app: a fixed shell,
+   safe-area aware chrome, glass surfaces, and spring motion.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cosmic (app default) — deep night sky + gold ───────────────────────────
+   Selector is `html[data-theme=...]`, not the bare attribute: the cosmic theme
+   also puts `.dark` on <html>, and the generic `.dark` block below re-declares
+   the same glass/chrome vars at equal specificity — being later in the file, it
+   would win and hand the tab bar a translucent background. The extra `html`
+   breaks that tie in cosmic's favour. */
+html[data-theme="cosmic"] {
+  --color-primary: #0B0718; --color-primary-foreground: #F5EFE1;
+  --color-secondary: #1A1230; --color-secondary-foreground: #E9E2F5;
+  --color-accent: #E8B44A; --color-accent-foreground: #1A1305;
+  --color-background: #0B0718; --color-foreground: #EDE8F7;
+  --color-card: #150E2A; --color-card-foreground: #EDE8F7;
+  --color-border: #2A2047; --color-input: #221A3C;
+  --color-muted: #1A1230; --color-muted-foreground: #9A8FC0; --color-ring: #E8B44A;
+
+  /* App-shell extras (glass + glow), theme-scoped so other themes can retune. */
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-brd: rgba(255, 255, 255, 0.09);
+  /* Opaque. Android's backdrop blur is weak enough that even a 0.98 alpha bar
+     lets high-contrast content ghost through it, which reads as a rendering
+     bug rather than as glass. The scrolled-under effect comes from the border
+     and shadow instead. */
+  --chrome-bg: #0B0718;
+  --glow: rgba(232, 180, 74, 0.28);
+  --sheen: rgba(255, 255, 255, 0.06);
+}
+
+/* Light themes (Classic Cream is the default — the website's palette).
+   The chrome is opaque: Android's backdrop blur is too weak for a translucent
+   bar, and content ghosting through it reads as a rendering bug. */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-brd: rgba(30, 41, 59, 0.09);
+  --chrome-bg: #FFFDF9;
+  --glow: rgba(217, 119, 6, 0.26);
+  --sheen: rgba(255, 255, 255, 0.9);
+
+  /* Safe areas — populated by the device; 0 on the web. */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --kb-height: 0px;
+
+  /* Bottom inset a full-height screen (e.g. the chat) must reserve.
+     Keyboard CLOSED → clear the gesture bar (--sab) plus any keyboard overlap.
+     Keyboard OPEN  → 0: Android already resized the viewport (adjustResize), and
+     the gesture bar is covered by the keyboard, so reserving it again is exactly
+     the extra gap that appeared between the composer and the keyboard. */
+  --kb-inset: calc(var(--sab) + var(--kb-height));
+
+  /* Android's WebView reports safe-area-inset-* as 0 even when the status bar
+     overlays the page, so `env()` alone lets the app bar slide under the clock.
+     Native builds clamp to a floor that clears the status bar and the gesture
+     pill; `max()` still lets a taller notch/cutout win. */
+
+  --tabbar-h: 62px;
+  --topbar-h: 56px;
+
+  /* One spring, used everywhere, so motion feels like a single system. */
+  --spring: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dark {
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-brd: rgba(255, 255, 255, 0.09);
+  --chrome-bg: rgba(11, 15, 26, 0.94);
+  --sheen: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Native feel ───────────────────────────────────────────────────────────
+   A webview betrays itself through text selection, blue tap flashes and the
+   rubber-band overscroll. Turn all three off; re-enable selection only where
+   the user actually reads long content. */
+html.app-native {
+  --sat: max(env(safe-area-inset-top, 0px), 28px);
+  --sab: max(env(safe-area-inset-bottom, 0px), 14px);
+}
+
+html.app-native,
+html.app-native body {
+  overscroll-behavior: none;
+  overflow: hidden;              /* the shell scrolls, not the document */
+  height: 100%;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+html.app-native * {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+html.app-native body {
+  user-select: none;
+  -webkit-user-select: none;
+}
+html.app-native .selectable,
+html.app-native input,
+html.app-native textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ── Low-end device performance ─────────────────────────────────────────────
+   backdrop-filter: blur() is THE Android WebView frame-rate killer — it forces
+   a full-screen GPU readback every frame the layer is on screen, which stutters
+   scrolling and page transitions on cheap phones. The bars are opaque, so the
+   blur buys us nothing visually. Drop every backdrop-filter in the native app,
+   and swap the tab pill's live blur() for a pre-blurred radial gradient (paints
+   once, costs nothing to composite). */
+html.app-native .app-topbar,
+html.app-native .app-tabbar,
+html.app-native .glass {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+html.app-native .glass { background: var(--color-card); }
+html.app-native .tab-item.active::before {
+  filter: none;
+  background: radial-gradient(closest-side, var(--glow), transparent);
+}
+/* Promote the two fixed bars and the scroller to their own compositor layers so
+   scrolling never repaints them. */
+html.app-native .app-topbar,
+html.app-native .app-tabbar { transform: translateZ(0); will-change: transform; }
+html.app-native .app-scroll { transform: translateZ(0); }
+
+/* Starfield wash behind the cosmic theme — two soft radial glows, no image. */
+[data-theme="cosmic"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 500px at 12% -8%, rgba(167, 139, 250, 0.16), transparent 62%),
+    radial-gradient(760px 460px at 92% 4%, rgba(232, 180, 74, 0.11), transparent 58%);
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────────*/
+.app-shell {
+  position: relative;
+  z-index: 1;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  /* Clear the fixed chrome at both ends. */
+  padding-top: calc(var(--sat) + var(--topbar-h));
+  padding-bottom: calc(var(--sab) + var(--tabbar-h) + 16px);
+}
+.app-scroll::-webkit-scrollbar { display: none; }
+
+/* Pages with no tab bar (auth, full-screen readers) get the space back. */
+.app-scroll.no-tabbar { padding-bottom: calc(var(--sab) + 24px); }
+
+/* ── Top bar ───────────────────────────────────────────────────────────────*/
+.app-topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 40;
+  height: calc(var(--sat) + var(--topbar-h));
+  padding-top: var(--sat);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 6px;
+  background: var(--chrome-bg);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid var(--glass-brd);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+/* Only show the divider/shadow once the user has scrolled under it. */
+.app-topbar.at-top { border-bottom-color: transparent; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.app-topbar.scrolled { box-shadow: 0 6px 24px -18px rgba(0, 0, 0, 0.7); }
+
+/* ── Bottom tab bar ────────────────────────────────────────────────────────*/
+.app-tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 45;
+  height: calc(var(--sab) + var(--tabbar-h));
+  padding-bottom: var(--sab);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: stretch;
+  background: var(--chrome-bg);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  border-top: 1px solid var(--glass-brd);
+}
+/* When the keyboard is up the tab bar would float above it — hide it. */
+html.kb-open .app-tabbar { transform: translateY(120%); }
+.app-tabbar { transition: transform 0.25s var(--spring); }
+
+.tab-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--color-muted-foreground);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: color 0.22s ease, transform 0.22s var(--spring);
+}
+.tab-item:active { transform: scale(0.9); }
+.tab-item.active { color: var(--color-accent); }
+/* The lit pill behind the active icon. */
+.tab-item.active::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  width: 40px; height: 28px;
+  border-radius: 999px;
+  background: var(--glow);
+  filter: blur(9px);
+  animation: tab-pop 0.36s var(--spring) both;
+}
+@keyframes tab-pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+.tab-item .tab-ico { position: relative; z-index: 1; transition: transform 0.28s var(--spring); }
+.tab-item.active .tab-ico { transform: translateY(-1px) scale(1.1); }
+
+/* ── Surfaces ──────────────────────────────────────────────────────────────*/
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-brd);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* The workhorse card: glass + a top sheen so it catches "light". */
+.m-card {
+  position: relative;
+  border-radius: 22px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  box-shadow: 0 10px 30px -22px rgba(0, 0, 0, 0.55);
+}
+.m-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sheen), transparent);
+}
+
+/* Anything tappable: presses in, springs back. Paired with haptic.tap(). */
+.pressable {
+  transition: transform 0.16s var(--spring), opacity 0.16s ease;
+  touch-action: manipulation;
+}
+.pressable:active { transform: scale(0.96); opacity: 0.9; }
+.pressable-sm:active { transform: scale(0.975); }
+
+/* Keyboard open → no bottom inset (see --kb-inset above). */
+html.kb-open { --kb-inset: 0px; }
+
+/* ── Motion ────────────────────────────────────────────────────────────────*/
+/* A slightly shorter, snappier rise reads as "fast and modern"; the tiny scale
+   gives depth without the relayout cost of animating width/height. */
+@keyframes m-enter {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.m-enter { animation: m-enter 0.38s var(--spring) both; will-change: transform, opacity; }
+/* Drop the hint once it has played so idle screens don't hold GPU layers. */
+.m-enter { animation-fill-mode: both; }
+
+/* Cards lift a touch on press for a tactile, modern feel. */
+.m-card { transition: transform 0.18s var(--spring), box-shadow 0.18s ease; }
+
+/* Momentum + no jarring jumps when a screen restores its scroll position. */
+.app-scroll { scroll-behavior: smooth; overscroll-behavior-y: contain; }
+@media (prefers-reduced-motion: reduce) {
+  .m-enter { animation: none; }
+  .app-scroll { scroll-behavior: auto; }
+}
+
+/* Shimmer for loading skeletons — beats a spinner for perceived speed. */
+@keyframes m-shimmer { 100% { transform: translateX(100%); } }
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-muted);
+  border-radius: 14px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--sheen), transparent);
+  animation: m-shimmer 1.4s infinite;
+}
+
+/* Slow rotation for the zodiac ring / chart flourishes. */
+@keyframes m-spin-slow { to { transform: rotate(360deg); } }
+.spin-slow { animation: m-spin-slow 40s linear infinite; }
+
+@keyframes m-pulse-glow {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.06); }
+}
+.pulse-glow { animation: m-pulse-glow 3.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Budget phones: stop the endless background animations (they keep the GPU
+   awake and drain battery), and drop decorative blurs. Press/enter transitions
+   stay — they are cheap and are what makes the app feel responsive. */
+html.low-power .pulse-glow,
+html.low-power .spin-slow { animation: none !important; }
+html.low-power .m-card { box-shadow: none; }
+html.low-power [style*="blur"],
+html.low-power .skeleton::after { will-change: auto; }
