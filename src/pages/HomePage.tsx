@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
-  MessageCircleQuestion, Orbit, ScrollText, Gem, User,
+  MessageCircleQuestion, Orbit, ScrollText, Gem, User, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import TodayCard from '@/components/TodayCard';
@@ -88,6 +88,55 @@ const ACTIONS: Action[] = [
  */
 let profilesCache: any[] | null = null;
 
+/** Live "is now a good moment?" strip. Tapping it opens the full checker. */
+function RightNowCard({ chartId }: { chartId: string }) {
+  const [d, setD] = useState<any>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      try {
+        const c = await (await fetch(`/api/chart/${chartId}`)).json();
+        const b = c?.birth_details;
+        const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
+        const tz = b?.timezone || 'Asia/Kolkata';
+        const r = await (await fetch(`/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}`)).json();
+        if (alive && !r.error) setD(r);
+      } catch { /* the card just stays hidden */ }
+    };
+    run();
+    const t = setInterval(run, 5 * 60_000); // windows roll over while you sit here
+    return () => { alive = false; clearInterval(t); };
+  }, [chartId]);
+
+  if (!d) return null;
+  const tint = d.verdict === 'go' ? '#22C55E' : d.verdict === 'wait' ? '#E8B44A' : '#F87171';
+  const Icon = d.verdict === 'go' ? CheckCircle2 : d.verdict === 'wait' ? PauseCircle : XCircle;
+
+  return (
+    <Pressable
+      to={`/right-now/${chartId}`}
+      feedback="select"
+      className="m-card m-enter flex items-center gap-3.5 p-4"
+      style={{ borderColor: `${tint}55`, background: `linear-gradient(180deg, ${tint}18, transparent)` }}
+    >
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: `${tint}22`, color: tint }}>
+        <Icon className="h-[22px] w-[22px]" strokeWidth={2.2} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-bold uppercase tracking-wider" style={{ color: tint }}>
+          Right now · {d.now}
+        </span>
+        <span className="mt-0.5 block text-[15px] font-bold leading-tight">{d.headline}</span>
+        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+          {d.next_good ? `Next good window ${d.next_good.start}` : d.current?.name}
+        </span>
+      </span>
+      <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+    </Pressable>
+  );
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<any[] | null>(profilesCache);
@@ -165,6 +214,11 @@ export default function HomePage() {
           </>
         )}
       </section>
+
+      {/* ── Right now ────────────────────────────────────────────────────
+          The everyday reason to open the app: a live read on whether this is a
+          good moment to do something. Deterministic, so it loads instantly. */}
+      {primary && <RightNowCard chartId={primary.id} />}
 
       {/* ── Today ────────────────────────────────────────────────────────── */}
       {primary && (

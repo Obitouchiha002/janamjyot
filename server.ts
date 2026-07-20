@@ -105,6 +105,7 @@ import {
   generateMatchSummary,
   generateMatchReport,
   updateChatNotes,
+  generateFriendAdvice,
   generateDailyHoroscope,
   generateDailyTip,
   generateDailyGuidance,
@@ -117,6 +118,7 @@ import {
 import { personMoon, matchKundli } from "./server/matching";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
+import { buildRightNow, ACTIVITIES } from "./server/right-now";
 import { buildMuhurat, scanMonth } from "./server/muhurat";
 import { detectYogas } from "./server/yogas";
 import { computeAshtakavarga } from "./server/ashtakavarga";
@@ -819,7 +821,35 @@ app.get("/api/config", (_req, res) => {
   res.json({
     announcement: ann?.enabled ? ann.message : null,
     features: getSetting("features") || {},
+    // In-app update. The APK is sideloaded, so there is no store to tell anyone
+    // a new build exists — the app compares its own version against this and
+    // offers the download itself.
+    app: {
+      version: String(getSetting("app_version") || process.env.APP_VERSION || "1.0"),
+      apk_url: process.env.APK_URL
+        || `${(process.env.PUBLIC_APP_URL || "https://janamjyot.vercel.app").replace(/\/$/, "")}/JanamJyot-v1.0.0.apk`,
+      notes: String(getSetting("app_update_notes") || ""),
+      // When true the prompt reappears every launch instead of once per version.
+      mandatory: !!getSetting("app_update_mandatory"),
+    },
   });
+});
+
+/** POST /api/admin/app-version { version, notes, mandatory } — publish an update. */
+app.post("/api/admin/app-version", requireAdmin, async (req: any, res) => {
+  try {
+    const version = String(req.body?.version ?? "").trim();
+    if (!/^\d+(\.\d+){0,2}$/.test(version)) {
+      return res.status(400).json({ error: "Version must look like 1.0 or 1.2.3" });
+    }
+    await setSetting("app_version", version);
+    await setSetting("app_update_notes", String(req.body?.notes ?? "").slice(0, 300));
+    await setSetting("app_update_mandatory", !!req.body?.mandatory);
+    audit({ actorId: req.user.id, action: "app.version_published", target: version }).catch(() => {});
+    res.json({ ok: true, version });
+  } catch (err: any) {
+    fail(res, 500, "Could not publish the version.", err, "app-version");
+  }
 });
 
 // Helper: a feature is on unless an admin explicitly turned it off.
@@ -847,7 +877,13 @@ function identityOf(req: any): Identity {
 }
 
 function canAccessChart(req: any, chart: any): boolean {
-  if (req.user?.role === "admin") return true;
+  // NOTE: there is deliberately NO admin bypass here.
+  //
+  // Being an admin is about running the service, not about reading the people
+  // who use it. With a bypass, an admin could open ANY chart — and because the
+  // private astrologer chat sits behind this same `:chartId` guard, any user's
+  // conversation too. Admins get their own charts like everyone else; the admin
+  // panel gets counts and names, never content.
   const me = identityOf(req);
   if (chart.owner_id) return chart.owner_id === me.userId;
   if (chart.device_id) return !!me.deviceId && chart.device_id === me.deviceId;
@@ -1526,7 +1562,12 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
 
     // Generate once per day per chart, then serve the cached copy on every refresh
     // (saves AI quota — same "Aaj Ka Din" all day).
-    const cacheKey = `today:${todayLocal}`;
+    // Language can be overridden per request (the Home card has a picker), so it
+    // is part of the cache key — otherwise switching language would keep serving
+    // yesterday's English copy.
+    const lang = typeof req.query.lang === "string" && req.query.lang.trim()
+      ? req.query.lang.trim() : (b.language || "en");
+    const cacheKey = `today:${todayLocal}:${lang}`;
     const cached = await getReport(req.params.chartId, cacheKey);
     if (cached) return res.json({ ...cached, cached: true });
 
@@ -1542,7 +1583,7 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
 
     let tip: string | null = null;
     try {
-      const language = b.language || "en";
+      const language = lang;
       tip = await generateDailyTip({
         name: b.name, dasha: chart.dasha?.current, moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
         transit_highlights: tr.highlights, panchang,
@@ -1654,11 +1695,15 @@ app.get("/api/chart/:chartId/remedies", async (req, res) => {
   }
 });
 
-/** GET /api/profiles — the caller's saved charts (admins see every chart). */
+/**
+ * GET /api/profiles — the caller's OWN saved charts.
+ *
+ * Admins used to receive every chart in the database here, which meant their
+ * Home screen filled up with strangers' kundlis mixed in with their own. The
+ * admin panel is where service-wide data belongs; this is the personal app.
+ */
 app.get("/api/profiles", async (req: any, res) => {
   try {
-    // Only an admin may list every chart; `true` is the explicit opt-in.
-    if (req.user?.role === "admin") return res.json(await listProfiles(undefined, undefined, true));
     const me = identityOf(req);
     res.json(await listProfiles(me.userId, me.deviceId));
   } catch (err: any) {
@@ -1773,6 +1818,99 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
   } catch (err: any) {
     console.error("[report] error:", err?.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/**
+ * GET /api/right-now?lat=&lon=&tz=&activity=
+ * "Should I do this right now?" — instant, deterministic, no AI. Meant to be
+ * opened many times a day, so it must answer immediately and never disagree
+ * with itself between two checks a minute apart.
+ */
+app.get("/api/right-now", (req, res) => {
+  const latitude = Number(req.query.lat);
+  const longitude = Number(req.query.lon);
+  const timezone = String(req.query.tz || "Asia/Kolkata").trim();
+  const activity = String(req.query.activity || "general").trim();
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return res.status(400).json({ error: "lat and lon are required" });
+  }
+  try {
+    const now = new Date();
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(now);
+    const nowHHMM = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false,
+    }).format(now);
+
+    const panchang = buildPanchang({ date, latitude, longitude, timezone, ayanamsa: AYANAMSA });
+    const result = buildRightNow(panchang, nowHHMM, activity);
+    res.json({
+      ...result,
+      activities: Object.entries(ACTIVITIES).map(([k, v]) => ({ key: k, label: v.label })),
+      panchang: { tithi: panchang.tithi, nakshatra: panchang.nakshatra, weekday: panchang.weekday },
+    });
+  } catch (err: any) {
+    fail(res, 500, "Could not read the current timing.", err, "right-now");
+  }
+});
+
+/**
+ * GET /api/chart/:chartId/today-plan
+ * "What should I do today?" answered in a FRIEND's voice — chart + live sky +
+ * the current timing window, with every astrology word stripped out. Cached per
+ * chart per day so it doesn't change between two checks.
+ */
+app.get("/api/chart/:chartId/today-plan", async (req, res) => {
+  const { chartId } = req.params;
+  if (!featureOn("chat")) return res.status(503).json({ error: "Guidance is temporarily disabled." });
+  try {
+    const chart = await getNormalizedChart(chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+
+    const b = chart.birth_details || {};
+    const tz = b.timezone || "Asia/Kolkata";
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+    const language = typeof req.query.lang === "string" && req.query.lang.trim()
+      ? req.query.lang.trim() : (b.language || "en");
+
+    const cacheKey = `plan:${today}:${language}`;
+    if (req.query.regenerate !== "1") {
+      const cached = await getReport(chartId, cacheKey);
+      if (cached) return res.json({ ...cached, cached: true });
+    }
+
+    // Same timing signal the Right Now card uses, so the two never disagree.
+    let window = { verdict: "go", current: "", nextGood: null as string | null };
+    try {
+      if (Number.isFinite(b.latitude) && Number.isFinite(b.longitude)) {
+        const nowHHMM = new Intl.DateTimeFormat("en-GB", {
+          timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+        }).format(new Date());
+        const p = buildPanchang({ date: today, latitude: b.latitude, longitude: b.longitude, timezone: tz, ayanamsa: AYANAMSA });
+        const rn = buildRightNow(p, nowHHMM, "general");
+        window = {
+          verdict: rn.verdict,
+          current: rn.current?.name ?? "",
+          nextGood: rn.next_good ? `${rn.next_good.start}–${rn.next_good.end}` : null,
+        };
+      }
+    } catch (e: any) { console.warn("[today-plan] window skipped:", e?.message); }
+
+    let transit: any = null;
+    try { transit = compactTransitForAI(buildTransit(chart, AYANAMSA, new Date().toISOString())); }
+    catch (e: any) { console.warn("[today-plan] transit skipped:", e?.message); }
+
+    const advice: any = await generateFriendAdvice({
+      chart, transit, window, language,
+      userName: b.name?.split(" ")?.[0] || "",
+    });
+    if (advice?.error) return res.status(502).json(advice);
+
+    const payload = { ...advice, date: today, language, generated_at: new Date().toISOString() };
+    try { await insertReport({ chartId, report: payload, language: cacheKey }); } catch {}
+    res.json(payload);
+  } catch (err: any) {
+    fail(res, 500, "Could not build today's plan.", err, "today-plan");
   }
 });
 
@@ -2066,7 +2204,9 @@ app.post("/api/feedback", (req: any, res) =>
         comment.length > 300;
       const deviceKey = deviceId || `user:${req.user?.id ?? "anon"}`;
       const publishedRecently = deviceKey ? recentlyPublished.has(deviceKey) : false;
-      const autoApprove = rating >= 4 && comment.length > 2 && !looksSpammy && !publishedRecently;
+      // A silent 4-5 star rating is publishable too — only text has to clear the
+      // spam checks, because only text can be abused.
+      const autoApprove = rating >= 4 && !publishedRecently && (!comment || !looksSpammy);
       if (autoApprove && deviceKey) {
         recentlyPublished.set(deviceKey, Date.now());
         if (recentlyPublished.size > 5000) recentlyPublished.clear();

@@ -22,6 +22,7 @@ import TabBar from './components/mobile/TabBar';
 import QuotaListener from './components/mobile/QuotaSheet';
 import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
+import UpdateSheet from './components/mobile/UpdateSheet';
 import { depthOf, hidesTabBar } from './components/mobile/routes';
 
 import LoginPage from './pages/LoginPage';
@@ -60,6 +61,7 @@ import ReportViewPage from './pages/ReportViewPage';
 import TimelinePage from './pages/TimelinePage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ThemePage from './pages/ThemePage';
+import RightNowPage from './pages/RightNowPage';
 import DeveloperPage from './pages/DeveloperPage';
 
 /**
@@ -116,6 +118,7 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/chart/:chartId/dasha" element={<DashaPage />} />
       <Route path="/chart/:chartId/remedies" element={<RemediesPage />} />
       <Route path="/daily/:chartId" element={<DailyGuidancePage />} />
+      <Route path="/right-now/:chartId" element={<RightNowPage />} />
       <Route path="/timeline/:chartId" element={<TimelinePage />} />
       <Route path="/report/:chartId" element={<LifeReportPage />} />
       <Route path="/reports/:chartId" element={<ReportsPage />} />
@@ -326,6 +329,9 @@ function Shell() {
 
       {/* Global feedback / rating sheet — reacts to the `jj-feedback` event. */}
       <FeedbackListener />
+
+      {/* Offers the newer APK when this build is behind (sideloaded = no store). */}
+      <UpdateSheet />
     </div>
   );
 }

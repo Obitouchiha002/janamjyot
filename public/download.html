@@ -258,6 +258,7 @@
   .tst{padding:24px 22px;display:flex;flex-direction:column;gap:14px}
   .tst .stars{display:flex;gap:3px;color:var(--gold);font-size:15px;letter-spacing:1px}
   .tst .quote{font-size:14.5px;line-height:1.62;color:var(--ink,#28211a)}
+  .tst .quote.nowords{font-style:italic;color:var(--muted)}
   .lightsec .tst .quote{color:#3a3226}
   .tst .who{display:flex;align-items:center;gap:11px;margin-top:auto}
   .tst .who .ava{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-family:var(--sans);font-weight:800;font-size:15px;color:#fff;flex-shrink:0}
@@ -1971,7 +1972,12 @@
         var name=(t.name&&String(t.name).trim())||'JanamJyot user';
         var card=document.createElement('div');card.className='card tst reveal';
         var stars=document.createElement('div');stars.className='stars';stars.textContent='★★★★★☆☆☆☆☆'.slice(5-rating,10-rating);
-        var quote=document.createElement('p');quote.className='quote';quote.textContent='“'+String(t.comment||'').trim()+'”';
+        var txt=String(t.comment||'').trim();
+        var quote=document.createElement('p');quote.className='quote';
+        // Star-only ratings are published too — show the rating as the statement
+        // instead of an empty pair of quote marks.
+        if(txt){ quote.textContent='“'+txt+'”'; }
+        else { quote.className='quote nowords'; quote.textContent=rating===5?'Rated 5 out of 5':'Rated '+rating+' out of 5'; }
         var who=document.createElement('div');who.className='who';
         var ava=document.createElement('span');ava.className='ava';ava.style.background=AVA[hash(name)%AVA.length];ava.textContent=initials(name);
         var meta=document.createElement('div');

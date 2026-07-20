@@ -81,6 +81,15 @@ export async function submitFeedback(args: {
   name?: string;
 }): Promise<{ published: boolean }> {
   saveState({ status: 'given', lastShown: today() });
+  // Use the name on their kundli so a published review isn't anonymous — the
+  // sheet doesn't ask for a name, and "JanamJyot user" reads like a bot.
+  let name = args.name;
+  if (!name) {
+    try {
+      const list = await (await fetch('/api/profiles')).json();
+      if (Array.isArray(list) && list[0]?.name) name = String(list[0].name);
+    } catch { /* fall back to whatever the server can infer */ }
+  }
   try {
     const res = await fetch('/api/feedback', {
       method: 'POST',
@@ -89,7 +98,7 @@ export async function submitFeedback(args: {
         rating: args.rating,
         comment: args.comment ?? '',
         context: args.context ?? null,
-        name: args.name ?? null,
+        name: name ?? null,
         deviceId: deviceId(),
       }),
     });

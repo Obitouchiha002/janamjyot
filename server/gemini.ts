@@ -788,6 +788,71 @@ Updated notes:`;
   return String(out || "").trim();
 }
 
+/**
+ * "What should I do today?" — answered by a FRIEND, not a pandit.
+ *
+ * Deliberately strips the astrology vocabulary: no bhaav, no dasha names, no
+ * Sanskrit. The chart and the live transit still drive every word, but what
+ * comes out is what a clued-in friend would text you — do this, skip that, and
+ * the hour that suits you best.
+ */
+export async function generateFriendAdvice(args: {
+  chart: any;
+  transit?: any;
+  window: { verdict: string; current: string; nextGood: string | null };
+  language: string;
+  userName?: string;
+}): Promise<{ headline: string; do_now: string; avoid: string; best_time: string } | { error: string; raw?: string }> {
+  const context = {
+    ...buildFullChartContext(args.chart),
+    live_transit: args.transit ?? null,
+    timing_window: args.window,
+  };
+
+  const prompt = `${languageInstruction(args.language)}
+
+You are this person's sharp, warm FRIEND who happens to understand astrology —
+not an astrologer performing. They asked: "what should I do today?"
+
+VOICE — this is the whole point:
+- Talk like a friend texting. "Aaj client ko call kar le, baat ban jayegi."
+- **ZERO astrology vocabulary.** Never write bhaav, dasha, antardasha, gochar,
+  nakshatra, Rahu Kaal, choghadiya, house numbers, planet names or Sanskrit.
+  You READ all of that below; you just never say it out loud. If you feel the
+  urge to explain why, say it in feelings instead: "aaj patience kam rahega",
+  "energy achhi hai, log sun lenge".
+- No greetings, no "aapki kundli ke anusaar", no disclaimers, no advice about
+  astrology. Just the plan.
+- Concrete and everyday: calls, work, money, family, rest, errands, health.
+  Never "be positive" or "work hard" — that helps nobody.
+
+Respond with a SINGLE valid JSON object, exactly these keys:
+{
+  "headline":  "one punchy line about the shape of today (max 12 words)",
+  "do_now":    "the ONE thing worth doing today and why it'll go well (max 25 words)",
+  "avoid":     "the ONE thing to skip or postpone today (max 25 words)",
+  "best_time": "the stretch of the day that suits them best, in plain clock terms (max 18 words)"
+}
+${args.userName ? `Their name is ${args.userName} — you may use it once.` : ""}
+
+Their chart, the sky right now, and how the current time window is rated
+(interpret only this — and remember, none of these words may appear in your reply):
+${JSON.stringify(context, null, 2)}`;
+
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.85 });
+  try {
+    const j = JSON.parse(stripJsonFences(text || "{}"));
+    return {
+      headline: j.headline || "",
+      do_now: j.do_now || "",
+      avoid: j.avoid || "",
+      best_time: j.best_time || "",
+    };
+  } catch {
+    return { error: "Failed to parse advice", raw: text };
+  }
+}
+
 /** Warm, specific summary for a Kundli (compatibility) match result. */
 export async function generateMatchSummary(result: any, language: string): Promise<string> {
   const prompt = `${SYSTEM_PROMPT}

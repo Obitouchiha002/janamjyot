@@ -1404,14 +1404,17 @@ export async function getTestimonials(limit = 24): Promise<any[]> {
   if (USE_PG) {
     const { rows } = await pool!.query(
       `SELECT id, name, rating, comment, context, created_at FROM feedback
-        WHERE approved = true AND rating >= 4 AND comment IS NOT NULL AND length(trim(comment)) > 2
+        -- A 4-5 star rating counts as a testimonial even with no words: plenty
+        -- of people tap the stars and never type. The wall shows their rating
+        -- and name; the card just renders without a quote.
+        WHERE approved = true AND rating >= 4
         ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
     return rows;
   }
   return fileData.feedback
-    .filter((f) => f.approved && f.rating >= 4 && (f.comment ?? "").trim().length > 2)
+    .filter((f) => f.approved && f.rating >= 4)
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     .slice(0, limit)
     .map(({ id, name, rating, comment, context, created_at }) => ({ id, name, rating, comment, context, created_at }));

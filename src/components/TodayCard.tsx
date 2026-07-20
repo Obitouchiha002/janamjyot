@@ -1,83 +1,136 @@
-import { useState } from "react";
-import { Sun, Sparkles, Moon, Clock, CalendarDays, ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Sun, Moon, Clock, ChevronDown, Languages } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
+import { Pressable } from "@/components/mobile/Pressable";
 import { getLang } from "@/lib/prefs";
+import { haptic } from "@/lib/native";
 
-/** "Aaj Ka Din" — a compact card that expands on click to show a personalised
- *  daily snapshot. Data (and the AI tip) load only when first opened. */
-export default function TodayCard({ chartId, lang = getLang() }: { chartId?: string; lang?: string }) {
+const LANGS = [
+  { key: "en", label: "EN" },
+  { key: "hinglish", label: "Hinglish" },
+  { key: "hi", label: "हिंदी" },
+] as const;
+
+/**
+ * "Today" — a compact daily snapshot that expands on tap.
+ *
+ * Uses the app's own card styling rather than a hard-coded dark gradient: the
+ * old version was a navy block dropped into a cream page, which read as a
+ * foreign widget rather than part of the app. Trimmed to the three facts people
+ * actually glance at, plus the guidance line.
+ */
+export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: string }) {
   const [open, setOpen] = useState(false);
+  const [language, setLanguage] = useState<string>(lang || getLang());
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next && !d && chartId && !loading) {
-      setLoading(true);
-      fetch(`/api/chart/${chartId}/today`).then((r) => r.json())
-        .then((j) => { if (!j.error) setD(j); }).catch(() => {}).finally(() => setLoading(false));
-    }
+  const load = useCallback(async (lg: string) => {
+    if (!chartId) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/chart/${chartId}/today?lang=${encodeURIComponent(lg)}`);
+      const j = await r.json();
+      if (!j.error) setD(j);
+    } catch { /* leave the previous copy on screen */ }
+    finally { setLoading(false); }
+  }, [chartId]);
+
+  // Load lazily — only once the card is actually opened.
+  useEffect(() => { if (open && !d && !loading) load(language); }, [open, d, loading, language, load]);
+
+  const switchLang = (lg: string) => {
+    if (lg === language) return;
+    haptic.select();
+    setLanguage(lg);
+    setD(null);          // force a refetch in the new language
+    load(lg);
   };
 
-  const chip = (icon: any, label: string, value: string) => {
-    const Icon = icon;
-    return value ? (
-      <div className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2">
-        <Icon className="w-4 h-4 text-amber-300 shrink-0" />
-        <div className="min-w-0"><p className="text-[10px] uppercase tracking-wider text-white/60">{label}</p><p className="font-semibold text-sm truncate text-white">{value}</p></div>
-      </div>
-    ) : null;
-  };
   const ord = (n: number | null) => (n ? `${n}th house` : "");
+  const facts: Array<[any, string, string]> = d ? [
+    [Sun, "Dasha", d.dasha ? `${d.dasha.mahadasha}–${d.dasha.antardasha}` : ""],
+    [Moon, "Moon", d.moon_transit ? `${d.moon_transit.sign} · ${ord(d.moon_transit.house_from_lagna)}` : ""],
+    [Clock, "Rahu Kaal", d.panchang?.rahu_kaal ? `${d.panchang.rahu_kaal.start}–${d.panchang.rahu_kaal.end}` : ""],
+  ].filter(([, , v]) => v) as any : [];
 
   return (
-    <div className="rounded-2xl text-white shadow-lg overflow-hidden" style={{ background: "linear-gradient(135deg,#1E293B,#0f172a)" }}>
-      {/* compact header — click to expand */}
-      <button onClick={toggle} className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-white/5 transition-colors">
-        <span className="flex items-center gap-2 font-bold"><Sun className="w-5 h-5 text-amber-300" /> Today</span>
-        <span className="flex items-center gap-3 text-white/60 text-xs">
-          {!open && <span className="hidden sm:inline">tap for today's guidance</span>}
-          <ChevronDown className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`} />
+    <div className="m-card overflow-hidden">
+      <Pressable
+        onClick={() => { haptic.tap(); setOpen((o) => !o); }}
+        subtle
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
+          <Sun className="h-[19px] w-[19px]" />
         </span>
-      </button>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14.5px] font-bold leading-tight">Today</span>
+          <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+            {d?.panchang ? `${d.panchang.weekday} · ${d.panchang.nakshatra}` : "Your day at a glance"}
+          </span>
+        </span>
+        <ChevronDown className={`h-[18px] w-[18px] shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </Pressable>
 
       {open && (
-        <div className="px-5 pb-5 animate-in fade-in">
-          {loading && !d && <p className="text-sm text-white/60 py-2 flex items-center gap-2"><Sun className="w-4 h-4 animate-spin" /> Loading…</p>}
-          {d && (
-            <div className="space-y-4">
-              <p className="text-xs text-white/60 flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5" /> {d.panchang?.weekday ? `${d.panchang.weekday}, ` : ""}{d.date}</p>
+        <div className="border-t border-border px-4 pb-4 pt-3.5">
+          {/* language picker */}
+          <div className="mb-3 flex items-center gap-2">
+            <Languages className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <div className="flex gap-1.5">
+              {LANGS.map((l) => (
+                <Pressable
+                  key={l.key}
+                  onClick={() => switchLang(l.key)}
+                  subtle
+                  className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold ${
+                    language === l.key ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {l.label}
+                </Pressable>
+              ))}
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {chip(Sparkles, "Dasha", d.dasha ? `${d.dasha.mahadasha}-${d.dasha.antardasha}` : "")}
-                {chip(Moon, "Moon transit", d.moon_transit ? `${d.moon_transit.sign} · ${ord(d.moon_transit.house_from_lagna)}` : "")}
-                {chip(CalendarDays, "Tithi / Nakshatra", d.panchang ? `${d.panchang.tithi.replace(/^(Shukla|Krishna) /, "")} · ${d.panchang.nakshatra}` : "")}
-                {chip(Clock, "Rahu Kaal", d.panchang?.rahu_kaal ? `${d.panchang.rahu_kaal.start}–${d.panchang.rahu_kaal.end}` : "")}
-              </div>
-
-              {d.transit_highlights?.length > 0 && (
-                <ul className="space-y-1.5">
-                  {d.transit_highlights.slice(0, 2).map((h: string, i: number) => (
-                    <li key={i} className="text-sm text-white/85 flex gap-2"><span className="text-amber-300 mt-0.5">•</span><span>{h}</span></li>
+          {loading && !d ? (
+            <div className="space-y-2">
+              <div className="skeleton h-[52px]" />
+              <div className="skeleton h-[70px]" />
+            </div>
+          ) : d ? (
+            <>
+              {facts.length > 0 && (
+                <div className="mb-3 grid grid-cols-3 gap-2">
+                  {facts.map(([Icon, label, value]) => (
+                    <div key={label} className="rounded-xl bg-muted px-2.5 py-2">
+                      <p className="flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
+                        <Icon className="h-3 w-3" /> {label}
+                      </p>
+                      <p className="mt-0.5 truncate text-[12.5px] font-bold">{value}</p>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
 
               {d.tip && (
-                <div className="rounded-2xl bg-white/5 border border-amber-300/25 p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-[11px] uppercase tracking-widest font-bold text-amber-300">Today's guidance</p>
-                    <SpeakButton text={d.tip} lang={lang} className="text-amber-200 hover:text-amber-100" />
+                <div className="rounded-2xl border border-accent/25 bg-accent/8 p-3.5">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <p className="text-[10.5px] font-bold uppercase tracking-widest text-accent">
+                      Today&apos;s guidance
+                    </p>
+                    <SpeakButton text={d.tip} lang={language} />
                   </div>
-                  {/* force light text on the dark card */}
-                  <div className="[&_p]:text-white/90 [&_li]:text-white/90 [&_h4]:text-amber-300 [&_strong]:text-amber-200 [&_strong]:font-bold">
+                  <div className="selectable text-[13.5px] leading-relaxed">
                     <AnswerText text={d.tip} />
                   </div>
                 </div>
               )}
-            </div>
+            </>
+          ) : (
+            <p className="py-2 text-[13px] text-muted-foreground">Couldn&apos;t load today&apos;s guidance.</p>
           )}
         </div>
       )}
