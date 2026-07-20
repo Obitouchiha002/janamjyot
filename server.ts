@@ -35,6 +35,7 @@ import {
   createUser,
   getUserByEmail,
   getUserById,
+  claimDeviceCharts,
   setUserPassword,
   setPasswordReset,
   getUserByResetToken,
@@ -290,6 +291,21 @@ app.param("chartId", async (req: any, res, next, id) => {
 });
 
 // ── Auth routes ────────────────────────────────────────────────────────────
+
+/**
+ * After any successful sign-in, adopt the charts this device made as a guest.
+ * Without it, a reinstall (which regenerates the device id) hides them forever.
+ */
+async function adoptGuestCharts(req: any, userId: string) {
+  try {
+    const dev = identityOf(req).deviceId;
+    const n = await claimDeviceCharts(userId, dev);
+    if (n) console.log(`[auth] adopted ${n} guest chart(s) into account`);
+  } catch (e: any) {
+    console.warn("[auth] chart adoption skipped:", e?.message);
+  }
+}
+
 app.post("/api/auth/signup", async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   const email = String(req.body?.email ?? "").trim().toLowerCase();
@@ -304,6 +320,7 @@ app.post("/api/auth/signup", async (req, res) => {
   // instantly. Admin is only granted via a path that proves inbox ownership:
   // the emailed sign-in code, or Google Sign-In.
   const user = await createUser({ name, email, passwordHash: hashPassword(password), role: "user" });
+  await adoptGuestCharts(req, user.id);
   res.json({ token: signToken({ sub: user.id }), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
@@ -321,6 +338,7 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(403).json({ error: user.status_reason || "This account has been suspended." });
   }
   touchUser(user.id).catch(() => {});
+  await adoptGuestCharts(req, user.id);
   res.json({ token: signToken({ sub: user.id }), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
@@ -416,6 +434,7 @@ app.post("/api/auth/otp/verify", async (req, res) => {
       return res.status(403).json({ error: (user as any).status_reason || "This account has been suspended." });
     }
     touchUser(user.id).catch(() => {});
+    await adoptGuestCharts(req, user.id);
     res.json({
       token: signToken({ sub: user.id }),
       user: { id: user.id, name: user.name, email: user.email, role: user.role },
@@ -591,6 +610,7 @@ app.post("/api/auth/google", async (req, res) => {
   }
 
   touchUser(user.id).catch(() => {});
+  await adoptGuestCharts(req, user.id);
   res.json({
     token: signToken({ sub: user.id }),
     user: { id: user.id, name: user.name, email: user.email, role: user.role },

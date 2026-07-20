@@ -546,6 +546,41 @@ export async function setPasswordReset(userId: string, tokenHash: string, expire
   saveFile();
 }
 
+/**
+ * Move a device's guest charts into a user account.
+ *
+ * Guest charts are bound to `device_id`, which lives in app storage — so
+ * uninstalling the app (or clearing its data) generates a new id and the old
+ * charts become invisible even though they're still here. Attaching them to an
+ * account on sign-in makes them survive any reinstall, on any phone.
+ *
+ * Returns how many charts were adopted.
+ */
+export async function claimDeviceCharts(userId: string, deviceId?: string): Promise<number> {
+  if (!userId || !deviceId) return 0;
+  if (USE_PG) {
+    const { rowCount } = await pool!.query(
+      `UPDATE chart_calculations SET owner_id = $1
+        WHERE device_id = $2 AND owner_id IS NULL`,
+      [userId, deviceId],
+    );
+    await pool!.query(
+      `UPDATE birth_profiles SET owner_id = $1
+        WHERE owner_id IS NULL AND id IN (
+          SELECT birth_profile_id FROM chart_calculations WHERE owner_id = $1
+        )`,
+      [userId],
+    ).catch(() => {}); // birth_profiles may not carry owner_id in older schemas
+    return rowCount ?? 0;
+  }
+  let n = 0;
+  for (const c of Object.values(fileData.chart_calculations) as any[]) {
+    if (c.device_id === deviceId && !c.owner_id) { c.owner_id = userId; n++; }
+  }
+  if (n) saveFile();
+  return n;
+}
+
 // ── Astrologer chat: long-term memory ──────────────────────────────────────
 
 /** The rolling notes about this person, or "" if nothing is remembered yet. */
