@@ -34,35 +34,52 @@ export function computeRemedies(chart: any) {
   const antarLord = chart?.dasha?.current?.antardasha || "";
   const lagnaLord = ascIdx >= 0 ? SIGN_LORDS[ascIdx] : "";
 
-  const reasons = new Map<string, string[]>();
-  const addReason = (planet: string, why: string) => {
+  // A remedy is not one thing. Classically a gemstone STRENGTHENS a planet, so
+  // it belongs to the lagna lord and the running dasha lord — never to a
+  // malefic already afflicting the chart from a dusthana. Recommending Neelam
+  // because Saturn sits in the 8th, or Gomed because Rahu is in the 12th, is
+  // the opposite of the classical prescription: those placements call for
+  // pacification (mantra, daan, vrat), not amplification.
+  type Mode = "strengthen" | "pacify";
+  const reasons = new Map<string, { why: string[]; mode: Mode }>();
+  const addReason = (planet: string, why: string, mode: Mode) => {
     if (!REMEDY[planet]) return;
-    if (!reasons.has(planet)) reasons.set(planet, []);
-    if (!reasons.get(planet)!.includes(why)) reasons.get(planet)!.push(why);
+    const cur = reasons.get(planet) ?? { why: [], mode };
+    if (!cur.why.includes(why)) cur.why.push(why);
+    // Pacification wins a tie: if a planet is both the dasha lord and
+    // afflicted, strengthening the affliction is the worse mistake.
+    if (mode === "pacify") cur.mode = "pacify";
+    reasons.set(planet, cur);
   };
 
   // Running dasha & antardasha lord — strengthen the active period.
-  if (dashaLord) addReason(dashaLord, `currently running your ${dashaLord} Mahadasha`);
-  if (antarLord && antarLord !== dashaLord) addReason(antarLord, `running ${antarLord} Antardasha now`);
+  if (dashaLord) addReason(dashaLord, `currently running your ${dashaLord} Mahadasha`, "strengthen");
+  if (antarLord && antarLord !== dashaLord) addReason(antarLord, `running ${antarLord} Antardasha now`, "strengthen");
   // Lagna lord — strengthens overall self/health.
-  if (lagnaLord) addReason(lagnaLord, "your Lagna (ascendant) lord — supports health & confidence");
+  if (lagnaLord) addReason(lagnaLord, "your Lagna (ascendant) lord — supports health & confidence", "strengthen");
 
   // Debilitated planets, and malefics in dusthana houses.
   for (const p of planets) {
-    if (DEBIL[p.planet] === p.sign_id) addReason(p.planet, `debilitated in ${p.sign}`);
+    // Whether a gemstone helps a *debilitated* planet is genuinely contested
+    // among authorities, so that case stays on the strengthening side.
+    if (DEBIL[p.planet] === p.sign_id) addReason(p.planet, `debilitated in ${p.sign}`, "strengthen");
     if (["Saturn", "Mars", "Rahu", "Ketu", "Sun"].includes(p.planet) && DUSTHANA.includes(p.house)) {
-      addReason(p.planet, `placed in the ${p.house}th house (a challenging house)`);
+      addReason(p.planet, `placed in the ${p.house}th house (a challenging house)`, "pacify");
     }
   }
 
-  const focus = [...reasons.entries()].map(([planet, why]) => {
+  const focus = [...reasons.entries()].map(([planet, { why, mode }]) => {
     const r = REMEDY[planet];
     const exalted = EXALT[planet] === P(planet)?.sign_id;
     return {
       planet,
       reason: why.join("; "),
       strong: exalted,
-      gemstone: r.gemstone,
+      mode,
+      gemstone: mode === "strengthen" ? r.gemstone : null,
+      pacify: mode === "pacify"
+        ? `Pacify rather than strengthen: ${r.mantra}, donate ${r.donation} on ${r.day}.`
+        : null,
       mantra: r.mantra,
       day: r.day,
       deity: r.deity,

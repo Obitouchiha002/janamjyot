@@ -9,6 +9,9 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "check:accuracy": "tsx server/__checks__/accuracy.ts",
+    "check:panchang": "tsx server/__checks__/panchang.ts",
+    "check": "npm run lint && npm run check:accuracy && npm run check:panchang",
     "sync:app": "node scripts/prune-app-dist.mjs && cap sync android"
   },
   "dependencies": {

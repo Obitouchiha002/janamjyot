@@ -24,7 +24,6 @@ export interface Yoga { name: string; present: boolean; planets: string[]; summa
 export function detectYogas(chart: any): { yogas: Yoga[]; count: number } {
   const planets: any[] = chart?.planet_positions ?? [];
   const houses: any[] = chart?.d1_chart?.houses ?? [];
-  const ascIdx = SIGNS.indexOf(chart?.ascendant?.sign ?? chart?.d1_chart?.ascendant_sign ?? "");
   const P = (n: string) => planets.find((p) => p.planet === n);
   const houseOf = (n: string) => P(n)?.house ?? 0;
   const signOf = (n: string) => P(n)?.sign_id ?? -1;
@@ -69,7 +68,11 @@ export function detectYogas(chart: any): { yogas: Yoga[]; count: number } {
     //  Lagna, or (c) a benefic (Jupiter/Venus/Mercury) sits in a kendra from the Moon.
     const moonHouse = houseOf("Moon");
     const conjunct = others.some((p) => houseOf(p) === moonHouse);
-    const moonInKendra = KENDRA.includes(((signOf("Moon") - ascIdx + 12) % 12) + 1);
+    // `houseOf` already IS the whole-sign house from the Lagna. Re-deriving it
+    // from `ascIdx` meant that if the ascendant sign name ever failed to match
+    // the table, ascIdx would be -1 and every house here silently shifted by
+    // one — testing the wrong houses rather than failing.
+    const moonInKendra = KENDRA.includes(houseOf("Moon"));
     const beneficKendraFromMoon = ["Jupiter", "Venus", "Mercury"].some((p) => KENDRA.includes(houseFromMoon(p)));
     if (!conjunct && !moonInKendra && !beneficKendraFromMoon) {
       add("Kemadruma Yoga", true, ["Moon"], "The Moon is unsupported (no planets in the 2nd/12th from it, and uncancelled) — guard against ups-and-downs; strengthen the Moon with routine and calm.");
@@ -81,8 +84,15 @@ export function detectYogas(chart: any): { yogas: Yoga[]; count: number } {
   const trikonaLords = new Set(TRIKONA.map(lordOfHouse));
   for (const h of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
     const here = planets.filter((p) => p.house === h).map((p) => p.planet);
-    const hasK = here.find((p) => kendraLords.has(p));
-    const hasT = here.find((p) => trikonaLords.has(p) && p !== hasK);
+    // Pick a kendra lord that still leaves a DIFFERENT planet to fill the
+    // trikona slot. Taking simply the first kendra lord missed real pairs
+    // whenever that planet was also the house's only trikona lord — e.g. a
+    // Libra lagna with Venus (1st lord) conjunct Mars (7th lord): Venus was
+    // claimed as the kendra lord, and the trikona search then came up empty.
+    const hasK = here.find(
+      (p) => kendraLords.has(p) && here.some((q) => q !== p && trikonaLords.has(q)),
+    );
+    const hasT = hasK ? here.find((p) => p !== hasK && trikonaLords.has(p)) : undefined;
     if (hasK && hasT) {
       add("Raj Yoga", true, [hasK, hasT], `${hasK} and ${hasT} (a kendra lord and a trikona lord) join in house ${h} — a classic raja yoga giving rise in status, authority and success.`);
       break;
@@ -90,8 +100,15 @@ export function detectYogas(chart: any): { yogas: Yoga[]; count: number } {
   }
 
   // Basic Dhana Yoga — 2nd lord and 11th lord together (wealth).
+  //
+  // `l2 !== l11` is load-bearing. The 2nd and 11th are 9 signs apart and two
+  // rulerships span exactly that: a Leo lagna gives Mercury both (Virgo and
+  // Gemini), an Aquarius lagna gives Jupiter both (Pisces and Sagittarius).
+  // Without the guard the test compared a planet's house with its own, so the
+  // yoga fired for EVERY Leo and Aquarius chart and printed the nonsense "the
+  // 2nd lord (Mercury) and 11th lord (Mercury) combine".
   const l2 = lordOfHouse(2), l11 = lordOfHouse(11);
-  if (l2 && l11 && houseOf(l2) && houseOf(l2) === houseOf(l11)) {
+  if (l2 && l11 && l2 !== l11 && houseOf(l2) && houseOf(l2) === houseOf(l11)) {
     add("Dhana Yoga", true, [l2, l11], `The 2nd lord (${l2}) and 11th lord (${l11}) combine — strong potential for accumulating wealth and steady gains.`);
   }
 

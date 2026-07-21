@@ -107,6 +107,10 @@ function tzOffset(instant: Date, timeZone: string): string {
     timeZone,
     timeZoneName: "longOffset",
   }).format(instant);
+  // Seconds are deliberately dropped. Pre-1854 local mean time carries them
+  // (Kolkata was GMT+05:53:28), but ISO 8601 offsets have no seconds field —
+  // "…+05:53:28" parses as an invalid Date, which would fail the whole chart
+  // instead of being 28 seconds off. Truncating is the lesser error.
   const m = formatted.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
   if (!m) return "+00:00";
   const sign = m[1];
@@ -127,9 +131,25 @@ export function buildIsoDatetime(
 ): string {
   const [y, mo, d] = dateStr.split("-").map(Number);
   const [h, mi, s] = timeStr.split(":").map(Number);
-  // Approximate the instant by treating the wall clock as UTC; good enough to
-  // resolve the zone's offset (offset is stable within a given day).
-  const approx = new Date(Date.UTC(y, mo - 1, d, h, mi, s || 0));
-  const offset = tzOffset(approx, timeZone);
+
+  // Treating the wall clock as UTC to look up the offset is wrong BY the
+  // offset, so a birth within |offset| hours of a DST transition resolved to
+  // the wrong side of it. An hour of error moves the ascendant ~15°, which
+  // changes the Lagna sign about half the time.
+  //
+  // Iterate to a fixed point instead: guess the offset, rebuild the real
+  // instant assuming that guess, re-resolve, repeat until stable. India has no
+  // DST today but did in 1941-45 (+06:30), and DST countries hit this twice a
+  // year.
+  let offset = tzOffset(new Date(Date.UTC(y, mo - 1, d, h, mi, s || 0)), timeZone);
+  for (let i = 0; i < 3; i++) {
+    const m = /([+-])(\d{2}):(\d{2})/.exec(offset);
+    if (!m) break;
+    const offMin = (Number(m[2]) * 60 + Number(m[3])) * (m[1] === "-" ? -1 : 1);
+    const instant = new Date(Date.UTC(y, mo - 1, d, h, mi, s || 0) - offMin * 60_000);
+    const next = tzOffset(instant, timeZone);
+    if (next === offset) break;
+    offset = next;
+  }
   return `${dateStr}T${pad(h)}:${pad(mi)}:${pad(s || 0)}${offset}`;
 }

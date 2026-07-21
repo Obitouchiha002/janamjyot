@@ -12,9 +12,11 @@
  *   3. What the activity is (some are more sensitive to a bad window)
  */
 
-export type Verdict = "go" | "wait" | "avoid";
+export type Verdict = "go" | "wait" | "avoid" | "unknown";
 
 export interface RightNowResult {
+  /** "unknown" = the timings could not be computed here (see the `else` branch
+   *  in buildRightNow); the UI must not present it as an answer. */
   verdict: Verdict;
   headline: string;
   reason: string;
@@ -92,9 +94,22 @@ export function buildRightNow(panchang: any, nowHHMM: string, activityKey: strin
   }
 
   // Next good choghadiya starting from now (today, then tonight).
+  //
+  // `!s.blocked` matters. The CURRENT moment is checked against the blocking
+  // periods above, but the window we send the user to was not — so we could
+  // tell someone to wait, and have them act squarely inside Rahu Kaal.
+  //
+  // Minutes are compared on a rolling 24h line, not a raw clock: a slot
+  // starting 01:44 is minute 104, which never beats a 23:30 "now" on a plain
+  // comparison. Late-evening users were told to wait, with nothing to wait
+  // for, while good windows sat an hour or two ahead of them.
+  const minsAhead = (start: string) => {
+    const d = toMin(start) - nowMin;
+    return d < 0 ? d + 1440 : d;
+  };
   const nextGood = slots
-    .filter((s) => s.quality === "good" && toMin(s.start) > nowMin)
-    .sort((a, b) => toMin(a.start) - toMin(b.start))[0] ?? null;
+    .filter((s) => s.quality === "good" && !s.blocked && toMin(s.start) >= 0 && minsAhead(s.start) > 0)
+    .sort((a, b) => minsAhead(a.start) - minsAhead(b.start))[0] ?? null;
 
   let verdict: Verdict;
   let reason: string;
@@ -111,6 +126,12 @@ export function buildRightNow(panchang: any, nowHHMM: string, activityKey: strin
   } else if (current) {
     verdict = act.strict ? "wait" : "go";
     reason = `${current.name} is a neutral window until ${current.end} — fine for routine things.`;
+  } else if (!slots.length) {
+    // No choghadiya at all means sunrise or sunset could not be found — the
+    // polar case. Saying "no inauspicious period is running" here was a
+    // confident green light derived from nothing.
+    verdict = "unknown";
+    reason = "Choghadiya timings need a local sunrise and sunset, which don't occur at this location today.";
   } else {
     verdict = "go";
     reason = "No inauspicious period is running right now.";
@@ -119,6 +140,7 @@ export function buildRightNow(panchang: any, nowHHMM: string, activityKey: strin
   const headline =
     verdict === "go" ? "Yes — go ahead"
     : verdict === "wait" ? "Better to wait a bit"
+    : verdict === "unknown" ? "Can't tell for this place"
     : "Avoid starting now";
 
   return {

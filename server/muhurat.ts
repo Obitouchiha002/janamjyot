@@ -6,6 +6,7 @@
 import { buildPanchang, type PanchangInput } from "./panchang";
 import { computeTransits, eclipticLongitudes, sunRiseSet } from "./engine";
 import { buildIsoDatetime } from "./validate";
+import { inChaturmas } from "./chaturmas";
 
 const NAK_NAMES = [
   "Ashwini", "Bharani", "Krittika", "Rohini", "Mrigashira", "Ardra", "Punarvasu", "Pushya", "Ashlesha",
@@ -55,11 +56,13 @@ function marriageDayCheck(input: MuhuratInput, p: any): { suitable: boolean; blo
     blockers.push(`Kharmas (Malmas) — the Sun is in ${p.sun_sign}, an inauspicious solar month; marriages are not held until the Sun moves on (around mid-month).`);
   }
 
-  // Chaturmas — Devshayani to Devuthani Ekadashi (~mid-July to mid-November),
-  // when Vishnu "sleeps" and marriages are paused. Approximated by the Sun's
-  // sidereal sign (Cancer → Libra).
-  if (["Cancer", "Leo", "Virgo", "Libra"].includes(p.sun_sign)) {
-    blockers.push(`Chaturmas — the Sun is in ${p.sun_sign}; this is the holy four-month period (≈ mid-July to mid-November, until Devuthani Ekadashi) when marriages are not performed.`);
+  // Chaturmas — Devshayani to Devuthani Ekadashi, when Vishnu "sleeps" and
+  // marriages are paused. Both boundaries are real lunar dates (see
+  // chaturmas.ts); the old solar proxy ("Sun in Cancer→Libra") blocked whole
+  // valid weeks, e.g. all of July 2026 when Chaturmas starts on the 25th.
+  const cm = inChaturmas(input.date, input.latitude, input.longitude, input.timezone, input.ayanamsa);
+  if (cm) {
+    blockers.push(`Chaturmas — the holy four-month period runs from Devshayani Ekadashi (${cm.start}) to Devuthani Ekadashi (${cm.end}); marriages are not performed until it ends.`);
   }
 
   // Guru Ast / Shukra Ast — Jupiter or Venus combust (too close to the Sun).
@@ -100,20 +103,61 @@ export interface MuhuratInput extends PanchangInput { activity: string; }
 
 /** Scan a whole month: which dates are suitable for the activity (for the calendar). */
 export function scanMonth(input: { year: number; month: number; latitude: number; longitude: number; timezone: string; ayanamsa: number; activity: string }) {
-  const { year, month, latitude, longitude, timezone, ayanamsa, activity } = input;
+  const { year, month, latitude, longitude, timezone, ayanamsa } = input;
+  // Lowercased to match buildMuhurat — without it "Marriage" missed both the
+  // PREFERRED lookup and the ==="marriage" test, reporting all 31 days suitable.
+  const activity = (input.activity || "general").toLowerCase();
   const daysInMonth = new Date(year, month, 0).getDate(); // month is 1-indexed here
-  const days: Array<{ date: string; day: number; suitable: boolean; nakshatra: string }> = [];
+  const pref = PREFERRED[activity] || PREFERRED.general;
+  const days: Array<{
+    date: string; day: number; suitable: boolean;
+    nakshatra: string; tithi: string; paksha: string; weekday: string;
+    windows: number; quality: "best" | "good" | "ok" | "avoid";
+  }> = [];
   for (let day = 1; day <= daysInMonth; day++) {
     const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     try {
       const p = buildPanchang({ date, latitude, longitude, timezone, ayanamsa });
       let suitable = true;
       if (activity === "marriage") suitable = marriageDayCheck({ date, latitude, longitude, timezone, ayanamsa, activity }, p).suitable;
-      days.push({ date, day, suitable, nakshatra: p.nakshatra });
+
+      // How many genuinely usable windows the day actually has, excluding the
+      // eighths that are Rahu Kaal / Yamaganda / Gulika. Without this every
+      // non-marriage activity reported `suitable: true` for all 30 days and
+      // the calendar told the user nothing.
+      const windows = suitable
+        ? [...(p.day_choghadiya ?? []), ...(p.night_choghadiya ?? [])]
+            .filter((c: any) => pref.includes(c.name) && !c.blocked).length
+        : 0;
+      days.push({
+        date, day, suitable, windows,
+        quality: "ok", // ranked against the rest of the month once all days are in
+        nakshatra: p.nakshatra, tithi: p.tithi, paksha: p.paksha, weekday: p.weekday,
+      });
     } catch {
-      days.push({ date, day, suitable: false, nakshatra: "" });
+      days.push({
+        date, day, suitable: false, windows: 0, quality: "avoid",
+        nakshatra: "", tithi: "", paksha: "", weekday: "",
+      });
     }
   }
+  // Quality is RELATIVE to the rest of the month, which is the only thing that
+  // works across activities. Absolute thresholds can't: `business` and `travel`
+  // accept four of the seven choghadiya where `marriage` accepts three, so any
+  // fixed cut-off that discriminates for one paints the other's whole month a
+  // single colour. And a calendar is asking "which days this month are best?"
+  // anyway — a relative answer is the honest one.
+  const usable = days.filter((d) => d.suitable).map((d) => d.windows).sort((a, b) => b - a);
+  if (usable.length) {
+    const at = (frac: number) => usable[Math.min(usable.length - 1, Math.floor(usable.length * frac))];
+    const bestCut = at(0.25);
+    const goodCut = at(0.65);
+    for (const d of days) {
+      if (!d.suitable) { d.quality = "avoid"; continue; }
+      d.quality = d.windows >= bestCut ? "best" : d.windows >= goodCut ? "good" : "ok";
+    }
+  }
+
   return { year, month, activity, days };
 }
 
@@ -122,9 +166,13 @@ export function buildMuhurat(input: MuhuratInput) {
   const pref = PREFERRED[activity] || PREFERRED.general;
   const p = buildPanchang(input);
 
+  // `!c.blocked` drops the eighths that ARE Rahu Kaal / Yamaganda / Gulika.
+  // They share boundaries with the choghadiya, so without this filter the
+  // module recommended them: on Thursday, Rahu Kaal *is* Amrit and was being
+  // offered as the single best window of the day.
   const pick = (list: any[], phase: string) =>
     list
-      .filter((c) => pref.includes(c.name))
+      .filter((c) => pref.includes(c.name) && !c.blocked)
       .map((c) => ({ phase, name: c.name, start: c.start, end: c.end, quality: c.quality, rank: pref.indexOf(c.name), best: c.name === pref[0] }));
 
   // For marriage, first check whether the DAY itself is fit (Kharmas, Guru/Shukra
@@ -145,19 +193,38 @@ export function buildMuhurat(input: MuhuratInput) {
   // the auspicious Choghadiya, preferring night windows for the main ceremony.
   let ceremony: any[] = [];
   if (activity === "marriage" && suitable) {
+    // `seq` is chronological position: the day slots run 0-7 from sunrise and
+    // the night slots 8-15 from sunset, so ordering by it orders by clock time
+    // without having to re-parse the formatted strings.
     const good = [
-      ...p.day_choghadiya.map((c: any) => ({ ...c, phase: "Day" })),
-      ...p.night_choghadiya.map((c: any) => ({ ...c, phase: "Night" })),
-    ].filter((c) => ["Amrit", "Shubh", "Labh"].includes(c.name));
+      ...p.day_choghadiya.map((c: any, i: number) => ({ ...c, phase: "Day", seq: i })),
+      ...p.night_choghadiya.map((c: any, i: number) => ({ ...c, phase: "Night", seq: 8 + i })),
+    ].filter((c) => ["Amrit", "Shubh", "Labh"].includes(c.name) && !c.blocked);
     const night = good.filter((c) => c.phase === "Night");
     const pool = night.length ? night : good;
     const rank: Record<string, number> = { Amrit: 0, Shubh: 1, Labh: 2 };
     const pheras = [...pool].sort((a, b) => rank[a.name] - rank[b.name])[0];
     if (pheras) {
-      const others = pool.filter((c) => c !== pheras);
-      ceremony.push({ stage: "Pheras (Vivah Muhurat)", desc: "the main wedding ceremony", name: pheras.name, start: pheras.start, end: pheras.end, primary: true });
-      if (others[0]) ceremony.push({ stage: "Baraat / Welcome", desc: "groom's arrival", name: others[0].name, start: others[0].start, end: others[0].end });
-      if (others[1]) ceremony.push({ stage: "Jaimala / Var Mala", desc: "garland exchange", name: others[1].name, start: others[1].start, end: others[1].end });
+      // A wedding runs Baraat → Jaimala → Pheras, so the earlier stages must
+      // fall BEFORE the pheras window. Choosing purely by choghadiya rank
+      // produced timelines like "pheras 6:14 PM, groom arrives 12:34 AM" —
+      // which reads as an obvious mistake to anyone actually planning a day.
+      const before = pool
+        .filter((c) => c.seq < pheras.seq)
+        .sort((a, b) => a.seq - b.seq);
+      const stage = (s: string, desc: string, c: any) =>
+        ({ stage: s, desc, name: c.name, start: c.start, end: c.end });
+
+      // Prefer the two windows immediately preceding the pheras; if the pheras
+      // is the earliest good window, only it is offered rather than inventing
+      // an out-of-order slot.
+      const [baraat, jaimala] = before.length >= 2
+        ? [before[before.length - 2], before[before.length - 1]]
+        : [before[0], undefined];
+
+      if (baraat) ceremony.push(stage("Baraat / Welcome", "groom's arrival", baraat));
+      if (jaimala) ceremony.push(stage("Jaimala / Var Mala", "garland exchange", jaimala));
+      ceremony.push({ ...stage("Pheras (Vivah Muhurat)", "the main wedding ceremony", pheras), primary: true });
     }
   }
 
@@ -172,7 +239,15 @@ export function buildMuhurat(input: MuhuratInput) {
     tip: TIPS[activity] || TIPS.general,
     preferred: pref,
     panchang: { tithi: p.tithi, nakshatra: p.nakshatra, yoga: p.yoga, sun_sign: p.sun_sign, sunrise: p.sunrise, sunset: p.sunset },
-    avoid: p.periods,
+    // Enumerated, NOT `p.periods` wholesale. Abhijit lives in the same object
+    // and is the most auspicious window of the day — passing the object
+    // through published it under the UI's red "Avoid these periods" heading.
+    avoid: {
+      rahu_kaal: p.periods?.rahu_kaal ?? null,
+      yamaganda: p.periods?.yamaganda ?? null,
+      gulika: p.periods?.gulika ?? null,
+    },
+    abhijit: p.periods?.abhijit ?? null,
     windows,
     ceremony,
     note: activity === "marriage" && !suitable

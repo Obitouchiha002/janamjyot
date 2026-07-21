@@ -1,0 +1,226 @@
+[
+  {
+    "name": "Alwar",
+    "date": "1984-11-10",
+    "time": "06:40:00",
+    "tz": "Asia/Kolkata",
+    "lat": 27.553,
+    "lon": 76.6346,
+    "expected": {
+      "Sun": 204.17914,
+      "Moon": 38.92977,
+      "Mercury": 221.5009,
+      "Venus": 241.59869,
+      "Mars": 272.10349,
+      "Jupiter": 256.7734,
+      "Saturn": 205.28032,
+      "Rahu": 34.25721,
+      "Ascendant": 203.2328
+    },
+    "prokerala": {
+      "Sun": 204.17468,
+      "Moon": 38.92494,
+      "Mercury": 221.49643,
+      "Venus": 241.59422,
+      "Mars": 272.099,
+      "Jupiter": 256.76888,
+      "Saturn": 205.27589,
+      "Rahu": 34.25274,
+      "Ketu": 214.25274,
+      "Ascendant": 203.22833
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "Delhi",
+    "date": "1995-03-21",
+    "time": "14:15:00",
+    "tz": "Asia/Kolkata",
+    "lat": 28.6139,
+    "lon": 77.209,
+    "expected": {
+      "Sun": 336.47613,
+      "Moon": 213.69272,
+      "Mercury": 315.88611,
+      "Venus": 298.02493,
+      "Mars": 109.44146,
+      "Jupiter": 231.39571,
+      "Saturn": 323.08635,
+      "Rahu": 193.77165,
+      "Ascendant": 101.50374
+    },
+    "prokerala": {
+      "Sun": 336.47909,
+      "Moon": 213.69571,
+      "Mercury": 315.88908,
+      "Venus": 298.02788,
+      "Mars": 109.44442,
+      "Jupiter": 231.39871,
+      "Saturn": 323.08927,
+      "Rahu": 193.77461,
+      "Ketu": 13.77461,
+      "Ascendant": 101.5067
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "Mumbai",
+    "date": "1972-08-02",
+    "time": "23:50:00",
+    "tz": "Asia/Kolkata",
+    "lat": 19.076,
+    "lon": 72.8777,
+    "expected": {
+      "Sun": 107.04491,
+      "Moon": 22.74004,
+      "Mercury": 115.73445,
+      "Venus": 64.18886,
+      "Mars": 118.73537,
+      "Jupiter": 245.79543,
+      "Saturn": 53.98368,
+      "Rahu": 271.78259,
+      "Ascendant": 12.99258
+    },
+    "prokerala": {
+      "Sun": 107.04944,
+      "Moon": 22.74454,
+      "Mercury": 115.73899,
+      "Venus": 64.1934,
+      "Mars": 118.73992,
+      "Jupiter": 245.79999,
+      "Saturn": 53.98818,
+      "Rahu": 271.78713,
+      "Ketu": 91.78713,
+      "Ascendant": 12.99711
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "Chennai",
+    "date": "2003-12-31",
+    "time": "05:05:00",
+    "tz": "Asia/Kolkata",
+    "lat": 13.0827,
+    "lon": 80.2707,
+    "expected": {
+      "Sun": 254.94527,
+      "Moon": 351.29706,
+      "Mercury": 245.92204,
+      "Venus": 288.05622,
+      "Mars": 344.64031,
+      "Jupiter": 144.96837,
+      "Saturn": 75.92638,
+      "Rahu": 23.84651,
+      "Ascendant": 234.47412
+    },
+    "prokerala": {
+      "Sun": 254.94189,
+      "Moon": 351.2934,
+      "Mercury": 245.91868,
+      "Venus": 288.05284,
+      "Mars": 344.63695,
+      "Jupiter": 144.96497,
+      "Saturn": 75.92305,
+      "Rahu": 23.84314,
+      "Ketu": 203.84314,
+      "Ascendant": 234.47075
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "WarDST",
+    "date": "1943-06-15",
+    "time": "10:20:00",
+    "tz": "Asia/Kolkata",
+    "lat": 28.6139,
+    "lon": 77.209,
+    "expected": {
+      "Sun": 60.12224,
+      "Moon": 198.80436,
+      "Mercury": 37.72062,
+      "Venus": 104.98178,
+      "Mars": 350.72357,
+      "Jupiter": 93.65703,
+      "Saturn": 53.91175,
+      "Rahu": 115.70304,
+      "Ascendant": 111.09042
+    },
+    "prokerala": {
+      "Sun": 60.11889,
+      "Moon": 198.80083,
+      "Mercury": 37.71726,
+      "Venus": 104.97843,
+      "Mars": 350.7202,
+      "Jupiter": 93.65373,
+      "Saturn": 53.90846,
+      "Rahu": 115.69969,
+      "Ketu": 295.69969,
+      "Ascendant": 111.08707
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "NYC-DST",
+    "date": "1990-04-01",
+    "time": "06:00:00",
+    "tz": "America/New_York",
+    "lat": 40.7128,
+    "lon": -74.006,
+    "expected": {
+      "Sun": 347.69346,
+      "Moon": 64.62666,
+      "Mercury": 1.01817,
+      "Venus": 301.24396,
+      "Mars": 291.70059,
+      "Jupiter": 69.07881,
+      "Saturn": 270.70687,
+      "Rahu": 289.9494,
+      "Ascendant": 328.46879
+    },
+    "prokerala": {
+      "Sun": 347.69679,
+      "Moon": 64.63007,
+      "Mercury": 1.02149,
+      "Venus": 301.24731,
+      "Mars": 291.70392,
+      "Jupiter": 69.0822,
+      "Saturn": 270.71015,
+      "Rahu": 289.95273,
+      "Ketu": 109.95273,
+      "Ascendant": 328.47212
+    },
+    "prokeralaError": null
+  },
+  {
+    "name": "Sydney",
+    "date": "1988-12-25",
+    "time": "19:45:00",
+    "tz": "Australia/Sydney",
+    "lat": -33.8688,
+    "lon": 151.2093,
+    "expected": {
+      "Sun": 250.08345,
+      "Moon": 95.65947,
+      "Mercury": 263.45311,
+      "Venus": 225.79814,
+      "Mars": 353.19783,
+      "Jupiter": 33.52152,
+      "Saturn": 251.10383,
+      "Rahu": 314.43448,
+      "Ascendant": 65.94918
+    },
+    "prokerala": {
+      "Sun": 250.08532,
+      "Moon": 95.66108,
+      "Mercury": 263.45498,
+      "Venus": 225.79999,
+      "Mars": 353.19961,
+      "Jupiter": 33.52339,
+      "Saturn": 251.10567,
+      "Rahu": 314.43634,
+      "Ketu": 134.43634,
+      "Ascendant": 65.95104
+    },
+    "prokeralaError": null
+  }
+]

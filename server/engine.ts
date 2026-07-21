@@ -5,8 +5,15 @@
  * true-of-date geocentric ecliptic longitudes, then applies the Lahiri ayanamsa
  * to get sidereal positions — exactly the pipeline a provider like Prokerala uses.
  *
- * Validated against Prokerala for the reference Alwar chart: every planet and the
- * ascendant match within ~0.01°, and the Vimshottari dasha dates match too.
+ * Verified against Swiss Ephemeris (pyswisseph, Lahiri + whole-sign) over 60
+ * random Indian charts spanning 1930-2024: every planet and the ascendant agree
+ * to within 0.011°, with zero sign and zero nakshatra mismatches.
+ *
+ * EXCEPT Rahu/Ketu, which are the MEAN node here (classical, and what AstroSage
+ * uses). Sites defaulting to the TRUE node differ by up to ~1.9°, which changes
+ * Rahu's sign ~2.5% and its nakshatra ~7% of the time. An earlier version of
+ * this comment claimed ~0.01° agreement with Prokerala for every body; that was
+ * never true for the nodes if the reference used the true node.
  *
  * Output mimics Prokerala's response shapes (planet_position[] + dasha_periods[])
  * so the existing normalizer consumes it unchanged.
@@ -25,9 +32,45 @@ const SIGN_LORDS = [
 const norm360 = (x: number) => ((x % 360) + 360) % 360;
 const DEG = Math.PI / 180;
 
-/** Lahiri (Chitrapaksha) ayanamsa, with small offsets for Raman(3)/KP(5). */
+/**
+ * Should the sidereal longitude keep nutation in it?
+ *
+ * This is a real convention split between two respected references, measured
+ * directly (see `__checks__/accuracy.ts`) against both:
+ *
+ *   • ProKerala (and Indian panchang software generally) does
+ *     `apparent tropical − MEAN ayanamsa`, so nutation stays in.
+ *   • Swiss Ephemeris `calc_ut(FLG_SIDEREAL)` removes it.
+ *
+ * The two disagree by nutation in longitude — ±17″ on an 18.6-year cycle — so
+ * no engine can match both at once. We default to the ProKerala convention
+ * because that is what our users cross-check against, and confirmed it
+ * empirically: planets and the ascendant then agree with live ProKerala output
+ * to 0.1-6″. Set AYANAMSA_NUTATION=1 to match Swiss instead.
+ *
+ * Either way the choice is far too small to move a sign, nakshatra or pada
+ * (a pada spans 12000″).
+ */
+const KEEP_NUTATION = process.env.AYANAMSA_NUTATION === "1";
+
+/**
+ * Lahiri (Chitrapaksha) ayanamsa, with small offsets for Raman(3)/KP(5).
+ *
+ * The mean constants are fitted to swisseph's `get_ayanamsa_ut()` (max ~0.6″
+ * over 1900-2050), which is also the value ProKerala subtracts.
+ *
+ * Careful when "correcting" this: swisseph exposes TWO Lahiri values —
+ * `get_ayanamsa_ut()` (mean) and whatever `calc_ut(FLG_SIDEREAL)` effectively
+ * applies (mean + nutation) — and they differ by up to 17″. Tuning these
+ * constants against the wrong one, or tuning them without also settling the
+ * nutation question above, makes the app agree with real sites WORSE while
+ * looking better on paper. Both were gotten wrong that way before. Always
+ * measure end-to-end against a live platform, not against a single swisseph
+ * helper.
+ */
 function ayanamsaDeg(t: A.AstroTime, ayanamsa: number): number {
-  const lahiri = 23.8523 + (50.2388 / 3600) * (t.tt / 365.25);
+  const mean = 23.857092 + (50.2829 / 3600) * (t.tt / 365.25);
+  const lahiri = KEEP_NUTATION ? mean + A.e_tilt(t).dpsi / 3600 : mean;
   if (ayanamsa === 3) return lahiri - 1.39; // Raman (approx)
   if (ayanamsa === 5) return lahiri - 0.06; // KP (approx)
   return lahiri; // 1 = Lahiri (default)
@@ -61,13 +104,17 @@ function siderealOf(body: A.Body, t: A.AstroTime, ayan: number): number {
   return norm360(tropicalLongitude(body, t) - ayan);
 }
 
-/** Retrograde if sidereal longitude is decreasing over the next day. */
-function isRetrograde(body: A.Body, t: A.AstroTime, dateMs: number, ayan: number): boolean {
-  const t2 = A.MakeTime(new Date(dateMs + 86_400_000));
-  let d = siderealOf(body, t2, ayan) - siderealOf(body, t, ayan);
-  if (d > 180) d -= 360;
-  if (d < -180) d += 360;
-  return d < 0;
+/**
+ * Retrograde if sidereal longitude is decreasing *at* this moment.
+ *
+ * Uses the centred difference (±12h) that `speedPerDay` below already
+ * implements. The old forward difference over a full day answered a subtly
+ * different question — "will it be behind tomorrow?" — which disagrees with
+ * the instantaneous direction for a planet sitting near a station. Measured at
+ * ~0.4% of charts, almost all Mercury.
+ */
+function isRetrograde(body: A.Body, _t: A.AstroTime, dateMs: number, ayan: number): boolean {
+  return speedPerDay((tt) => siderealOf(body, tt, ayan), dateMs) < 0;
 }
 
 /** Mean lunar node (Rahu) tropical longitude (degrees). */
@@ -112,7 +159,9 @@ function speedPerDay(lonAt: (t: A.AstroTime) => number, dateMs: number): number 
 
 /** Rising sign degree (Lagna), sidereal degrees. */
 function ascendantSidereal(t: A.AstroTime, lat: number, lon: number, ayan: number): number {
-  const eps = meanObliquity(t);
+  // TRUE obliquity, to match the apparent sidereal time used below — pairing
+  // apparent GAST with the *mean* obliquity mixed two frames.
+  const eps = A.e_tilt(t).tobl * DEG;
   const gast = A.SiderealTime(t); // Greenwich apparent sidereal time, hours
   const ramc = norm360((gast + lon / 15) * 15) * DEG; // local sidereal time as angle
   const phi = lat * DEG;

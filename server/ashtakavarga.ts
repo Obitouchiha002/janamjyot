@@ -21,7 +21,12 @@ export function computeAshtakavarga(chart: any) {
   const signOf = (n: string) => planets.find((p) => p.planet === n)?.sign_id ?? -1;
   // ascendant.sign_id isn't in the legacy alias — derive from the sign NAME.
   const ascName = chart?.ascendant?.sign ?? chart?.d1_chart?.ascendant_sign ?? "";
-  const ascIdx = SIGNS.indexOf(ascName) >= 0 ? SIGNS.indexOf(ascName) : 0;
+  const ascIdx = SIGNS.indexOf(ascName);
+  // Defaulting to 0 here silently built an Aries-based chart for someone with
+  // a different Lagna. A visible failure beats a confidently wrong answer.
+  if (ascIdx < 0) {
+    throw new Error(`Ashtakavarga: unrecognised ascendant sign ${JSON.stringify(ascName)}`);
+  }
   const refSign = (i: number) => (i < 7 ? signOf(PLANETS[i]) : ascIdx); // 0-6 planets, 7 = Lagna
 
   const bav: Record<string, number[]> = {};

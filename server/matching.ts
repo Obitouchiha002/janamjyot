@@ -91,9 +91,27 @@ export function personMoon(input: BirthInput, ayanamsa: number): PersonMoon {
 const VARNA = [3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4]; // Aries..Pisces
 const VARNA_NAME = ["", "Shudra", "Vaishya", "Kshatriya", "Brahmin"];
 
-// Vashya group per sign (whole-sign standard approximation).
+// Vashya group per sign.
 // 0 Chatushpada(quadruped) 1 Nara(human) 2 Jalachara(watery) 3 Vanachara(wild) 4 Keeta(insect)
 const VASHYA_GROUP = [0, 0, 1, 2, 3, 1, 1, 4, 1, 2, 1, 2];
+
+/**
+ * Vashya group from the Moon's exact longitude, not just its sign.
+ *
+ * Two signs are classically SPLIT at the midpoint, and treating them as whole
+ * signs mis-scored every Moon in their second half by up to 2 of the 36 points:
+ *   • Sagittarius — first half Nara (the archer's human torso),
+ *     second half Chatushpada (the horse body).
+ *   • Capricorn — first half Chatushpada (the goat),
+ *     second half Jalachara (the makara's fish tail).
+ */
+function vashyaGroupOf(moonLongitude: number): number {
+  const sign = Math.floor(norm(moonLongitude) / 30) % 12;
+  const deg = norm(moonLongitude) % 30;
+  if (sign === 8) return deg < 15 ? 1 : 0;  // Sagittarius: Nara -> Chatushpada
+  if (sign === 9) return deg < 15 ? 0 : 2;  // Capricorn: Chatushpada -> Jalachara
+  return VASHYA_GROUP[sign];
+}
 const VASHYA_NAME = ["Chatushpada", "Nara", "Jalachara", "Vanachara", "Keeta"];
 // Standard Vashya score matrix [boy][girl].
 const VASHYA_MATRIX = [
@@ -121,11 +139,25 @@ const YONI_ENEMIES: [number, number][] = [
   [5, 6],  // Cat - Rat
   [7, 9],  // Cow - Tiger
 ];
-function yoniScore(a: number, b: number): number {
-  if (a === b) return 4;
+/**
+ * Yoni Kuta, scored on three tiers rather than the classical five.
+ *
+ * Same yoni (4) and the seven mortal-enemy pairs (0) are unambiguous and
+ * correct. The classical table further splits the remainder into friendly (3),
+ * neutral (2) and enemy (1), but published 14x14 matrices disagree with each
+ * other on many cells — so everything in between is scored 2 rather than
+ * guessed at.
+ *
+ * Practical effect: at most 1 point of the 36 on this koota, and only ever
+ * toward the middle. `simplified` is surfaced in the result so a user
+ * comparing totals with another site can see exactly where a small difference
+ * comes from, instead of assuming one of the two is broken.
+ */
+function yoniScore(a: number, b: number): { score: number; simplified: boolean } {
+  if (a === b) return { score: 4, simplified: false };
   const enemy = YONI_ENEMIES.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
-  if (enemy) return 0;
-  return 2; // neutral (standard friendly/neutral midpoint)
+  if (enemy) return { score: 0, simplified: false };
+  return { score: 2, simplified: true };
 }
 
 // Gana per nakshatra: 0 Deva, 1 Manushya, 2 Rakshasa
@@ -193,7 +225,12 @@ function taraOne(from: number, to: number): boolean {
 // ---------------------------------------------------------------------------
 // Result
 // ---------------------------------------------------------------------------
-export interface Koota { name: string; max: number; score: number; boy: string; girl: string; note: string; }
+export interface Koota {
+  name: string; max: number; score: number; boy: string; girl: string; note: string;
+  /** True where our scoring is a documented simplification of the classical
+   *  table, so the UI can flag it instead of implying false precision. */
+  approximate?: boolean;
+}
 export interface MatchResult {
   boy: PersonMoon;
   girl: PersonMoon;
@@ -202,7 +239,11 @@ export interface MatchResult {
   max: number;
   percent: number;
   verdict: string;
-  doshas: { mangal: string; bhakoot: string; nadi: string };
+  doshas: {
+    mangal: string; bhakoot: string; nadi: string;
+    /** Computed verdicts — never re-derive these from the text, which is translated. */
+    mangalClear: boolean; bhakootClear: boolean; nadiClear: boolean;
+  };
 }
 
 export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
@@ -217,10 +258,12 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
   });
 
   // 2) Vashya
-  const vaScore = VASHYA_MATRIX[VASHYA_GROUP[boy.signIndex]][VASHYA_GROUP[girl.signIndex]];
+  const boyVashya = vashyaGroupOf(boy.moonLongitude);
+  const girlVashya = vashyaGroupOf(girl.moonLongitude);
+  const vaScore = VASHYA_MATRIX[boyVashya][girlVashya];
   kootas.push({
     name: "Vashya", max: 2, score: vaScore,
-    boy: VASHYA_NAME[VASHYA_GROUP[boy.signIndex]], girl: VASHYA_NAME[VASHYA_GROUP[girl.signIndex]],
+    boy: VASHYA_NAME[boyVashya], girl: VASHYA_NAME[girlVashya],
     note: vaScore >= 2 ? "Strong mutual attraction & influence." : vaScore >= 1 ? "Moderate mutual control." : "Low mutual influence.",
   });
 
@@ -235,11 +278,15 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
   });
 
   // 4) Yoni
-  const yScore = yoniScore(YONI_OF_NAK[boy.nakIndex], YONI_OF_NAK[girl.nakIndex]);
+  const yoni = yoniScore(YONI_OF_NAK[boy.nakIndex], YONI_OF_NAK[girl.nakIndex]);
+  const yScore = yoni.score;
   kootas.push({
     name: "Yoni", max: 4, score: yScore,
     boy: YONI_NAME[YONI_OF_NAK[boy.nakIndex]], girl: YONI_NAME[YONI_OF_NAK[girl.nakIndex]],
-    note: yScore === 4 ? "Excellent physical & intimate compatibility." : yScore === 0 ? "Conflicting temperaments (enemy yoni)." : "Reasonable intimate compatibility.",
+    approximate: yoni.simplified,
+    note: yScore === 4 ? "Excellent physical & intimate compatibility."
+      : yScore === 0 ? "Conflicting temperaments (enemy yoni)."
+      : "Reasonable intimate compatibility. These two yonis are neither the same nor traditional enemies, and sources differ on the exact points here — we score the middle, so this koota may read 1 point different elsewhere.",
   });
 
   // 5) Graha Maitri
@@ -306,5 +353,17 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
   const bhakoot = bhScore === 7 ? "No Bhakoot dosha." : `Bhakoot dosha present (${pair}).`;
   const nadi = nadiScore === 8 ? "No Nadi dosha." : "Nadi dosha present.";
 
-  return { boy, girl, kootas, total, max, percent, verdict, doshas: { mangal, bhakoot, nadi } };
+  // `clear` is decided HERE, from the scores, and shipped alongside the text.
+  // The UI used to infer it by regex-matching English words ("no", "cancel") in
+  // this sentence — so a perfectly clean match rendered three red danger icons
+  // the moment the text came back in Hindi, on a marriage-compatibility screen.
+  return {
+    boy, girl, kootas, total, max, percent, verdict,
+    doshas: {
+      mangal, bhakoot, nadi,
+      mangalClear: !(boy.manglik !== girl.manglik),
+      bhakootClear: bhScore === 7,
+      nadiClear: nadiScore === 8,
+    },
+  };
 }

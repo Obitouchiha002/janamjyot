@@ -240,7 +240,7 @@ export function normalizeChart(args: NormalizeArgs): {
   const janmaPada = moonNak?.pada ?? (bd?.nakshatra?.pada ?? null);
 
   // --- dasha --------------------------------------------------------------
-  const dasha = normalizeDasha(args.dashaData);
+  const dasha = normalizeDasha(args.dashaData, birth.timezone);
 
   // --- summary ------------------------------------------------------------
   const summary = {
@@ -403,7 +403,7 @@ interface DashaSpan {
   to: string;
 }
 
-function normalizeDasha(dashaData: any) {
+function normalizeDasha(dashaData: any, tz?: string) {
   const periods: any[] = dashaData?.dasha_periods ?? [];
   const now = Date.now();
 
@@ -436,29 +436,52 @@ function normalizeDasha(dashaData: any) {
   const next_7_years = antardasha
     .filter((a) => t(a.to) > now && t(a.from) < sevenYears)
     .sort((x, y) => t(x.from) - t(y.from))
-    .map((a) => ({ period: a.label, from: dateOnly(a.from), to: dateOnly(a.to) }));
+    .map((a) => ({ period: a.label, from: dateOnly(a.from, tz), to: dateOnly(a.to, tz) }));
 
   return {
-    mahadasha: mahadasha.map((m) => ({ ...m, from: dateOnly(m.from), to: dateOnly(m.to) })),
-    antardasha: antardasha.map((a) => ({ ...a, from: dateOnly(a.from), to: dateOnly(a.to) })),
+    mahadasha: mahadasha.map((m) => ({ ...m, from: dateOnly(m.from, tz), to: dateOnly(m.to, tz) })),
+    antardasha: antardasha.map((a) => ({ ...a, from: dateOnly(a.from, tz), to: dateOnly(a.to, tz) })),
     current: {
       mahadasha: currentMaha?.lord ?? "",
-      mahadasha_from: currentMaha ? dateOnly(currentMaha.from) : "",
-      mahadasha_to: currentMaha ? dateOnly(currentMaha.to) : "",
+      mahadasha_from: currentMaha ? dateOnly(currentMaha.from, tz) : "",
+      mahadasha_to: currentMaha ? dateOnly(currentMaha.to, tz) : "",
       antardasha: currentAntar?.lord ?? "",
-      antardasha_from: currentAntar ? dateOnly(currentAntar.from) : "",
-      antardasha_to: currentAntar ? dateOnly(currentAntar.to) : "",
+      antardasha_from: currentAntar ? dateOnly(currentAntar.from, tz) : "",
+      antardasha_to: currentAntar ? dateOnly(currentAntar.to, tz) : "",
     },
     next_7_years,
   };
 }
 
-function dateOnly(s: string): string {
+/**
+ * The calendar date a dasha boundary falls on, in the chart's own timezone.
+ *
+ * Two very different shapes arrive here:
+ *   • Prokerala sends local time with a real offset ("…T01:30:00+05:30") —
+ *     slicing the leading YYYY-MM-DD is correct.
+ *   • The local engine sends UTC ("…T20:00:00Z") — slicing that showed the
+ *     PREVIOUS day for every boundary falling between 18:30 and 24:00 IST,
+ *     roughly a fifth of all dates. That is exactly the kind of one-day
+ *     discrepancy a user spots when cross-checking against AstroSage.
+ *
+ * So: zone-aware formatting for UTC stamps, plain slicing for offset stamps.
+ */
+function dateOnly(s: string, timeZone?: string): string {
   if (!s) return "";
-  // Preserve the provider's local calendar date. Reparsing midnight-local
-  // through UTC would shift it a day, so take the leading YYYY-MM-DD directly.
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
-  if (m) return m[1];
+  const isUtc = /Z$/.test(s);
+  if (!isUtc) {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(s);
+    if (m) return m[1];
+  }
   const d = new Date(s);
-  return isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
+  if (isNaN(d.getTime())) return s;
+  if (timeZone) {
+    try {
+      // en-CA formats as YYYY-MM-DD.
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(d);
+    } catch { /* unknown zone — fall through to UTC */ }
+  }
+  return d.toISOString().slice(0, 10);
 }
