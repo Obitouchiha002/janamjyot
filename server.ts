@@ -24,6 +24,9 @@ import {
   getNormalizedChart,
   listProfiles,
   deleteChart,
+  updateChart,
+  recordDownload,
+  downloadStats,
   insertReport,
   getReport,
   insertChatMessage,
@@ -115,6 +118,9 @@ import {
   generateLifeTimeline,
   TIMELINE_RANGES,
   generateRemediesNote,
+  buildFullChartContext,
+  isSupportedLanguage,
+  normalizeLanguage,
 } from "./server/gemini";
 import { personMoon, matchKundli } from "./server/matching";
 import { computeRemedies } from "./server/remedies";
@@ -134,6 +140,20 @@ import { runStartupChecks } from "./server/startup-checks";
 // Runs at module load so BOTH the local server and the Vercel serverless
 // bundle refuse to come up with a broken configuration.
 runStartupChecks();
+
+/**
+ * Express 4 does not catch rejections from async route handlers, and Node
+ * terminates the process on an unhandled rejection. A single transient DB blip
+ * inside one un-try/caught handler would therefore take the whole server down
+ * and 502 every user. Log it and stay up — the request that caused it will
+ * still time out, but nobody else is affected.
+ */
+process.on("unhandledRejection", (reason) => {
+  console.error("[fatal-guard] unhandled rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[fatal-guard] uncaught exception:", err);
+});
 
 const app = express();
 
@@ -264,15 +284,54 @@ app.use("/api/auth/forgot-password", slowLimiter);
 app.use("/api/auth/reset-password", slowLimiter);
 app.use("/api/auth/otp/request", slowLimiter);
 
-// ── Login is OPTIONAL (open app). We read the token if present (so admins/owners
-//    are recognised) but never block. Maintenance still pauses the app for
-//    non-admins when an admin enables it.
+/**
+ * Everything under /api needs an account, except this allowlist.
+ *
+ * Enforced HERE rather than in the app, because a client-side gate is
+ * decoration: the API is reachable with curl, so if the routes stay open the
+ * "sign in first" screen protects nothing. Anything not listed below returns
+ * 401 without a valid token, and the app turns that into a sign-in prompt.
+ *
+ * What stays public, and why:
+ *   • /auth/*      — you cannot sign in through a sign-in wall.
+ *   • /config      — the app reads maintenance/announcement/version before login.
+ *   • /places      — the signup and chart forms need city lookup.
+ *   • /panchang, /muhurat, /muhurat-month, /right-now, /horoscope, /astrologers,
+ *     /testimonials, /download — not personal to anyone; they take a date or a
+ *     place, never a chart, and the public website itself calls them.
+ * Admin routes are omitted deliberately: they carry their own requireAdmin.
+ */
+const PUBLIC_API = [
+  /^\/auth\//,
+  /^\/config$/,
+  /^\/places$/,
+  /^\/panchang$/,
+  /^\/muhurat$/,
+  /^\/muhurat-month$/,
+  /^\/right-now$/,
+  /^\/horoscope$/,
+  /^\/astrologers$/,
+  /^\/testimonials$/,
+  /^\/downloads?$/,   // POST /download (record) and GET /downloads (public count)
+  /^\/health$/,
+];
+
 app.use("/api", (req, res, next) => {
+  const isPublic = PUBLIC_API.some((re) => re.test(req.path));
   if (req.path.startsWith("/auth/")) return next();
+
   optionalAuth(req, res, () => {
     const m = getSetting("maintenance");
     if (m?.enabled && (req as any).user?.role !== "admin") {
       return res.status(503).json({ error: m.message || "The app is under maintenance. Please check back soon.", maintenance: true });
+    }
+    if (!isPublic && !(req as any).user) {
+      // `auth_required` is the flag the app keys off to show the sign-in screen
+      // instead of a generic error toast.
+      return res.status(401).json({
+        error: "Please sign in to use this.",
+        auth_required: true,
+      });
     }
     next();
   });
@@ -847,12 +906,66 @@ app.get("/api/config", (_req, res) => {
     app: {
       version: String(getSetting("app_version") || process.env.APP_VERSION || "1.0"),
       apk_url: process.env.APK_URL
-        || `${(process.env.PUBLIC_APP_URL || "https://janamjyot.vercel.app").replace(/\/$/, "")}/JanamJyot-v1.0.0.apk`,
+        // Fallback only — set APK_URL (or the admin app-version setting) when a
+        // new build ships, or the in-app updater keeps pointing at the old file.
+        || `${(process.env.PUBLIC_APP_URL || "https://janamjyot.vercel.app").replace(/\/$/, "")}/JanamJyot-v1.3.apk`,
       notes: String(getSetting("app_update_notes") || ""),
       // When true the prompt reappears every launch instead of once per version.
       mandatory: !!getSetting("app_update_mandatory"),
     },
   });
+});
+
+/**
+ * POST /api/download — the website pings this when someone taps Download.
+ *
+ * Public and unauthenticated by design: the download page is the top of the
+ * funnel, before anyone has an account. Counted server-side rather than in the
+ * page so an ad-blocker or a refresh can't skew it, and de-duplicated per IP
+ * for 10 minutes because browsers fire a download click more than once.
+ */
+app.post("/api/download", async (req, res) => {
+  try {
+    const ip = String(
+      (req.headers["x-forwarded-for"] as string || "").split(",")[0].trim() || req.ip || "",
+    );
+    // One-way and truncated — enough to de-duplicate, useless as an identifier.
+    const ipHash = ip ? crypto.createHash("sha256").update(ip).digest("hex").slice(0, 16) : null;
+    await recordDownload(ipHash);
+  } catch { /* never let counting break the download */ }
+  res.json({ ok: true });
+});
+
+/** GET /api/downloads — the public count, shown on the site only if admin enabled it. */
+app.get("/api/downloads", async (_req, res) => {
+  try {
+    const show = !!getSetting("downloads_public");
+    if (!show) return res.json({ public: false });
+    const { total } = await downloadStats();
+    res.json({ public: true, total });
+  } catch {
+    res.json({ public: false });
+  }
+});
+
+/** GET /api/admin/downloads — full breakdown for the admin panel. */
+app.get("/api/admin/downloads", requireAdmin, async (_req, res) => {
+  try {
+    const stats = await downloadStats();
+    res.json({ ...stats, public: !!getSetting("downloads_public") });
+  } catch (err: any) {
+    fail(res, 500, "Could not load download stats.", err, "admin-downloads");
+  }
+});
+
+/** POST /api/admin/downloads/public { enabled } — show/hide the count on the site. */
+app.post("/api/admin/downloads/public", requireAdmin, async (req: any, res) => {
+  try {
+    await setSetting("downloads_public", !!req.body?.enabled);
+    res.json({ ok: true, public: !!req.body?.enabled });
+  } catch (err: any) {
+    fail(res, 500, "Could not update this setting.", err, "admin-downloads-public");
+  }
 });
 
 /** POST /api/admin/app-version { version, notes, mandatory } — publish an update. */
@@ -946,6 +1059,7 @@ async function checkQuota(
     report: `You can generate ${limit} life report${limit === 1 ? "" : "s"} per month on this plan.`,
     ask: `You can ask ${limit} question${limit === 1 ? "" : "s"} per day on this plan.`,
     match: `You can run ${limit} kundli match${limit === 1 ? "" : "es"} per day on this plan.`,
+    daily: `You've opened your daily readings ${limit} times today — that's the fair-use limit.`,
   };
 
   return {
@@ -1476,7 +1590,13 @@ app.post("/api/horoscope", async (req, res) => {
   if (!featureOn("horoscope")) return res.status(503).json({ error: "Daily horoscope is temporarily disabled by the admin." });
   const language = typeof req.body?.language === "string" && req.body.language.trim() ? req.body.language.trim() : "en";
   try {
-    const nowIso = new Date().toISOString();
+    // Honour the date the client asked for. The Panchang page's picker sends
+    // one, and hardcoding "now" meant picking any other date silently returned
+    // today's sky — a horoscope for the wrong day with the right date on it.
+    const asked = String(req.body?.date || "").trim();
+    const nowIso = /^\d{4}-\d{2}-\d{2}$/.test(asked) && !Number.isNaN(Date.parse(asked))
+      ? new Date(`${asked}T12:00:00Z`).toISOString() // midday: the sign-level read is stable across the day
+      : new Date().toISOString();
     const tr = computeTransits(nowIso, AYANAMSA);
     const SIGNS = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
     const planets = tr.planet_position.map((p: any) => ({
@@ -1585,11 +1705,23 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
     // Language can be overridden per request (the Home card has a picker), so it
     // is part of the cache key — otherwise switching language would keep serving
     // yesterday's English copy.
-    const lang = typeof req.query.lang === "string" && req.query.lang.trim()
-      ? req.query.lang.trim() : (b.language || "en");
+    // Validated: this value becomes part of a reports cache key, so a
+    // free-form string is an unbounded set of cache misses, each one an AI call.
+    const lang = normalizeLanguage(req.query.lang, b.language || "en");
     const cacheKey = `today:${todayLocal}:${lang}`;
     const cached = await getReport(req.params.chartId, cacheKey);
     if (cached) return res.json({ ...cached, cached: true });
+
+    // Gated AFTER the cache check, so re-reading a generated page is free and
+    // only real AI work counts. Without this an authenticated device could
+    // spend unbounded AI budget — and three of these honour ?regenerate=1,
+    // which skips the cache entirely.
+    {
+      const over = await checkQuota(req as any, "daily");
+      if (over) return res.status(429).json(over);
+      const q = identityOf(req as any);
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "daily", meta: { surface: "today" } }).catch(() => {});
+    }
 
     const tr = buildTransit(chart, AYANAMSA, nowIso);
     const moonT = tr.planets.find((p: any) => p.planet === "Moon");
@@ -1643,9 +1775,25 @@ app.get("/api/chart/:chartId/daily-guidance", async (req, res) => {
     const todayLocal = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
     const nowIso = new Date().toISOString();
 
-    const cacheKey = `guidance:${todayLocal}`;
+    // Honour ?lang and key the cache by it. Without this the page always
+    // rendered in the language frozen at chart creation, while the same screen
+    // handed the user's CURRENT language to the text-to-speech button — so a
+    // Hindi voice read English text aloud.
+    const guidanceLang = normalizeLanguage(req.query.lang, b.language || "en");
+    const cacheKey = `guidance:${todayLocal}:${guidanceLang}`;
     const cached = await getReport(req.params.chartId, cacheKey);
     if (cached) return res.json({ ...cached, cached: true });
+
+    // Gated AFTER the cache check, so re-reading a generated page is free and
+    // only real AI work counts. Without this an authenticated device could
+    // spend unbounded AI budget — and three of these honour ?regenerate=1,
+    // which skips the cache entirely.
+    {
+      const over = await checkQuota(req as any, "daily");
+      if (over) return res.status(429).json(over);
+      const q = identityOf(req as any);
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "daily", meta: { surface: "daily-guidance" } }).catch(() => {});
+    }
 
     const tr = buildTransit(chart, AYANAMSA, nowIso);
     const moonT = tr.planets.find((p: any) => p.planet === "Moon");
@@ -1667,9 +1815,15 @@ app.get("/api/chart/:chartId/daily-guidance", async (req, res) => {
 
     let guidance: any = null;
     try {
-      const language = b.language || "en";
+      const language = guidanceLang; // the resolved ?lang, not the chart's frozen one
       guidance = await generateDailyGuidance({
         name: b.name,
+        // The prompt tells the model to reference this person's exact
+        // placements. Without the natal chart here it had none to reference
+        // and simply invented them — and two users sharing a dasha lord and
+        // Moon house got prompts differing only by their name.
+        date: todayLocal,
+        chart: buildFullChartContext(chart),
         dasha: chart.dasha?.current,
         moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
         transit_highlights: tr.highlights,
@@ -1742,6 +1896,66 @@ app.delete("/api/profiles/:chartId", async (req, res) => {
 });
 
 /**
+ * PUT /api/profiles/:chartId — correct a chart's birth details in place.
+ *
+ * Exists because a wrong AM/PM moves the Lagna by half a zodiac and, without
+ * this, the only remedy was delete-and-retype — while the create screen was
+ * telling people they could "correct the time later from Profiles".
+ *
+ * The chart id is preserved (people have already opened and shared it), which
+ * is exactly why `updateChart` clears every cached reading and the chat memory:
+ * all of it was computed from the previous birth moment. Ownership is enforced
+ * by the global :chartId guard. No quota is charged — fixing a typo is not a
+ * new chart.
+ */
+app.put("/api/profiles/:chartId", async (req, res) => {
+  try {
+    const v = validateBirthInput(req.body);
+    if (!v.ok || !v.value) {
+      return res.status(400).json({ error: "Invalid input", details: v.errors });
+    }
+    const input = v.value;
+    const isoDatetime = buildIsoDatetime(input.date_of_birth, input.time_of_birth, input.timezone);
+
+    // Always the local engine: an edit must not depend on a paid provider or
+    // spend a credit to fix a typo.
+    const local = computeChart({
+      datetime: isoDatetime,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      ayanamsa: AYANAMSA,
+    });
+    const raw = {
+      request: { datetime: isoDatetime, latitude: input.latitude, longitude: input.longitude, ayanamsa: AYANAMSA },
+      engine: "local",
+      planet_position: local.planetPositionData,
+      dasha_periods: local.dashaData,
+    };
+    const { normalized, validationStatus } = normalizeChart({
+      birth: input,
+      isoDatetime,
+      ayanamsa: AYANAMSA,
+      planetPositionData: local.planetPositionData,
+      birthDetailsData: undefined,
+      dashaData: local.dashaData,
+      raw,
+      provider: "local",
+    });
+
+    await updateChart({
+      chartId: req.params.chartId,
+      birth: input,
+      normalized,
+      raw,
+      validationStatus,
+    });
+    res.json({ success: true, id: req.params.chartId });
+  } catch (err: any) {
+    fail(res, 500, "Could not update this kundli. Please try again.", err, "update-chart");
+  }
+});
+
+/**
  * POST /api/generate-report  (alias: /api/generate-life-report)
  * Generates an AI life report from the SAVED normalized chart only.
  */
@@ -1763,16 +1977,23 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
       });
     }
 
-    const language =
-      (typeof req.body?.language === "string" && req.body.language.trim()) ||
-      chart.birth_details?.language ||
-      "en";
+    // Validated, not free-form: this value doubles as a cache key in the same
+    // column the other surfaces namespace ("report:career:…"), so an arbitrary
+    // string here could read or overwrite one of those slots.
+    const requested = req.body?.language;
+    const language = isSupportedLanguage(requested)
+      ? requested
+      : (chart.birth_details?.language || "en");
     const regenerate = req.body?.regenerate === true;
+    // Namespaced like the other report kinds so no language value can ever
+    // collide with them, and date-bound to the running antardasha so the text
+    // refreshes when the astrology it describes actually changes.
+    const lifeKey = `life:${language}:${chart.dasha?.current?.antardasha_to || "na"}`;
 
     // Cache: reuse an existing report for this chart + language so repeat views
     // (or the same person again) are instant and don't re-call the AI.
     if (!regenerate) {
-      const cached = await getReport(chartId, language);
+      const cached = await getReport(chartId, lifeKey);
       if (cached) return res.json({ ...cached, cached: true });
     }
 
@@ -1794,7 +2015,7 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     const report = await generateLifeReport(chart, language, transit);
     if (report?.error) return res.status(502).json(report);
 
-    await insertReport({ chartId, report, language });
+    await insertReport({ chartId, report, language: lifeKey });
     res.json(report);
   } catch (err: any) {
     console.error("[generate-report] error:", err?.message);
@@ -1818,11 +2039,26 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
     const chart = await getNormalizedChart(chartId);
     if (!chart) return res.status(404).json({ error: "Chart not found" });
 
-    const language = chart.birth_details?.language || "en";
-    const cacheKey = `report:${type}`;
+    const language = normalizeLanguage(req.query.lang, chart.birth_details?.language || "en");
+    // Keyed on when the running antardasha ENDS, so the cache invalidates
+    // itself exactly when the astrology changes. Without the date the report
+    // was cached forever, and kept describing a "current phase" belonging to a
+    // dasha that had finished months earlier.
+    const cacheKey = `report:${type}:${language}:${chart.dasha?.current?.antardasha_to || "na"}`;
     if (req.query.regenerate !== "1") {
       const cached = await getReport(chartId, cacheKey);
       if (cached) return res.json({ ...cached, cached: true });
+    }
+
+    // Gated after the cache check so re-reading a generated report is free and
+    // only real AI work counts — but OUTSIDE the regenerate branch, because
+    // ?regenerate=1 skips the cache entirely and is exactly the path that
+    // needs a ceiling.
+    {
+      const over = await checkQuota(req as any, "report");
+      if (over) return res.status(429).json(over);
+      const q = identityOf(req as any);
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "report", meta: { surface: "report" } }).catch(() => {});
     }
 
     let transit: any = null;
@@ -1862,7 +2098,9 @@ app.get("/api/right-now", (req, res) => {
       timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false,
     }).format(now);
 
-    const panchang = buildPanchang({ date, latitude, longitude, timezone, ayanamsa: AYANAMSA });
+    // atInstant: the vara runs sunrise-to-sunrise, so before sunrise this is
+    // still yesterday's weekday — and Rahu Kaal / choghadiya key off it.
+    const panchang = buildPanchang({ date, latitude, longitude, timezone, ayanamsa: AYANAMSA, atInstant: new Date() });
     const result = buildRightNow(panchang, nowHHMM, activity);
     res.json({
       ...result,
@@ -1890,13 +2128,23 @@ app.get("/api/chart/:chartId/today-plan", async (req, res) => {
     const b = chart.birth_details || {};
     const tz = b.timezone || "Asia/Kolkata";
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
-    const language = typeof req.query.lang === "string" && req.query.lang.trim()
-      ? req.query.lang.trim() : (b.language || "en");
+    const language = normalizeLanguage(req.query.lang, b.language || "en");
 
     const cacheKey = `plan:${today}:${language}`;
     if (req.query.regenerate !== "1") {
       const cached = await getReport(chartId, cacheKey);
       if (cached) return res.json({ ...cached, cached: true });
+    }
+
+    // Gated after the cache check so re-reading a generated page is free and
+    // only real AI work counts — but OUTSIDE the regenerate branch, because
+    // ?regenerate=1 skips the cache entirely and is exactly the path that
+    // needs a ceiling.
+    {
+      const over = await checkQuota(req as any, "daily");
+      if (over) return res.status(429).json(over);
+      const q = identityOf(req as any);
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "daily", meta: { surface: "today-plan" } }).catch(() => {});
     }
 
     // Same timing signal the Right Now card uses, so the two never disagree.
@@ -1906,7 +2154,7 @@ app.get("/api/chart/:chartId/today-plan", async (req, res) => {
         const nowHHMM = new Intl.DateTimeFormat("en-GB", {
           timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
         }).format(new Date());
-        const p = buildPanchang({ date: today, latitude: b.latitude, longitude: b.longitude, timezone: tz, ayanamsa: AYANAMSA });
+        const p = buildPanchang({ date: today, latitude: b.latitude, longitude: b.longitude, timezone: tz, ayanamsa: AYANAMSA, atInstant: new Date() });
         const rn = buildRightNow(p, nowHHMM, "general");
         window = {
           verdict: rn.verdict,
@@ -1946,12 +2194,23 @@ app.get("/api/chart/:chartId/timeline", async (req, res) => {
     const chart = await getNormalizedChart(chartId);
     if (!chart) return res.status(404).json({ error: "Chart not found" });
 
-    const language = chart.birth_details?.language || "en";
+    const language = normalizeLanguage(req.query.lang, chart.birth_details?.language || "en");
     const today = new Date().toISOString().slice(0, 10);
-    const cacheKey = `timeline:${range}:${today}`;
+    const cacheKey = `timeline:${range}:${today}:${language}`;
     if (req.query.regenerate !== "1") {
       const cached = await getReport(chartId, cacheKey);
       if (cached) return res.json({ ...cached, cached: true });
+    }
+
+    // Gated after the cache check so re-reading a generated page is free and
+    // only real AI work counts — but OUTSIDE the regenerate branch, because
+    // ?regenerate=1 skips the cache entirely and is exactly the path that
+    // needs a ceiling.
+    {
+      const over = await checkQuota(req as any, "daily");
+      if (over) return res.status(429).json(over);
+      const q = identityOf(req as any);
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "daily", meta: { surface: "timeline" } }).catch(() => {});
     }
 
     let transit: any = null;

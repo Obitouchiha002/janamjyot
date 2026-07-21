@@ -6,6 +6,7 @@
  * "chart packet" and pass only that — never the raw provider response.
  */
 import { llmGenerate } from "./llm";
+import { detectYogas } from "./yogas";
 
 export const SYSTEM_PROMPT = `You are "Acharya", a warm and experienced Vedic astrologer (jyotishi) with decades
 of practice. You are talking to a real person who came to you for guidance. Speak
@@ -80,6 +81,28 @@ CARE & ETHICS (do this naturally, never as a stiff disclaimer):
   guide gently and suggest a professional where it truly matters.
 - For sensitive topics, close with one short, kind line that astrology offers
   guidance, not certainty.`;
+
+/**
+ * The languages a client may ask for.
+ *
+ * Worth validating against, because the chosen value is also used as part of a
+ * cache key in the reports table — an arbitrary string there lets a caller
+ * collide with another surface's namespaced key and corrupt their own cache.
+ */
+export function isSupportedLanguage(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  const k = v.trim().toLowerCase();
+  // `hasOwnProperty`, not `in`: `in` walks the prototype chain, so
+  // "constructor", "toString" and "__proto__" all passed — defeating the very
+  // cache-key hardening this exists for, and putting
+  // "function Object() { [native code] }" into the prompt.
+  return k === "hinglish" || Object.prototype.hasOwnProperty.call(LANGUAGE_NAMES, k);
+}
+
+/** Normalised language code, or the fallback if unsupported. */
+export function normalizeLanguage(v: unknown, fallback = "en"): string {
+  return isSupportedLanguage(v) ? String(v).trim().toLowerCase() : fallback;
+}
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",
@@ -210,8 +233,47 @@ export function buildFullChartContext(chart: any) {
     dasha: {
       current: chart.dasha?.current ?? null,
       next_7_years: chart.dasha?.next_7_years ?? [],
+      // Several prompts ask the model to read the earlier phase of life "from
+      // the dashas that already ran". Without this it had none, so any past
+      // claim with a date on it was invented — and an invented statement about
+      // someone's own past is the most convincing kind of wrong there is.
+      past: recentPastDashas(chart),
     },
+    // Both of these are computed deterministically elsewhere in the app, and
+    // several prompts already told the model to reason about "any Dhana yogas"
+    // and "any Manglik factor" — without supplying either. Manglik especially
+    // matters: it is a socially loaded verdict in Indian matchmaking, and an
+    // invented one can affect a real decision.
+    yogas: detectYogas(chart).yogas.map((y) => ({ name: y.name, summary: y.summary })),
+    manglik: isManglik(chart),
   };
+}
+
+/** Mars in 1/2/4/7/8/12 from the Lagna OR the Moon — the standard combined rule. */
+function isManglik(chart: any): boolean | null {
+  const planets: any[] = chart?.planet_positions ?? [];
+  const mars = planets.find((p) => p.planet === "Mars");
+  const moon = planets.find((p) => p.planet === "Moon");
+  if (!mars || !moon || mars.sign_id == null || moon.sign_id == null) return null;
+  const ascSign = chart?.d1_chart?.houses?.find((h: any) => h.house === 1)?.sign_id;
+  if (ascSign == null) return null;
+  const houseFrom = (s: number, ref: number) => ((s - ref + 12) % 12) + 1;
+  const houses = [1, 2, 4, 7, 8, 12];
+  return houses.includes(houseFrom(mars.sign_id, ascSign))
+    || houses.includes(houseFrom(mars.sign_id, moon.sign_id));
+}
+
+/** The last few antardashas that have already finished, oldest→newest. */
+function recentPastDashas(chart: any, limit = 8) {
+  const list: any[] = chart?.dasha?.antardasha ?? [];
+  const now = Date.now();
+  return list
+    .filter((a) => {
+      const to = new Date(a.to).getTime();
+      return Number.isFinite(to) && to < now;
+    })
+    .slice(-limit)
+    .map((a) => ({ period: a.label ?? a.lord, from: a.from, to: a.to }));
 }
 
 export function buildChartPacket(chart: any, category: Category, transit?: any) {
@@ -301,11 +363,13 @@ sub-heading line inside a phase. Keep it clean and well-structured.
 
 ANSWER (heading like "Answer" / "Seedha Jawab"): the direct answer to
 EXACTLY what they asked, first, in 1-2 lines.
-  • For predictions / future timing: ALWAYS commit to a concrete estimate — an
-    approximate age or year/period (e.g. "around 2028-2030"). Say it is approximate,
-    but give the estimate. Never refuse.
-  • For current-state questions (salary, money level, situation): give your best
-    approximate read or range from the chart. Never say you cannot.
+  • For predictions / future timing: commit to a concrete window taken from the
+    dasha/antardasha dates you were given (e.g. "around 2028-2030"). Say it is
+    approximate. These dates are real data — use them, do not hedge them away.
+  • For things a chart genuinely cannot show — a salary figure, an exact date, a
+    medical diagnosis — say so in ONE short line, then give what it CAN show:
+    the supportive dasha window, the area of life, the direction of the trend.
+    A number you invented is worse than an honest sentence.
 
 PAST (heading like "Past" / "Bhootkaal"): what the chart (and the dashas
 that already ran) suggest about the earlier phase of life RELEVANT to this question.
@@ -327,9 +391,9 @@ or named possibilities grounded in the chart.
   • Instead of "work related to communication", name what that can actually be —
     e.g. **content creation / writing**, **law (lawyer/advocate)**, **teaching or
     training**, **media / journalism**, **sales, marketing or PR**.
-  • Instead of "a surgery / health issue", name the likely area from the houses &
-    signs involved — e.g. **spine / back**, **stomach or abdomen (digestive)**,
-    **knees / legs**, **eyes**, **reproductive system**.
+  • For health, speak about CARE, not diagnosis — the 6th house and lagna lord can
+    suggest where to be attentive (rest, diet, stress, routine) and when, but never
+    name a condition, an organ or a surgery. That is a doctor's job, not a chart's.
   • Instead of "things will improve", say HOW, in WHAT, and WHEN — name the area,
     and give a concrete time-window from the dasha (months / years / an age range,
     e.g. **between 2026 and 2028**).
@@ -1005,8 +1069,15 @@ export async function generateDailyGuidance(context: any, language: string): Pro
 ${languageInstruction(language)}
 
 For THIS person, write today's personalised guidance using ONLY the data below —
-their running dasha, today's live Moon transit and today's panchang. Interpret this
-data; never invent planets, dates or events.
+their natal chart (planets, signs, houses), their running dasha, today's live Moon
+transit and today's panchang. Interpret this data; never invent planets, dates or
+events.
+
+Anchor each area to a placement you can actually SEE in the chart: career to the
+10th house and whatever occupies it, money to the 2nd and 11th, relationship to
+the 7th and Venus, health to the 6th and the lagna lord — each read through the
+running dasha and where the Moon is today. If an area has nothing notable, say
+the day is quiet there. Never name a placement that is not in the data.
 
 Give a SHORT, SPECIFIC prediction for TODAY in each area (1-2 sentences each),
 grounded in where the Moon is transiting for them and their current dasha lord. Be

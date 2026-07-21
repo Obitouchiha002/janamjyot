@@ -89,9 +89,18 @@ export async function optionalAuth(req: any, _res: Response, next: NextFunction)
   const payload = tok ? verifyToken(tok) : null;
   if (payload?.sub) {
     const user = await getUserById(payload.sub);
-    // Carry plan + per-user limit overrides so quota checks on optional-auth
-    // routes see the same account the strict middleware would.
-    if (user) req.user = { id: user.id, email: user.email, name: user.name, role: user.role, plan: (user as any).plan, limits_json: (user as any).limits_json };
+    const status = (user as any)?.status ?? ((user as any)?.suspended ? "blocked" : "active");
+    // A suspended or banned account must not be attached. Nearly every product
+    // route (chat, consult, create-chart, reports) runs on optionalAuth, so
+    // skipping this check meant a ban only blocked /auth/me and /account — the
+    // banned user's existing token kept working everywhere that matters, at
+    // their old plan's quota. Leaving req.user unset degrades them to an
+    // anonymous device rather than silently granting the account.
+    if (user && status === "active") {
+      // Carry plan + per-user limit overrides so quota checks on optional-auth
+      // routes see the same account the strict middleware would.
+      req.user = { id: user.id, email: user.email, name: user.name, role: user.role, plan: (user as any).plan, limits_json: (user as any).limits_json };
+    }
   }
   next();
 }

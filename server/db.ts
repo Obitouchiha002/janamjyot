@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
   id         BIGSERIAL PRIMARY KEY,
   user_id    UUID,
   device_id  TEXT,
-  action     TEXT NOT NULL,   -- 'chart' | 'report' | 'ask' | 'match'
+  action     TEXT NOT NULL,   -- 'chart' | 'report' | 'ask' | 'match' | 'daily'
   meta       JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -409,7 +409,7 @@ export type PlanId = "free" | "pro" | "unlimited";
 export type AccountStatus = "active" | "blocked" | "banned";
 
 /** The metered actions. Everything else is free to call. */
-export type QuotaAction = "chart" | "report" | "ask" | "match";
+export type QuotaAction = "chart" | "report" | "ask" | "match" | "daily";
 
 export interface Quotas {
   /** Total saved charts allowed. */
@@ -420,13 +420,17 @@ export interface Quotas {
   ask: number;
   /** Kundli matches per day. */
   match: number;
+  /** Everyday readings (Today, daily guidance, today-plan, timeline) per day.
+   *  A fair-use ceiling on AI spend, not a product limit — set high enough
+   *  that ordinary use never sees it. */
+  daily: number;
 }
 
 /** -1 means unlimited. Tuned for free AI provider quotas — accuracy over volume. */
 export const PLANS: Record<PlanId, Quotas> = {
-  free: { chart: 3, report: 2, ask: 15, match: 3 },
-  pro: { chart: 25, report: 20, ask: 100, match: 25 },
-  unlimited: { chart: -1, report: -1, ask: -1, match: -1 },
+  free: { chart: 3, report: 2, ask: 15, match: 3, daily: 40 },
+  pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
+  unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
 };
 
 /** The window each quota is counted over. `chart` is a lifetime cap, not a rate. */
@@ -435,6 +439,12 @@ export const QUOTA_WINDOW: Record<QuotaAction, "day" | "month" | "total"> = {
   report: "month",
   ask: "day",
   match: "day",
+  // The everyday surfaces (Today, daily guidance, today-plan, timeline) are a
+  // separate, generous per-DAY bucket. They were briefly metered as "report",
+  // which is 2 per MONTH on free — so simply opening the Home screen twice
+  // exhausted the user's actual life-report allowance and then 429'd the Home
+  // card itself. These need a ceiling against runaway AI spend, not a budget.
+  daily: "day",
 };
 
 /**
@@ -986,6 +996,53 @@ export async function recordUsage(args: {
 }
 
 /**
+ * APK download counter.
+ *
+ * Recorded as a usage_event rather than a settings counter so it is an atomic
+ * INSERT with no read-modify-write race, and so "today" and "this week" come
+ * for free from the existing (action, created_at) index.
+ *
+ * Deliberately stores no user id: the download page is public and someone
+ * fetching an APK has not agreed to anything. `ipHash` is a short one-way
+ * digest used only to collapse the double-fire some browsers do on a download
+ * click — it is not an identifier we can reverse.
+ */
+export async function recordDownload(ipHash: string | null): Promise<void> {
+  if (!USE_PG) return;
+  try {
+    await pool!.query(
+      `INSERT INTO usage_events (user_id, device_id, action, meta)
+       SELECT NULL, $1, 'download', NULL
+        WHERE NOT EXISTS (
+          SELECT 1 FROM usage_events
+           WHERE action = 'download' AND device_id = $1
+             AND created_at > now() - interval '10 minutes'
+        )`,
+      [ipHash],
+    );
+  } catch (e) {
+    console.warn("[download] failed to record", (e as Error).message);
+  }
+}
+
+/** Total / today / last-7-day APK downloads, for the admin panel and the site. */
+export async function downloadStats(): Promise<{ total: number; today: number; week: number }> {
+  if (!USE_PG) return { total: 0, today: 0, week: 0 };
+  try {
+    const { rows } = await pool!.query(
+      `SELECT
+         count(*)::int AS total,
+         count(*) FILTER (WHERE created_at >= date_trunc('day', now()))::int AS today,
+         count(*) FILTER (WHERE created_at >= now() - interval '7 days')::int AS week
+       FROM usage_events WHERE action = 'download'`,
+    );
+    return { total: rows[0]?.total ?? 0, today: rows[0]?.today ?? 0, week: rows[0]?.week ?? 0 };
+  } catch {
+    return { total: 0, today: 0, week: 0 };
+  }
+}
+
+/**
  * How many times an identity has performed an action inside its quota window.
  *
  * `chart` counts saved charts rather than usage rows: a chart the user deleted
@@ -1199,6 +1256,11 @@ export async function getNormalizedChart(chartId: string): Promise<any | null> {
   chart.chart_id = chartId;
   chart.validation_status = row.validation_status;
   chart.owner_id = row.owner_id ?? null;
+  // Must mirror the Postgres branch above. Without `device_id`, canAccessChart
+  // sees neither an owner nor a device on the chart and denies everyone — so
+  // on the file-store fallback EVERY guest chart 403'd, even though the same
+  // chart showed up in that device's profile list.
+  chart.device_id = row.device_id ?? null;
   return chart;
 }
 
@@ -1277,6 +1339,64 @@ export async function deleteChart(chartId: string): Promise<void> {
   fileData.ai_reports = fileData.ai_reports.filter((r) => !removedChartIds.has(r.chart_id));
   fileData.chat_messages = fileData.chat_messages.filter((m) => !removedChartIds.has(m.chart_id));
   if (fileData.chat_memory) for (const id of removedChartIds) delete fileData.chat_memory[id];
+  saveFile();
+}
+
+/**
+ * Overwrite a chart in place after its birth details were corrected.
+ *
+ * Keeps the same chart id — a kundli people have already opened, shared and
+ * chatted about shouldn't change identity because they fixed an AM/PM. That
+ * makes clearing the derived data essential: every cached reading (life
+ * report, focused reports, timeline, daily) and the chat memory were computed
+ * from the OLD birth moment, and silently serving them against corrected
+ * details would be worse than not offering editing at all.
+ */
+export async function updateChart(args: {
+  chartId: string;
+  birth: BirthProfileInput;
+  normalized: any;
+  raw: any;
+  validationStatus: string;
+}): Promise<void> {
+  const { chartId, birth, normalized, raw, validationStatus } = args;
+  if (USE_PG) {
+    const { rows } = await pool!.query(
+      `SELECT birth_profile_id FROM chart_calculations WHERE id = $1`,
+      [chartId]
+    );
+    const profileId = rows[0]?.birth_profile_id;
+    if (!profileId) return;
+    await pool!.query(
+      `UPDATE birth_profiles
+          SET name=$2, date_of_birth=$3, time_of_birth=$4, place_of_birth=$5,
+              latitude=$6, longitude=$7, timezone=$8, gender=$9, language=$10
+        WHERE id=$1`,
+      [profileId, birth.name, birth.date_of_birth, birth.time_of_birth, birth.place_of_birth,
+       birth.latitude, birth.longitude, birth.timezone, birth.gender ?? "", birth.language]
+    );
+    await pool!.query(
+      `UPDATE chart_calculations
+          SET normalized_chart_json=$2, raw_provider_json=$3, validation_status=$4
+        WHERE id=$1`,
+      [chartId, normalized, raw, validationStatus]
+    );
+    await pool!.query(`DELETE FROM ai_reports   WHERE chart_id = $1`, [chartId]);
+    await pool!.query(`DELETE FROM chat_messages WHERE chart_id = $1`, [chartId]);
+    await pool!.query(`DELETE FROM chat_memory   WHERE chart_id = $1`, [chartId]);
+    return;
+  }
+
+  const chart = fileData.chart_calculations[chartId];
+  if (!chart) return;
+  const profile = fileData.birth_profiles[chart.birth_profile_id];
+  if (profile) Object.assign(profile, birth);
+  chart.normalized_chart_json = normalized;
+  chart.raw_provider_json = raw;
+  chart.validation_status = validationStatus;
+  fileData.ai_reports = fileData.ai_reports.filter((r) => r.chart_id !== chartId);
+  fileData.chat_messages = fileData.chat_messages.filter((m) => m.chart_id !== chartId);
+  if (fileData.chat_memory) delete fileData.chat_memory[chartId];
   saveFile();
 }
 
