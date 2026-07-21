@@ -98,7 +98,7 @@ function FeedbackSheet({ context, onClose }: { context: string; onClose: () => v
             onClick={onClose}
             feedback="tap"
             aria-label="Close"
-            className="absolute -top-1 right-0 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
+            className="tap-44 absolute -top-1 right-0 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
           >
             <X className="h-[18px] w-[18px]" strokeWidth={2.4} />
           </Pressable>

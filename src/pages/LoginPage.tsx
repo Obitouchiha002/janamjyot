@@ -10,11 +10,13 @@ const INPUT_CLS =
   "w-full rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] outline-none transition-colors focus:border-accent";
 
 /**
- * `onGuest` is passed only when this renders as the launch gate (see App.tsx).
+ * Also renders as the launch gate (see App.tsx). There is no guest path:
+ * every non-public /api route requires a token, so a guest would have nothing
+ * to load.
  * In that mode there is no router history to go "back" to, so we surface a
  * "Continue as guest" escape hatch instead of stranding the user on the screen.
  */
-export default function LoginPage({ onGuest }: { onGuest?: () => void } = {}) {
+export default function LoginPage() {
   const { login, signup, loginWithOtp } = useAuth();
   const nav = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -330,15 +332,6 @@ export default function LoginPage({ onGuest }: { onGuest?: () => void } = {}) {
         )}
       </div>
 
-      {onGuest && (
-        <Pressable
-          onClick={() => { haptic.tap(); onGuest(); }}
-          subtle
-          className="m-enter mt-5 text-center text-[13px] font-semibold text-muted-foreground"
-        >
-          Continue as guest
-        </Pressable>
-      )}
 
       <p className="m-enter mt-5 px-4 text-center text-[11.5px] leading-relaxed text-muted-foreground">
         By continuing you agree this app is for spiritual guidance and entertainment.

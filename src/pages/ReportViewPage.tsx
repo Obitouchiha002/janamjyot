@@ -4,6 +4,7 @@ import { Download, Share2, Sparkles, Loader2 } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
 import { Pressable } from "@/components/mobile/Pressable";
+import { LoadError } from "@/components/ErrorState";
 import { isNative, saveToDownloads, shareFile, shareText } from "@/lib/native";
 import { getLang } from "@/lib/prefs";
 
@@ -16,15 +17,18 @@ export default function ReportViewPage() {
   const [busy, setBusy] = useState<"" | "pdf" | "share">("");
   const lang = getLang();
 
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+
   useEffect(() => {
     if (!chartId || !type) return;
-    setLoading(true);
-    fetch(`/api/chart/${chartId}/report/${type}`)
-      .then((r) => r.json())
-      .then((j) => { if (!j.error) setData(j); })
-      .catch(() => {})
+    setLoading(true); setFailed(false);
+    fetch(`/api/chart/${chartId}/report/${type}?lang=${encodeURIComponent(lang)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => (j?.error ? setFailed(true) : setData(j)))
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
-  }, [chartId, type]);
+  }, [chartId, type, reload]);
 
   const fileName = () => `JanamJyot-${md(data?.title || "Report").replace(/[^a-z0-9]+/gi, "-")}.pdf`;
 
@@ -103,7 +107,14 @@ export default function ReportViewPage() {
       </div>
     );
   }
-  if (!data) return null;
+  if (failed || !data) {
+    return (
+      <LoadError
+        title="Couldn't load this report"
+        onRetry={() => setReload((n) => n + 1)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5 pt-2">

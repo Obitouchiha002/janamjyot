@@ -188,6 +188,31 @@ export default function PanchangPage() {
             </section>
           )}
 
+          {/* Abhijit — the one reliably auspicious window most people look for. */}
+          {data.periods?.abhijit && (
+            <section className="m-enter" style={{ animationDelay: '0.16s' }}>
+              <div
+                className="m-card flex items-center gap-3.5 p-4"
+                style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.12), transparent)', borderColor: '#34D39955' }}
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+                  <Sparkles className="h-[21px] w-[21px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14.5px] font-bold leading-tight">Abhijit Muhurat</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
+                    {data.periods.abhijit.note ?? 'Around midday — good for starting almost anything'}
+                  </span>
+                </span>
+                {!data.periods.abhijit.note && (
+                  <span className="shrink-0 text-[13px] font-bold text-emerald-400">
+                    {data.periods.abhijit.start} – {data.periods.abhijit.end}
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* choghadiya */}
           {data.day_choghadiya?.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.18s' }}>
@@ -200,22 +225,71 @@ export default function PanchangPage() {
                     <p className="mb-2 text-[12px] font-bold text-muted-foreground">{lbl}</p>
                     <div className="grid grid-cols-2 gap-2">
                       {list.map((c: any, i: number) => {
-                        const tint = choTint(c.quality);
+                        // A blocked slot is Rahu Kaal / Yamaganda / Gulika. It
+                        // can be a "good" choghadiya by name and still be a
+                        // window nobody starts anything in, so it must not
+                        // read as green.
+                        const tint = c.blocked ? '#F87171' : choTint(c.quality);
                         return (
                           <div
                             key={i}
                             className="rounded-xl border px-3 py-2"
                             style={{ background: `${tint}1A`, borderColor: `${tint}44` }}
                           >
-                            <p className="text-[13px] font-bold" style={{ color: tint }}>{c.name}</p>
+                            <p className="text-[13px] font-bold" style={{ color: tint }}>
+                              {c.name}
+                              {c.blocked && <span className="ml-1 text-[10px] font-bold">✕</span>}
+                            </p>
                             <p className="mt-0.5 text-[11.5px] text-muted-foreground">{c.start} – {c.end}</p>
+                            {c.blocked && (
+                              <p className="mt-0.5 text-[10.5px] font-bold" style={{ color: tint }}>{c.blocked}</p>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 ))}
-                <p className="text-[11.5px] text-muted-foreground">Green = auspicious · Amber = neutral · Red = avoid</p>
+                <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                  Green = auspicious · Amber = neutral · Red = avoid. A ✕ marks a window that falls
+                  inside Rahu Kaal, Yamaganda or Gulika — skip it even if the name looks good.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* Hora — 24 planetary hours. Unequal by convention: day and night are
+              each divided into 12, so they are rarely 60 minutes long. */}
+          {data.hora?.length > 0 && (
+            <section className="m-enter" style={{ animationDelay: '0.20s' }}>
+              <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
+                <Clock className="h-[15px] w-[15px]" /> Hora — planetary hours
+              </h3>
+              <div className="m-card p-4">
+                <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {data.hora.map((h: any, i: number) => {
+                    const tint = choTint(h.quality);
+                    return (
+                      <div
+                        key={i}
+                        className="w-[104px] shrink-0 rounded-xl border px-3 py-2.5"
+                        style={{ background: `${tint}14`, borderColor: `${tint}3A` }}
+                      >
+                        <p className="text-[13px] font-bold" style={{ color: tint }}>{h.lord}</p>
+                        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{h.start}</p>
+                        <p className="text-[11px] leading-snug text-muted-foreground">– {h.end}</p>
+                        <p className="mt-1 text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
+                          {h.is_day ? 'Day' : 'Night'}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+                  Each hora is ruled by a planet — Jupiter, Venus, Mercury and Moon horas suit new
+                  work, money and talks. Day and night are each split into 12, so a hora is not
+                  exactly one hour.
+                </p>
               </div>
             </section>
           )}

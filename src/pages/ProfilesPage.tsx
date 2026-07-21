@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { User, Trash2, Plus, ChevronRight, Sparkles } from 'lucide-react';
+import { User, Trash2, Plus, ChevronRight, Sparkles, Pencil } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { haptic } from '@/lib/native';
+import { invalidateProfiles } from '@/pages/HomePage';
 
 export default function ProfilesPage() {
   const [profiles, setProfiles] = useState<any[] | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetch('/api/profiles')
@@ -16,11 +18,20 @@ export default function ProfilesPage() {
 
   const remove = async (id: string) => {
     haptic.warning();
-    setProfiles((p) => (p ?? []).filter((x) => x.id !== id));
+    const before = profiles ?? [];
+    setProfiles(before.filter((x) => x.id !== id));
     setConfirmId(null);
     try {
-      await fetch(`/api/profiles/${id}`, { method: 'DELETE' });
-    } catch { /* the list refreshes on next visit */ }
+      const r = await fetch(`/api/profiles/${id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error(String(r.status));
+      invalidateProfiles();
+    } catch {
+      // Put the row back rather than let the UI claim a delete that didn't
+      // happen — it used to reappear on the next visit with no explanation.
+      setProfiles(before);
+      setError("Couldn't delete that kundli. Check your connection and try again.");
+      haptic.error();
+    }
   };
 
   return (
@@ -34,6 +45,12 @@ export default function ProfilesPage() {
         New Kundli
       </Pressable>
 
+      {error && (
+        <p className="rounded-2xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-[12.5px] leading-relaxed text-red-300">
+          {error}
+        </p>
+      )}
+
       {profiles === null && (
         <div className="space-y-2.5">
           {[0, 1, 2].map((i) => (
@@ -42,14 +59,23 @@ export default function ProfilesPage() {
         </div>
       )}
 
+      {/* Tappable, not a dead end — this is a whole bottom-nav tab, and for a
+          new user it is the first thing they find in it. */}
       {profiles?.length === 0 && (
-        <div className="m-card flex flex-col items-center gap-2 px-6 py-14 text-center">
+        <Pressable
+          to="/create-chart"
+          feedback="medium"
+          className="m-card flex w-full flex-col items-center gap-2 px-6 py-14 text-center"
+        >
           <Sparkles className="h-8 w-8 text-accent" />
-          <p className="text-[15px] font-bold">No kundlis yet</p>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
+          <span className="text-[15px] font-bold">No kundlis yet</span>
+          <span className="text-[13px] leading-relaxed text-muted-foreground">
             Enter your date, time and place of birth to create your first kundli.
-          </p>
-        </div>
+          </span>
+          <span className="mt-3 rounded-full bg-accent px-5 py-2.5 text-[13.5px] font-bold text-accent-foreground">
+            Create my Kundli
+          </span>
+        </Pressable>
       )}
 
       <div className="space-y-2.5">
@@ -79,6 +105,17 @@ export default function ProfilesPage() {
                 <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
               </Pressable>
 
+              {/* Editing matters more than it looks: a wrong AM/PM moves the
+                  Lagna by half a zodiac, and the only fix used to be deleting
+                  the kundli and typing everything again. */}
+              <Pressable
+                to={`/edit-chart/${p.id}`}
+                aria-label={`Edit ${p.name}`}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted-foreground"
+              >
+                <Pencil className="h-[17px] w-[17px]" />
+              </Pressable>
+
               <Pressable
                 onClick={() => { haptic.tap(); setConfirmId(confirmId === p.id ? null : p.id); }}
                 aria-label={`Delete ${p.name}`}
@@ -95,7 +132,7 @@ export default function ProfilesPage() {
                 <Pressable
                   onClick={() => setConfirmId(null)}
                   subtle
-                  className="rounded-full border border-border px-4 py-1.5 text-[13px] font-semibold"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-border px-4 text-[13px] font-semibold"
                 >
                   Cancel
                 </Pressable>
@@ -103,7 +140,7 @@ export default function ProfilesPage() {
                   onClick={() => remove(p.id)}
                   feedback="heavy"
                   subtle
-                  className="rounded-full bg-destructive px-4 py-1.5 text-[13px] font-bold text-white"
+                  className="inline-flex min-h-[44px] items-center rounded-full bg-destructive px-4 text-[13px] font-bold text-white"
                 >
                   Delete
                 </Pressable>

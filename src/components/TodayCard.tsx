@@ -25,6 +25,10 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
   const [language, setLanguage] = useState<string>(lang || getLang());
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  // Guards the lazy-load effect below. Without it a failed request leaves
+  // `d` null and `loading` false, which is exactly the condition that fires
+  // the effect again — an unbounded request loop on the Home screen.
+  const [tried, setTried] = useState(false);
 
   const load = useCallback(async (lg: string) => {
     if (!chartId) return;
@@ -34,17 +38,20 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
       const j = await r.json();
       if (!j.error) setD(j);
     } catch { /* leave the previous copy on screen */ }
-    finally { setLoading(false); }
+    finally { setLoading(false); setTried(true); }
   }, [chartId]);
 
   // Load lazily — only once the card is actually opened.
-  useEffect(() => { if (open && !d && !loading) load(language); }, [open, d, loading, language, load]);
+  useEffect(() => {
+    if (open && !d && !loading && !tried) load(language);
+  }, [open, d, loading, tried, language, load]);
 
   const switchLang = (lg: string) => {
     if (lg === language) return;
     haptic.select();
     setLanguage(lg);
     setD(null);          // force a refetch in the new language
+    setTried(false);
     load(lg);
   };
 

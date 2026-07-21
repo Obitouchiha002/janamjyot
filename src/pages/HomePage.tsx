@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import {
   Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
   MessageCircleQuestion, Orbit, ScrollText, Gem, User, CheckCircle2, PauseCircle, XCircle,
@@ -88,26 +89,34 @@ const ACTIONS: Action[] = [
  */
 let profilesCache: any[] | null = null;
 
+/**
+ * Drop the cached list after a create or delete.
+ *
+ * Without this, coming back to Home after deleting a kundli renders the
+ * deleted person's name in the hero for a frame before the refetch corrects
+ * it — and if they deleted their only chart, the whole hero is wrong.
+ */
+export function invalidateProfiles() {
+  profilesCache = null;
+}
+
 /** Live "is now a good moment?" strip. Tapping it opens the full checker. */
 function RightNowCard({ chartId }: { chartId: string }) {
   const [d, setD] = useState<any>(null);
 
-  useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      try {
-        const c = await (await fetch(`/api/chart/${chartId}`)).json();
-        const b = c?.birth_details;
-        const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
-        const tz = b?.timezone || 'Asia/Kolkata';
-        const r = await (await fetch(`/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}`)).json();
-        if (alive && !r.error) setD(r);
-      } catch { /* the card just stays hidden */ }
-    };
-    run();
-    const t = setInterval(run, 5 * 60_000); // windows roll over while you sit here
-    return () => { alive = false; clearInterval(t); };
+  const run = useCallback(async () => {
+    try {
+      const c = await (await fetch(`/api/chart/${chartId}`)).json();
+      const b = c?.birth_details;
+      const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
+      const tz = b?.timezone || 'Asia/Kolkata';
+      const r = await (await fetch(`/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}`)).json();
+      if (!r.error) setD(r);
+    } catch { /* the card just stays hidden */ }
   }, [chartId]);
+
+  // Windows roll over while you sit here — but only poll while on screen.
+  useVisibleInterval(run, 5 * 60_000);
 
   if (!d) return null;
   const tint = d.verdict === 'go' ? '#22C55E' : d.verdict === 'wait' ? '#E8B44A' : '#F87171';
@@ -201,7 +210,7 @@ export default function HomePage() {
               <span className="text-accent">precisely read</span>
             </h2>
             <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground max-w-[78%]">
-              Precise Vedic charts, dashas and AI guidance, calculated with the Swiss Ephemeris.
+              Sidereal Lahiri charts, dashas and AI guidance — calculated on your exact birth moment.
             </p>
             <Pressable
               to="/create-chart"
@@ -331,12 +340,15 @@ export default function HomePage() {
       {/* ── Deep links for the primary chart ─────────────────────────────── */}
       {primary && (
         <section className="m-enter grid grid-cols-2 gap-3" style={{ animationDelay: '0.18s' }}>
+          {/* Was a second "Talk to Astrologer" — the floating button above
+              already owns that route. Matching is otherwise unreachable
+              from Home, so it earns the slot. */}
           <Pressable
-            to={`/ask/${primary.id}`}
+            to="/match"
             className="m-card flex items-center gap-3 p-4 text-left"
           >
-            <MessageCircleQuestion className="h-5 w-5 shrink-0 text-accent" />
-            <span className="text-[13.5px] font-bold leading-tight">Talk to Astrologer</span>
+            <HeartHandshake className="h-5 w-5 shrink-0 text-accent" />
+            <span className="text-[13.5px] font-bold leading-tight">Kundli Matching</span>
           </Pressable>
           <Pressable
             to={`/reports/${primary.id}`}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import ProfilePicker from "@/components/ProfilePicker";
+import { LoadError } from "@/components/ErrorState";
 
 export default function AshtakavargaPage({ chartId: extId, onChartId }: { chartId?: string; onChartId?: (id: string) => void }) {
   const [intId, setIntId] = useState("");
@@ -7,15 +8,25 @@ export default function AshtakavargaPage({ chartId: extId, onChartId }: { chartI
   const setChartId = onChartId ?? setIntId;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!chartId) return;
-    setLoading(true); setData(null);
-    fetch(`/api/chart/${chartId}/ashtakavarga`).then((r) => r.json()).then((j) => { if (!j.error) setData(j); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, [chartId]);
+    setLoading(true); setData(null); setFailed(false);
+    // A swallowed error used to leave the picker above an empty screen
+    // forever, with nothing to tap and no way to tell failure from "empty".
+    fetch(`/api/chart/${chartId}/ashtakavarga`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => (j?.error ? setFailed(true) : setData(j)))
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }, [chartId, reload]);
 
-  const maxBindu = data ? Math.max(...data.sav.map((s: any) => s.bindus)) : 1;
+  // `data` alone wasn't enough of a guard — a 200 response without `sav` threw
+  // here, during render, before any null check below could run.
+  const sav: any[] = Array.isArray(data?.sav) ? data.sav : [];
+  const maxBindu = sav.length ? Math.max(...sav.map((s: any) => s.bindus)) : 1;
   const barColor = (b: number) => b >= 30 ? "#34D399" : b <= 25 ? "#F87171" : "#E8B44A";
 
   return (
@@ -29,6 +40,8 @@ export default function AshtakavargaPage({ chartId: extId, onChartId }: { chartI
           <div className="skeleton h-[320px]" />
           <div className="skeleton h-[140px]" />
         </div>
+      ) : failed ? (
+        <LoadError title="Couldn't load Ashtakavarga" onRetry={() => setReload((n) => n + 1)} />
       ) : data && (
         <>
           {/* Sarvashtakavarga — one row per sign, bar sized to its bindus */}
@@ -37,7 +50,7 @@ export default function AshtakavargaPage({ chartId: extId, onChartId }: { chartI
               Sarvashtakavarga · {data.savTotal} bindus
             </h3>
             <div className="m-card space-y-2 p-4">
-              {data.sav.map((s: any, i: number) => {
+              {sav.map((s: any, i: number) => {
                 const lagna = s.sign === data.ascendant_sign;
                 return (
                   <div key={s.sign} className="flex items-center gap-2.5">

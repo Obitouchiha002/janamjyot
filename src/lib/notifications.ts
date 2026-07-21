@@ -28,7 +28,37 @@ export interface NotifPrefs {
 const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, remedy: false, monthly: true, dasha: true };
 
 // Stable ids so re-scheduling replaces (never duplicates) each reminder.
-const ID = { daily: 1001, remedy: 1002, monthly: 1003, dasha: 1004 };
+const ID = { daily: 1001, remedy: 1002, monthly: 1003, dasha: 1004, window: 1005 };
+
+/**
+ * One-off "ping me when the good window opens", used by Right Now.
+ *
+ * Reuses a single id on purpose: asking for a second reminder replaces the
+ * first rather than stacking buzzes the user never asked for.
+ */
+export async function remindAt(
+  at: Date,
+  opts: { title: string; body: string; route?: string },
+): Promise<boolean> {
+  if (!isNative) return false;
+  if (at.getTime() <= Date.now()) return false;
+  if (!(await ensureNotifPermission())) return false;
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: ID.window }] });
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: ID.window,
+        title: opts.title,
+        body: opts.body,
+        schedule: { at, allowWhileIdle: true },
+        extra: opts.route ? { route: opts.route } : undefined,
+      }],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function getNotifPrefs(): NotifPrefs {
   try {

@@ -37,14 +37,55 @@ export const isLowPowerDevice: boolean = (() => {
    `tap` is the one used on every interactive element. Keep it light: Android
    fires these synchronously and a heavy style on a list scroll feels broken. */
 
+/**
+ * Vibration strength, user-controlled.
+ *
+ * `full` is still deliberately gentle: Android's *notification* haptics
+ * (Success/Warning/Error) are long buzzes that feel like an alarm when they
+ * fire on an ordinary button, so we use short impacts everywhere instead and
+ * keep the real notification pattern only for errors, where a distinct feel is
+ * worth it.
+ */
+export type HapticLevel = 'off' | 'light' | 'full';
+const HAPTIC_KEY = 'jj:haptics';
+
+export function getHapticLevel(): HapticLevel {
+  try {
+    const v = localStorage.getItem(HAPTIC_KEY);
+    if (v === 'off' || v === 'light' || v === 'full') return v;
+  } catch { /* ignore */ }
+  return 'light'; // gentle by default — the old behaviour felt too strong
+}
+
+export function setHapticLevel(level: HapticLevel): void {
+  try { localStorage.setItem(HAPTIC_KEY, level); } catch { /* ignore */ }
+}
+
+const impact = (style: ImpactStyle) => {
+  if (!isNative) return;
+  if (getHapticLevel() === 'off') return;
+  Haptics.impact({ style }).catch(() => {});
+};
+
 export const haptic = {
-  tap: () => { if (isNative) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {}); },
-  medium: () => { if (isNative) Haptics.impact({ style: ImpactStyle.Medium }).catch(() => {}); },
-  heavy: () => { if (isNative) Haptics.impact({ style: ImpactStyle.Heavy }).catch(() => {}); },
-  select: () => { if (isNative) Haptics.selectionChanged().catch(() => {}); },
-  success: () => { if (isNative) Haptics.notification({ type: NotificationType.Success }).catch(() => {}); },
-  warning: () => { if (isNative) Haptics.notification({ type: NotificationType.Warning }).catch(() => {}); },
-  error: () => { if (isNative) Haptics.notification({ type: NotificationType.Error }).catch(() => {}); },
+  /** Every interactive element. Must stay barely-there. */
+  tap: () => impact(ImpactStyle.Light),
+  /** Primary actions (send, generate, confirm). */
+  medium: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Medium : ImpactStyle.Light),
+  heavy: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Heavy : ImpactStyle.Medium),
+  select: () => {
+    if (!isNative || getHapticLevel() === 'off') return;
+    Haptics.selectionChanged().catch(() => {});
+  },
+  /** Was a long notification buzz — now a single short pulse. */
+  success: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Medium : ImpactStyle.Light),
+  warning: () => impact(ImpactStyle.Light),
+  /** The one place a distinct notification pattern earns its keep. */
+  error: () => {
+    if (!isNative || getHapticLevel() === 'off') return;
+    if (getHapticLevel() === 'light') { impact(ImpactStyle.Medium); return; }
+    Haptics.notification({ type: NotificationType.Error }).catch(() => {});
+  },
 };
 
 /* ── Status bar ────────────────────────────────────────────────────────────

@@ -40,6 +40,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/tools$/, 'Tools'],
   [/^\/more$/, 'More'],
   [/^\/create-chart$/, 'New Kundli'],
+  [/^\/edit-chart\//, 'Edit Kundli'],
   [/^\/dashboard\//, 'Kundli'],
   [/^\/chart\/[^/]+\/d1$/, 'Lagna Chart (D1)'],
   [/^\/chart\/[^/]+\/d9$/, 'Navamsa (D9)'],
@@ -84,6 +85,7 @@ export function titleFor(pathname: string): string {
 export function depthOf(pathname: string): number {
   if (isRootTab(pathname)) return 0;
   if (/^\/(create-chart|match|login|help|settings|developer|ai-status|admin|muhurat|yogas|ashtakavarga|alerts)$/.test(pathname)) return 1;
+  if (/^\/edit-chart\//.test(pathname)) return 1;
   if (/^\/theme$/.test(pathname)) return 2;
   if (/^\/dashboard\//.test(pathname)) return 1;
   // The consultation chat is pushed from the astrologer-selection screen, so it

@@ -2,25 +2,10 @@ import { useEffect, useState } from "react";
 import { Sparkles, Gem, CalendarClock, Orbit, Check } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import { isNative } from "@/lib/native";
+import Switch from "@/components/mobile/Switch";
 import {
   getNotifPrefs, saveNotifPrefs, ensureNotifPermission, applyNotifications, type NotifPrefs,
 } from "@/lib/notifications";
-
-function Switch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${on ? "bg-accent" : "bg-muted-foreground/30"}`}
-    >
-      <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-[22px]" : "translate-x-0.5"}`}
-      />
-    </button>
-  );
-}
 
 interface Row {
   key: keyof NotifPrefs;
@@ -42,6 +27,7 @@ export default function NotificationsPage() {
   const [chartId, setChartId] = useState<string | undefined>();
   const [dasha, setDasha] = useState<any>(null);
   const [saved, setSaved] = useState(false);
+  const [denied, setDenied] = useState(false);
 
   useEffect(() => {
     fetch("/api/profiles")
@@ -57,10 +43,21 @@ export default function NotificationsPage() {
   }, []);
 
   const commit = async (next: NotifPrefs) => {
-    setPrefs(next);
-    saveNotifPrefs(next);
+    const previous = prefs;
+    setPrefs(next); // optimistic, so the toggle responds instantly
     const anyOn = next.daily || next.dasha || next.monthly || next.remedy;
-    if (anyOn) await ensureNotifPermission();
+
+    // Don't claim "Saved" when Android refused the permission — the reminders
+    // simply will not arrive. The old code discarded this result and showed
+    // the switch on regardless. Roll the toggle back so the UI never sits in a
+    // state the OS won't honour, and only persist once it's real.
+    if (anyOn && !(await ensureNotifPermission())) {
+      setPrefs(previous);
+      setDenied(true);
+      return;
+    }
+    saveNotifPrefs(next);
+    setDenied(false);
     await applyNotifications({ chartId, dasha });
     setSaved(true);
     setTimeout(() => setSaved(false), 1400);
@@ -90,7 +87,7 @@ export default function NotificationsPage() {
               <span className="block text-[14.5px] font-bold leading-tight">{label}</span>
               <span className="mt-0.5 block text-[12px] text-muted-foreground">{desc}</span>
             </span>
-            <Switch on={!!prefs[key]} onChange={() => toggle(key)} />
+            <Switch label={label} on={!!prefs[key]} onChange={() => toggle(key)} />
           </div>
         ))}
       </section>
@@ -109,6 +106,13 @@ export default function NotificationsPage() {
             className="rounded-xl border border-input bg-card px-3 py-2 text-[15px] font-bold outline-none focus:border-accent"
           />
         </section>
+      )}
+
+      {denied && (
+        <p className="m-enter rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-[12.5px] leading-relaxed text-amber-300">
+          Notifications are blocked for JanamJyot. Turn them on in your phone's
+          Settings &rarr; Apps &rarr; JanamJyot &rarr; Notifications, then try again.
+        </p>
       )}
 
       {saved && (

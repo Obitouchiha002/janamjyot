@@ -1,16 +1,27 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Clock } from "lucide-react";
+import { LoadError } from "@/components/ErrorState";
 
 export default function DashaPage() {
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    let alive = true;
+    setFailed(false);
     fetch(`/api/chart/${chartId}/dasha`)
-      .then(res => res.json())
-      .then(d => setData(d));
-  }, [chartId]);
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then(d => { if (alive) (d?.error ? setFailed(true) : setData(d)); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [chartId, reload]);
+
+  if (failed) {
+    return <LoadError title="Couldn't load your dasha" onRetry={() => setReload(n => n + 1)} />;
+  }
 
   if (!data) {
     return (
@@ -52,7 +63,7 @@ export default function DashaPage() {
         </div>
 
         <p className="mt-3 text-[12.5px] text-muted-foreground">
-          Valid until: <span className="font-semibold text-foreground">{data.current_period.to}</span>
+          Valid until: <span className="font-semibold text-foreground">{data.current_period?.to}</span>
         </p>
       </section>
 
@@ -81,6 +92,14 @@ export default function DashaPage() {
           ))}
         </div>
       </section>
+
+      {/* Users do cross-check these against other sites, and a boundary can sit
+          a day either way. Say why, rather than let it read as a bug. */}
+      <p className="px-1 pb-2 text-center text-[11.5px] leading-relaxed text-muted-foreground">
+        Dasha periods are calculated from your Moon's exact position in its nakshatra.
+        Other almanacs may show a boundary a day either side — they round the Moon
+        differently. The lord and the sequence are the same everywhere.
+      </p>
     </div>
   );
 }

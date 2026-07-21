@@ -57,7 +57,9 @@ export default function SpeakButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`inline-flex items-center justify-center w-7 h-7 rounded-full hover:bg-accent/15 text-muted-foreground hover:text-accent transition-colors ${st === "playing" ? "text-accent animate-pulse" : st === "paused" ? "text-accent" : ""} ${className}`}
+      /* 28px circle padded out to a 44px hit area: it sits inline beside body
+         text, so a bare 28px target sent mistaps into the paragraph. */
+      className={`inline-flex box-content items-center justify-center w-7 h-7 p-2 -m-2 rounded-full hover:bg-accent/15 text-muted-foreground hover:text-accent transition-colors ${st === "playing" ? "text-accent animate-pulse" : st === "paused" ? "text-accent" : ""} ${className}`}
     >
       {icon}
     </button>

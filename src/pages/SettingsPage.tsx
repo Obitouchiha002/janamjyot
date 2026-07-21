@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
-import { Check, Star, ChevronRight, Fingerprint, CloudOff, Trash2 } from "lucide-react";
+import { Check, Star, ChevronRight, Fingerprint, CloudOff, Trash2, Vibrate } from "lucide-react";
 import { biometricAvailable, isLockEnabled, setLockEnabled, authenticate } from "@/lib/biometric";
 import { clearOfflineCache, offlineCacheInfo } from "@/lib/offline";
 import { THEMES, useTheme } from "@/theme";
 import { Pressable } from "@/components/mobile/Pressable";
+import Switch from "@/components/mobile/Switch";
 import { getLang, setLang } from "@/lib/prefs";
-import { haptic } from "@/lib/native";
+import { haptic, isNative, getHapticLevel, setHapticLevel, type HapticLevel } from "@/lib/native";
 import { openFeedback } from "@/lib/feedback";
 import { useAuth } from "@/auth";
 import { useNavigate } from "react-router-dom";
 
 const SELECT_CLS =
   "w-full appearance-none rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] outline-none transition-colors focus:border-accent disabled:text-muted-foreground";
+
+const HAPTIC_CHOICES: { value: HapticLevel; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "light", label: "Light" },
+  { value: "full", label: "Strong" },
+];
 
 /** A read-only "current method" row — honest about what the engine actually uses. */
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -34,6 +41,7 @@ export default function SettingsPage() {
   // App Lock — only offered where the hardware actually supports it.
   const [lockSupported, setLockSupported] = useState(false);
   const [lockOn, setLockOn] = useState(isLockEnabled());
+  const [haptics, setHaptics] = useState<HapticLevel>(getHapticLevel());
   const [cache, setCache] = useState(offlineCacheInfo());
 
   useEffect(() => { biometricAvailable().then(setLockSupported); }, []);
@@ -54,8 +62,14 @@ export default function SettingsPage() {
       // Server data is gone — now wipe every local trace too, so nothing of
       // theirs is left cached on the device either.
       clearOfflineCache();
+      // Enumerate rather than list keys by hand — the hand-written list had
+      // already drifted and was leaving `va_device` behind, which is the
+      // identifier anonymous feedback is tied to. A deleted account must not
+      // stay re-identifiable on the device.
       try {
-        ["jj:feedback", "jj:notif", "jj:lock", "jj:lang"].forEach((k) => localStorage.removeItem(k));
+        Object.keys(localStorage)
+          .filter((k) => /^(jj:|va_)/.test(k))
+          .forEach((k) => localStorage.removeItem(k));
       } catch { /* ignore */ }
       haptic.success();
       logout();
@@ -174,14 +188,41 @@ export default function SettingsPage() {
                   Ask for fingerprint or screen lock before opening the app
                 </span>
               </span>
-              <Pressable
-                onClick={toggleLock}
-                subtle
-                aria-label="Toggle app lock"
-                className={`h-6 w-11 shrink-0 rounded-full transition-colors ${lockOn ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
-              >
-                <span className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${lockOn ? "translate-x-[26px]" : "translate-x-0.5"}`} />
-              </Pressable>
+              <Switch on={lockOn} onChange={toggleLock} label="Toggle app lock" />
+            </div>
+          )}
+
+          {isNative && (
+            <div className="flex items-center gap-3.5 px-4 py-3.5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent">
+                <Vibrate className="h-[19px] w-[19px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14.5px] font-bold leading-tight">Vibration</span>
+                <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
+                  How strongly the phone buzzes when you tap
+                </span>
+                <span className="mt-2 flex gap-1.5">
+                  {HAPTIC_CHOICES.map((c) => (
+                    <Pressable
+                      key={c.value}
+                      subtle
+                      onClick={() => {
+                        setHapticLevel(c.value);
+                        setHaptics(c.value);
+                        haptic.medium(); // let them feel the new strength immediately
+                      }}
+                      className={`rounded-full px-3 py-1.5 text-[12px] font-bold transition-colors ${
+                        haptics === c.value
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-muted-foreground/10 text-muted-foreground"
+                      }`}
+                    >
+                      {c.label}
+                    </Pressable>
+                  ))}
+                </span>
+              </span>
             </div>
           )}
 

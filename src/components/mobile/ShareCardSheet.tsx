@@ -91,7 +91,7 @@ export default function ShareCardSheet({
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/30" />
         <Pressable
           onClick={onClose} feedback="tap" aria-label="Close"
-          className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
+          className="tap-44 absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
         >
           <X className="h-[18px] w-[18px]" strokeWidth={2.4} />
         </Pressable>

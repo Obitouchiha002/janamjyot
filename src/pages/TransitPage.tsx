@@ -6,6 +6,7 @@ import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
+import { useVisibleInterval } from "@/lib/useVisibleInterval";
 
 interface TPlanet {
   planet: string;
@@ -255,7 +256,7 @@ function PlanetCard({ p }: { p: TPlanet }) {
           ["Nakshatra", `${p.nakshatra} · pada ${p.pada}`],
           ["Nak / Sub lord", `${p.nak_lord}, ${p.sub_lord}`],
           ["Speed °/day", sgn(p.speed)],
-          ["Full°", p.full_degree.toFixed(2)],
+          ["Full°", p.full_degree?.toFixed(2)],
           ["Lat / Shara", p.shara],
           ["R.Asc / Decl", `${sgn(p.ra)} / ${sgn(p.dec)}`],
         ].map(([k, v]) => (
@@ -292,11 +293,8 @@ export default function TransitPage() {
       .finally(() => { if (id === reqRef.current) setLoading(false); });
   }, [chartId]);
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
-  }, [load]);
+  // Pauses while the app is backgrounded, and refreshes on return.
+  useVisibleInterval(load, 60_000);
 
   // ---- Transit chat (separate from Ask AI / Sectors) ----
   const [lang, setLang] = useState(getLang());
@@ -365,7 +363,7 @@ export default function TransitPage() {
       {/* ── Natal context + refresh ──────────────────────────────────────── */}
       <div className="m-enter flex items-center justify-between gap-3 px-1">
         <p className="text-[12.5px] leading-snug text-muted-foreground">
-          Lagna <span className="font-semibold text-foreground">{data.natal.lagna}</span> · Moon{" "}
+          Lagna <span className="font-semibold text-foreground">{data.natal?.lagna}</span> · Moon{" "}
           <span className="font-semibold text-foreground">{data.natal.moon}</span>
           <br />
           <span className="text-[11px]">Updated {updatedAt} · auto every 60s</span>
@@ -401,7 +399,7 @@ export default function TransitPage() {
       </section>
 
       {/* ── Highlights ───────────────────────────────────────────────────── */}
-      {data.highlights.length > 0 && (
+      {(data.highlights ?? []).length > 0 && (
         <section className="m-card m-enter p-4" style={{ animationDelay: '0.07s' }}>
           <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
             <Sparkles className="h-4 w-4 text-accent" /> The sky right now, for you

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Sparkles, Bot } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
+import { LoadError } from "@/components/ErrorState";
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
@@ -18,12 +19,18 @@ export default function RemediesPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+
   useEffect(() => {
     if (!chartId) return;
-    setLoading(true);
-    fetch(`/api/chart/${chartId}/remedies`).then((r) => r.json()).then((j) => { if (!j.error) setData(j); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, [chartId]);
+    setLoading(true); setFailed(false);
+    fetch(`/api/chart/${chartId}/remedies`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => (j?.error ? setFailed(true) : setData(j)))
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }, [chartId, reload]);
 
   if (loading) {
     return (
@@ -35,7 +42,14 @@ export default function RemediesPage() {
     );
   }
 
-  if (!data) return null;
+  if (failed || !data) {
+    return (
+      <LoadError
+        title="Couldn't load your remedies"
+        onRetry={() => setReload((n) => n + 1)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 pt-2">
@@ -64,7 +78,7 @@ export default function RemediesPage() {
           Your key planets &amp; remedies
         </h3>
         <div className="space-y-3">
-          {data.focus.map((f: any, i: number) => (
+          {(data.focus ?? []).map((f: any, i: number) => (
             <div key={i} className="m-card m-enter p-4">
               <div className="flex items-center justify-between gap-3">
                 <h4 className="flex items-center gap-1.5 text-[17px] font-bold">
@@ -83,8 +97,17 @@ export default function RemediesPage() {
                 {f.reason}
               </p>
 
+              {/* No gemstone for an afflicted malefic — a gemstone strengthens
+                  a planet, which is the wrong move there. The server sends
+                  `pacify` copy instead. */}
+              {f.pacify && (
+                <p className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[12px] leading-relaxed text-amber-300">
+                  {f.pacify}
+                </p>
+              )}
+
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <Fact label="Gemstone" value={f.gemstone} />
+                {f.gemstone && <Fact label="Gemstone" value={f.gemstone} />}
                 <Fact label="Day" value={f.day} />
                 <Fact label="Deity" value={f.deity} />
                 <Fact label="Colour" value={f.color} />
@@ -114,7 +137,7 @@ export default function RemediesPage() {
           General daily upaay
         </h3>
         <ul className="space-y-2.5">
-          {data.general.map((g: string, i: number) => (
+          {(data.general ?? []).map((g: string, i: number) => (
             <li key={i} className="flex gap-2.5">
               <span className="mt-0.5 text-accent">•</span>
               <span className="selectable text-[13.5px] leading-relaxed">{g}</span>

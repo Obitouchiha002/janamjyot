@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  CheckCircle2, PauseCircle, XCircle, Clock, RefreshCw,
+  CheckCircle2, PauseCircle, XCircle, HelpCircle, Clock, RefreshCw, Bell, BellRing,
   Users, Wallet, Plane, GraduationCap, Phone, Sparkles, HeartPulse, CircleDot, MessageCircle,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
-import { haptic } from '@/lib/native';
+import { LoadError } from '@/components/ErrorState';
+import { haptic, isNative } from '@/lib/native';
+import { remindAt } from '@/lib/notifications';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import { getLang } from '@/lib/prefs';
 
 /** The activities people actually check before doing. */
@@ -24,7 +27,46 @@ const VERDICT = {
   go:    { tint: '#22C55E', icon: CheckCircle2, label: 'GO' },
   wait:  { tint: '#E8B44A', icon: PauseCircle,  label: 'WAIT' },
   avoid: { tint: '#F87171', icon: XCircle,      label: 'AVOID' },
+  // The server sends this where choghadiya can't be computed (no sunrise or
+  // sunset that day). Deliberately grey and not a verdict — falling back to
+  // 'go' here would be a green light derived from nothing.
+  unknown: { tint: '#94A3B8', icon: HelpCircle, label: 'NO DATA' },
 } as const;
+
+/** "14:32" → minutes since midnight. */
+function toMin(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Minutes from `from` to `to`, rolling past midnight.
+ *
+ * Windows late in the day routinely end after midnight, and a plain
+ * subtraction there produces a negative countdown.
+ */
+function minutesUntil(from: string, to: string): number {
+  const d = toMin(to) - toMin(from);
+  return d < 0 ? d + 1440 : d;
+}
+
+/** 94 → "1h 34m", 34 → "34 min". Absolute clock times make people do the maths. */
+function human(mins: number): string {
+  if (mins < 1) return 'less than a minute';
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** A Date for the next occurrence of "HH:MM" — tomorrow if it already passed. */
+function nextOccurrence(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d;
+}
 
 export default function RightNowPage() {
   const { chartId } = useParams();
@@ -33,6 +75,8 @@ export default function RightNowPage() {
   const [loading, setLoading] = useState(true);
   const [place, setPlace] = useState<{ lat: number; lon: number; tz: string } | null>(null);
   const [plan, setPlan] = useState<any>(null);
+  const [reminded, setReminded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   // The friend-voice plan for today: what to do, what to skip, when. Cached
   // server-side per day, so this is cheap to ask for on every open.
@@ -69,24 +113,94 @@ export default function RightNowPage() {
         `/api/right-now?lat=${place.lat}&lon=${place.lon}&tz=${encodeURIComponent(place.tz)}&activity=${activity}`,
       );
       const d = await r.json();
-      if (!d.error) setData(d);
-    } catch { /* keep whatever we last showed */ }
+      if (d.error) setFailed(true);
+      else { setData(d); setFailed(false); }
+    } catch {
+      // Keep whatever we last showed, but remember it's stale — see below.
+      setFailed(true);
+    }
     finally { setLoading(false); }
   }, [place, activity]);
 
   useEffect(() => { load(); }, [load]);
 
-  // The answer changes as windows roll over, so refresh it while the page is open.
-  useEffect(() => {
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
-  }, [load]);
+  // The answer changes as windows roll over, so refresh it while the page is
+  // open — and only while it's actually on screen.
+  useVisibleInterval(load, 60_000);
+
+  // Never fall through to a default verdict. The `?? 'go'` below is only safe
+  // once we know `data` exists — with no data the page rendered a confident
+  // green GO on a dropped connection, which is the opposite of "unknown" on
+  // the one screen whose entire job is to say whether now is a good moment.
+  if (!loading && !data) {
+    return (
+      <LoadError
+        title="Couldn't check right now"
+        hint="Check your connection and try again."
+        onRetry={load}
+      />
+    );
+  }
 
   const v = VERDICT[(data?.verdict ?? 'go') as keyof typeof VERDICT];
   const VIcon = v.icon;
 
+  // How long the answer on screen stays true. This is the whole point of the
+  // page — "GO" means nothing without "for how long".
+  const holdsFor: number | null =
+    data?.now && (data.blocking?.end || data.current?.ends)
+      ? minutesUntil(data.now, data.blocking?.end || data.current.ends)
+      : null;
+  const untilGood: number | null =
+    data?.now && data.next_good?.start ? minutesUntil(data.now, data.next_good.start) : null;
+
+  const remind = async () => {
+    if (!data?.next_good?.start) return;
+    haptic.medium();
+    const ok = await remindAt(nextOccurrence(data.next_good.start), {
+      title: '✅ Good window has started',
+      body: `${data.next_good.name} runs until ${data.next_good.end}. Good time to go ahead.`,
+      route: chartId ? `/right-now/${chartId}` : '/',
+    });
+    setReminded(ok);
+    if (!ok) haptic.warning();
+  };
+
   return (
     <div className="space-y-5 pt-2">
+      {/* What we're answering FOR. This is the input, so it belongs above the
+          answer — below it, changing activity silently re-computed a verdict
+          that had already scrolled out of view. */}
+      <section className="m-enter">
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
+          {ACTIVITIES.map((a) => {
+            const Icon = a.icon;
+            const on = activity === a.key;
+            return (
+              <Pressable
+                key={a.key}
+                onClick={() => { haptic.select(); setActivity(a.key); setReminded(false); }}
+                subtle
+                aria-pressed={on}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2.5 text-[13px] font-bold transition-colors ${
+                  on ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-4 w-4" /> {a.label}
+              </Pressable>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* A countdown that stopped updating is worse than no countdown, so say
+          so rather than letting a stale "34 min left" tick down to nonsense. */}
+      {failed && data && (
+        <p className="m-enter rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-2.5 text-center text-[12px] leading-relaxed text-amber-300">
+          Couldn&apos;t refresh — showing the last reading. Times may be out of date.
+        </p>
+      )}
+
       {/* verdict */}
       <section
         className="m-card m-enter relative overflow-hidden p-6 text-center"
@@ -106,7 +220,19 @@ export default function RightNowPage() {
               {v.label}
             </p>
             <h2 className="mt-1 text-[22px] font-bold leading-tight">{data?.headline}</h2>
-            <p className="mx-auto mt-2 max-w-[300px] text-[13.5px] leading-relaxed text-muted-foreground">
+
+            {/* The countdown is the practical half of the answer. */}
+            {holdsFor !== null && data?.verdict !== 'unknown' && (
+              <p
+                className="mx-auto mt-2.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-bold"
+                style={{ background: `${v.tint}1f`, color: v.tint }}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                {data.verdict === 'go' ? `${human(holdsFor)} left` : `changes in ${human(holdsFor)}`}
+              </p>
+            )}
+
+            <p className="mx-auto mt-2.5 max-w-[300px] text-[13.5px] leading-relaxed text-muted-foreground">
               {data?.reason}
             </p>
             <p className="mt-3 text-[12px] text-muted-foreground">
@@ -154,35 +280,12 @@ export default function RightNowPage() {
         </section>
       )}
 
-      {/* activity chips */}
-      <section className="m-enter">
-        <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Checking for…
-        </h3>
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
-          {ACTIVITIES.map((a) => {
-            const Icon = a.icon;
-            const on = activity === a.key;
-            return (
-              <Pressable
-                key={a.key}
-                onClick={() => { haptic.select(); setActivity(a.key); }}
-                subtle
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2.5 text-[13px] font-bold ${
-                  on ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                <Icon className="h-4 w-4" /> {a.label}
-              </Pressable>
-            );
-          })}
-        </div>
-        {data?.tip && (
-          <p className="mt-3 px-1 text-[12.5px] leading-relaxed text-muted-foreground">{data.tip}</p>
-        )}
-      </section>
+      {data?.tip && (
+        <p className="m-enter px-1 text-[12.5px] leading-relaxed text-muted-foreground">{data.tip}</p>
+      )}
 
-      {/* next good window */}
+      {/* Next good window — with a way to act on it, so a "WAIT" verdict isn't
+          a dead end the user has to remember to come back and re-check. */}
       {data?.next_good && (
         <section className="m-card m-enter p-4">
           <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -192,6 +295,22 @@ export default function RightNowPage() {
             {data.next_good.start} – {data.next_good.end}
             <span className="ml-2 text-[13px] font-semibold text-accent">{data.next_good.name}</span>
           </p>
+          {untilGood !== null && (
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">opens in {human(untilGood)}</p>
+          )}
+          {isNative && data.verdict !== 'go' && (
+            <Pressable
+              onClick={() => { if (!reminded) remind(); }}
+              subtle
+              className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-[13px] font-bold ${
+                reminded ? 'bg-emerald-500/15 text-emerald-500' : 'bg-accent text-accent-foreground'
+              }`}
+            >
+              {reminded
+                ? <><BellRing className="h-4 w-4" /> I&apos;ll remind you at {data.next_good.start}</>
+                : <><Bell className="h-4 w-4" /> Remind me when it opens</>}
+            </Pressable>
+          )}
         </section>
       )}
 

@@ -391,6 +391,25 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
 .pressable:active { transform: scale(0.96); opacity: 0.9; }
 .pressable-sm:active { transform: scale(0.975); }
 
+/* Guarantees a 44px hit area on controls whose VISUAL size is deliberately
+   smaller — a toggle pill, a 32px sheet close button. Opt-in rather than part
+   of .pressable, because the invisible box is absolutely positioned and would
+   anchor to the wrong ancestor on an unpositioned element.
+
+   Deliberately does NOT set `position` itself: several of these buttons are
+   `absolute`, and forcing `relative` here would rip them out of the corner
+   they are pinned to. Pair it with `relative` on a statically-positioned
+   element; an already-positioned one needs nothing. */
+.tap-44::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+
 /* Keyboard open → no bottom inset (see --kb-inset above). */
 html.kb-open { --kb-inset: 0px; }
 

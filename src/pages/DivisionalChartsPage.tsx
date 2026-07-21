@@ -41,7 +41,7 @@ export default function DivisionalChartsPage() {
       {ORDER.map((key, i) => {
         const chart = data[key];
         if (!chart) return null;
-        const planetsMapped = chart.planets.map((p) => ({ ...p, short: p.planet.substring(0, 2) }));
+        const planetsMapped = (chart.planets ?? []).map((p) => ({ ...p, short: p.planet.substring(0, 2) }));
         return (
           <section
             key={key}
@@ -59,7 +59,7 @@ export default function DivisionalChartsPage() {
 
             <div className="mt-4 overflow-hidden rounded-2xl border border-border">
               <div className="divide-y divide-border">
-                {chart.planets.map((p) => (
+                {(chart.planets ?? []).map((p) => (
                   <div
                     key={p.planet}
                     className="flex items-center justify-between gap-3 px-3.5 py-2.5"

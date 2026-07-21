@@ -59,7 +59,7 @@ export default function TimelinePage() {
     if (!chartId) return;
     setLoading(true);
     setData(null);
-    fetch(`/api/chart/${chartId}/timeline?range=${range}`)
+    fetch(`/api/chart/${chartId}/timeline?range=${range}&lang=${encodeURIComponent(getLang())}`)
       .then((r) => r.json())
       .then((j) => { if (!j.error) setData(j); })
       .catch(() => {})

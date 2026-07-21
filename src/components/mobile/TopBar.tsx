@@ -24,7 +24,7 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
           onClick={() => navigate(-1)}
           feedback="tap"
           aria-label="Back"
-          className="w-10 h-10 grid place-items-center rounded-full text-foreground"
+          className="w-11 h-11 grid place-items-center rounded-full text-foreground"
         >
           <ChevronLeft className="w-6 h-6" />
         </Pressable>
@@ -51,14 +51,14 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
           <Pressable
             onClick={() => shareText('JanamJyot', 'Check out JanamJyot — accurate Vedic astrology.', (import.meta as any).env?.VITE_APP_DOWNLOAD_URL || undefined)}
             aria-label="Share app"
-            className="w-10 h-10 grid place-items-center rounded-full text-muted-foreground"
+            className="w-11 h-11 grid place-items-center rounded-full text-muted-foreground"
           >
             <Share2 className="w-[19px] h-[19px]" />
           </Pressable>
           <Pressable
             to="/settings"
             aria-label="Settings"
-            className="w-10 h-10 grid place-items-center rounded-full text-muted-foreground"
+            className="w-11 h-11 grid place-items-center rounded-full text-muted-foreground"
           >
             <Settings className="w-[19px] h-[19px]" />
           </Pressable>

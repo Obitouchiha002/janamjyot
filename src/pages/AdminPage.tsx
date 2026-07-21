@@ -5,12 +5,27 @@ import {
   Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff,
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
+import Switch from "@/components/mobile/Switch";
 import { haptic } from "@/lib/native";
 
 /* ── shared bits ─────────────────────────────────────────────────────────── */
 
-const post = (url: string, body?: any) =>
-  fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+/**
+ * Throws on a non-2xx, so a caller cannot report success for a request the
+ * server rejected. These mutations gate AI billing, publish reviews to the
+ * public site and pause the whole app — and every one of them used to patch
+ * local state unconditionally, so "Pause App" could fail silently while the
+ * UI said it had worked.
+ */
+const post = async (url: string, body?: any) => {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text().catch(() => "")}`.trim());
+  return r;
+};
 
 const SECTIONS = [
   { k: "overview", label: "Overview", icon: TrendingUp },
@@ -437,9 +452,7 @@ function Keys() {
               </span>
               <span className="block font-mono text-[12px] text-muted-foreground">{k.masked}</span>
             </span>
-            <Pressable onClick={() => toggle(k)} subtle aria-label="Toggle" className={`h-6 w-11 shrink-0 rounded-full transition-colors ${k.enabled ? "bg-emerald-500" : "bg-muted-foreground/40"}`}>
-              <span className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${k.enabled ? "translate-x-[26px]" : "translate-x-0.5"}`} />
-            </Pressable>
+            <Switch on={!!k.enabled} onChange={() => toggle(k)} label={`Toggle ${k.provider} key`} />
             <Pressable onClick={() => remove(k)} subtle aria-label="Delete" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-destructive">
               <Trash2 className="h-[18px] w-[18px]" />
             </Pressable>
@@ -523,18 +536,91 @@ function Controls() {
     fetch("/api/admin/features").then((r) => r.json()).then((d) => !d.error && setFeatures(d || {})).catch(() => {});
   }, []);
 
+  // APK downloads. Kept next to the other system controls because publishing
+  // the number to the public site is a real decision, not a display preference.
+  const [dl, setDl] = useState<{ total: number; today: number; week: number; public: boolean } | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/downloads").then((r) => r.json()).then((d) => !d.error && setDl(d)).catch(() => {});
+  }, []);
+
   const featureOn = (k: string) => features[k] !== false;
-  const toggleFeature = (k: string) => { haptic.tap(); const next = !featureOn(k); setFeatures((f) => ({ ...f, [k]: next })); post("/api/admin/features", { [k]: next }); };
+
+  // These controls gate AI billing and can pause the whole app, so an optimistic
+  // update the server rejected must roll back and say so — not sit there
+  // looking applied.
+  const [sysError, setSysError] = useState("");
+  const commit = async (label: string, call: () => Promise<any>, revert: () => void) => {
+    setSysError("");
+    try { await call(); }
+    catch (e: any) {
+      revert();
+      haptic.error();
+      setSysError(`${label} failed — ${e?.message || "the server rejected it"}. Nothing was changed.`);
+    }
+  };
+
+  const toggleFeature = (k: string) => {
+    haptic.tap();
+    const prev = features;
+    const next = !featureOn(k);
+    setFeatures((f) => ({ ...f, [k]: next }));
+    commit(`Toggling ${k}`, () => post("/api/admin/features", { [k]: next }), () => setFeatures(prev));
+  };
 
   return (
     <div className="space-y-4">
+      {sysError && (
+        <p className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[12.5px] leading-relaxed text-destructive">
+          {sysError}
+        </p>
+      )}
+      <div className="m-card p-4">
+        <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold">
+          <TrendingUp className="h-4 w-4 text-accent" /> App downloads
+        </h3>
+        {dl ? (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {([["Total", dl.total], ["Last 7 days", dl.week], ["Today", dl.today]] as const).map(([l, v]) => (
+                <div key={l} className="rounded-2xl bg-muted px-3 py-2.5 text-center">
+                  <p className="text-[20px] font-bold leading-none">{v.toLocaleString("en-IN")}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{l}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-bold">Show the count on the website</span>
+                <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
+                  Publishes the total under the download button. Off by default — a
+                  low number is worse than no number.
+                </span>
+              </span>
+              <Switch
+                on={dl.public}
+                label="Show download count publicly"
+                onChange={(next) => {
+                  const prev = dl;
+                  setDl({ ...dl, public: next });
+                  commit("Publishing the download count",
+                    () => post("/api/admin/downloads/public", { enabled: next }),
+                    () => setDl(prev));
+                }}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="text-[13px] text-muted-foreground">Loading…</p>
+        )}
+      </div>
+
       <div className="m-card p-4">
         <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold"><Power className="h-4 w-4 text-accent" /> Maintenance mode</h3>
         <p className="mb-3 text-[12px] text-muted-foreground">When paused, regular users see a message; admins keep access.</p>
         <input className="mb-3 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" placeholder="Maintenance message (optional)" value={maint.message} onChange={(e) => setMaint((m) => ({ ...m, message: e.target.value }))} />
         <div className="grid grid-cols-2 gap-2">
-          <Pressable onClick={() => { haptic.success(); post("/api/admin/maintenance", { enabled: false, message: maint.message }); setMaint((m) => ({ ...m, enabled: false })); }} subtle className={`rounded-2xl py-3 text-center text-[13.5px] font-bold ${!maint.enabled ? "bg-emerald-500/15 text-emerald-600" : "border border-border"}`}>App Live</Pressable>
-          <Pressable onClick={() => { haptic.warning(); post("/api/admin/maintenance", { enabled: true, message: maint.message }); setMaint((m) => ({ ...m, enabled: true })); }} subtle className={`rounded-2xl py-3 text-center text-[13.5px] font-bold ${maint.enabled ? "bg-destructive/15 text-destructive" : "border border-border"}`}>Pause App</Pressable>
+          <Pressable onClick={() => { haptic.success(); const p0 = maint; setMaint((m) => ({ ...m, enabled: false })); commit("Going live", () => post("/api/admin/maintenance", { enabled: false, message: maint.message }), () => setMaint(p0)); }} subtle className={`rounded-2xl py-3 text-center text-[13.5px] font-bold ${!maint.enabled ? "bg-emerald-500/15 text-emerald-600" : "border border-border"}`}>App Live</Pressable>
+          <Pressable onClick={() => { haptic.warning(); const p0 = maint; setMaint((m) => ({ ...m, enabled: true })); commit("Pausing the app", () => post("/api/admin/maintenance", { enabled: true, message: maint.message }), () => setMaint(p0)); }} subtle className={`rounded-2xl py-3 text-center text-[13.5px] font-bold ${maint.enabled ? "bg-destructive/15 text-destructive" : "border border-border"}`}>Pause App</Pressable>
         </div>
       </div>
 
@@ -542,8 +628,8 @@ function Controls() {
         <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold"><Megaphone className="h-4 w-4 text-accent" /> Announcement banner</h3>
         <input className="mb-3 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" placeholder="e.g. Kundli Matching is now live!" value={ann.message} onChange={(e) => setAnn((a) => ({ ...a, message: e.target.value }))} />
         <div className="grid grid-cols-2 gap-2">
-          <Pressable onClick={() => { haptic.success(); post("/api/admin/announcement", { enabled: true, message: ann.message }); setAnn((a) => ({ ...a, enabled: true })); }} subtle className="rounded-2xl bg-accent py-3 text-center text-[13.5px] font-bold text-accent-foreground">Show</Pressable>
-          <Pressable onClick={() => { haptic.tap(); post("/api/admin/announcement", { enabled: false, message: ann.message }); setAnn((a) => ({ ...a, enabled: false })); }} subtle className="rounded-2xl border border-border py-3 text-center text-[13.5px] font-bold">Hide</Pressable>
+          <Pressable onClick={() => { haptic.success(); const p0 = ann; setAnn((a) => ({ ...a, enabled: true })); commit("Showing the announcement", () => post("/api/admin/announcement", { enabled: true, message: ann.message }), () => setAnn(p0)); }} subtle className="rounded-2xl bg-accent py-3 text-center text-[13.5px] font-bold text-accent-foreground">Show</Pressable>
+          <Pressable onClick={() => { haptic.tap(); const p0 = ann; setAnn((a) => ({ ...a, enabled: false })); commit("Hiding the announcement", () => post("/api/admin/announcement", { enabled: false, message: ann.message }), () => setAnn(p0)); }} subtle className="rounded-2xl border border-border py-3 text-center text-[13.5px] font-bold">Hide</Pressable>
         </div>
       </div>
 
@@ -556,9 +642,7 @@ function Controls() {
           {Object.entries(FEATURE_LABELS).map(([k, label]) => (
             <div key={k} className="flex items-center justify-between rounded-2xl bg-muted px-4 py-3">
               <span className="text-[13.5px] font-medium">{label}</span>
-              <Pressable onClick={() => toggleFeature(k)} subtle aria-label="Toggle" className={`h-6 w-11 shrink-0 rounded-full transition-colors ${featureOn(k) ? "bg-emerald-500" : "bg-muted-foreground/40"}`}>
-                <span className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${featureOn(k) ? "translate-x-[26px]" : "translate-x-0.5"}`} />
-              </Pressable>
+              <Switch on={featureOn(k)} onChange={() => toggleFeature(k)} label={`Toggle ${label}`} />
             </div>
           ))}
         </div>
@@ -633,17 +717,31 @@ function Reviews() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Publishing puts a real person's name and stars on the public website, so
+  // the UI must not claim it happened when the request failed — these used to
+  // swallow the error and update the list regardless.
+  const [rowError, setRowError] = useState("");
+
   const setApproved = async (id: string, approved: boolean) => {
-    setBusy(id); haptic.tap();
-    await post(`/api/admin/feedback/${id}/approved`, { approved }).catch(() => {});
-    setRows((rs) => rs?.map((r) => (r.id === id ? { ...r, approved } : r)) ?? rs);
-    setBusy(null);
+    setBusy(id); haptic.tap(); setRowError("");
+    try {
+      await post(`/api/admin/feedback/${id}/approved`, { approved });
+      setRows((rs) => rs?.map((r) => (r.id === id ? { ...r, approved } : r)) ?? rs);
+    } catch (e: any) {
+      haptic.error();
+      setRowError(`Couldn't ${approved ? "publish" : "unpublish"} that review — ${e?.message || "the server rejected it"}.`);
+    } finally { setBusy(null); }
   };
   const remove = async (id: string) => {
-    setBusy(id); haptic.warning();
-    await fetch(`/api/admin/feedback/${id}`, { method: "DELETE" }).catch(() => {});
-    setRows((rs) => rs?.filter((r) => r.id !== id) ?? rs);
-    setBusy(null);
+    setBusy(id); haptic.warning(); setRowError("");
+    try {
+      const r = await fetch(`/api/admin/feedback/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(String(r.status));
+      setRows((rs) => rs?.filter((x) => x.id !== id) ?? rs);
+    } catch (e: any) {
+      haptic.error();
+      setRowError(`Couldn't delete that review — ${e?.message || "the server rejected it"}.`);
+    } finally { setBusy(null); }
   };
 
   if (rows === null) return <div className="skeleton h-[200px]" />;
@@ -662,9 +760,16 @@ function Reviews() {
       <p className="px-1 text-[12px] text-muted-foreground">
         {rows.length} total · {pending} awaiting review. Approved 4-5★ reviews show on the website.
       </p>
+      {rowError && (
+        <p className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-[12.5px] leading-relaxed text-destructive">
+          {rowError}
+        </p>
+      )}
       {rows.map((r) => {
         const rating = Math.max(1, Math.min(5, Number(r.rating) || 0));
-        const positive = rating >= 4 && (r.comment ?? "").trim().length > 2;
+        // A silent 4-5★ is publishable — the wall shows the stars and the name.
+        // Only the rating decides eligibility; text is optional.
+        const positive = rating >= 4;
         return (
           <div key={r.id} className="m-card p-4">
             <div className="flex items-center justify-between gap-2">
@@ -680,7 +785,8 @@ function Reviews() {
             {r.comment && <p className="mt-2 text-[13.5px] leading-relaxed">“{r.comment}”</p>}
             <p className="mt-2 text-[11.5px] text-muted-foreground">
               {(r.name || "Anonymous")}{r.context ? ` · ${r.context}` : ""}{r.created_at ? ` · ${String(r.created_at).slice(0, 10)}` : ""}
-              {!positive && " · not eligible for website"}
+              {!positive && " · low rating — publish only if you mean to"}
+              {positive && !(r.comment ?? "").trim() && " · stars only, no text"}
             </p>
             <div className="mt-3 flex gap-2">
               {r.approved ? (
@@ -695,9 +801,9 @@ function Reviews() {
               ) : (
                 <Pressable
                   onClick={() => setApproved(r.id, true)}
-                  disabled={busy === r.id || !positive}
+                  disabled={busy === r.id}
                   feedback="medium"
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-[12.5px] font-bold ${positive ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground opacity-60"}`}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-[12.5px] font-bold ${positive ? "bg-accent text-accent-foreground" : "border border-border text-muted-foreground"}`}
                 >
                   <Check className="h-4 w-4" /> Publish
                 </Pressable>

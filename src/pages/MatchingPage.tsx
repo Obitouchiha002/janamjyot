@@ -327,12 +327,12 @@ export default function MatchingPage() {
             <div className="mt-5 grid grid-cols-2 gap-2.5">
               <div className="rounded-2xl bg-muted p-3.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groom</p>
-                <p className="mt-1 truncate text-[14.5px] font-bold">{result.boy.name}</p>
+                <p className="mt-1 truncate text-[14.5px] font-bold">{result.boy?.name}</p>
                 <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{result.boy.rasi} · {result.boy.nakshatra}</p>
               </div>
               <div className="rounded-2xl bg-muted p-3.5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bride</p>
-                <p className="mt-1 truncate text-[14.5px] font-bold">{result.girl.name}</p>
+                <p className="mt-1 truncate text-[14.5px] font-bold">{result.girl?.name}</p>
                 <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{result.girl.rasi} · {result.girl.nakshatra}</p>
               </div>
             </div>
@@ -344,13 +344,25 @@ export default function MatchingPage() {
               Ashtakoot breakdown
             </h3>
             <div className="space-y-2.5">
-              {result.kootas.map((k: any) => {
+              {(result.kootas ?? []).map((k: any) => {
                 const pct = k.max ? (k.score / k.max) * 100 : 0;
                 const weak = k.score === 0;
                 return (
                   <div key={k.name} className="m-card p-4">
                     <div className="flex items-baseline justify-between gap-3">
-                      <p className="text-[14.5px] font-bold">{k.name}</p>
+                      <p className="text-[14.5px] font-bold">
+                        {k.name}
+                        {/* Flag our documented simplification rather than let a
+                            total imply precision the source tables don't have. */}
+                        {k.approximate && (
+                          <span
+                            title="Sources differ on this koota — may read 1 point different elsewhere"
+                            className="ml-1.5 align-middle text-[10px] font-bold text-muted-foreground"
+                          >
+                            ≈
+                          </span>
+                        )}
+                      </p>
                       <p className="shrink-0 text-[14px] font-bold tabular-nums">
                         <span className={weak ? "text-destructive" : "text-accent"}>{k.score}</span>
                         <span className="text-muted-foreground">/{k.max}</span>
@@ -382,8 +394,15 @@ export default function MatchingPage() {
               Dosha check
             </h3>
             <div className="space-y-2.5">
-              {[["Mangal Dosha", result.doshas.mangal], ["Bhakoot", result.doshas.bhakoot], ["Nadi", result.doshas.nadi]].map(([t, v]) => {
-                const ok = /no |cancel/i.test(String(v));
+              {[
+                ["Mangal Dosha", result.doshas.mangal, result.doshas.mangalClear],
+                ["Bhakoot", result.doshas.bhakoot, result.doshas.bhakootClear],
+                ["Nadi", result.doshas.nadi, result.doshas.nadiClear],
+              ].map(([t, v, clear]: any) => {
+                // Read the server's boolean. Sniffing English words out of the
+                // sentence flipped every icon to red as soon as the user picked
+                // Hindi — on the one screen where a false alarm matters most.
+                const ok = !!clear;
                 return (
                   <div key={String(t)} className="m-card flex gap-3 p-4">
                     <span className={`mt-0.5 shrink-0 ${ok ? "text-accent" : "text-destructive"}`}>

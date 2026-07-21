@@ -15,15 +15,15 @@ const SUPPORT_WHATSAPP = ""; // e.g. "919876543210" (country code + number, no +
 const TOPICS = ["Bug / Problem", "Feedback", "Feature request", "Question", "Other"];
 
 const FAQ: Array<{ q: string; a: string }> = [
-  { q: "My chart looks wrong or the time is off — how do I fix it?", a: "On the Create Chart page, enter the date (YYYY-MM-DD), the time (double-check hour/minute and AM/PM) and pick the correct place from the suggestions. A wrong AM/PM changes the Lagna entirely. Re-create the chart with the correct details." },
+  { q: "My chart looks wrong or the time is off — how do I fix it?", a: "On the Create Chart page, enter the date (YYYY-MM-DD), the time (double-check hour/minute and AM/PM) and pick the correct place from the suggestions. A wrong AM/PM changes the Lagna entirely. To fix an existing kundli, open the Kundli tab and tap the pencil icon on that row — the chart is recalculated from the corrected details." },
   { q: "The AI is not answering, or I get a limit error.", a: "The app uses several AI providers and automatically switches to the next one. Wait a minute and send again. If it keeps failing, report it from the form above." },
-  { q: "Voice / mic is not working.", a: "The microphone needs a secure connection. Open the app over HTTPS, and allow microphone permission when the browser or phone asks for it." },
-  { q: "How do I match two kundlis?", a: "Open More → Kundli Matching, fill in the name, date, time and place for both people (choose the place from the suggestions), then tap Match Kundli. You get the full 36-point Ashtakoot result." },
-  { q: "Where are the Daily Panchang and Muhurat?", a: "Both are in the More menu. Select a date and city to see the tithi, nakshatra, Rahu Kaal, Choghadiya and the auspicious muhurats." },
-  { q: "How do I change the language of a report or answer?", a: "Life Report, Ask AI, Sectors, Transit and Matching each have a language selector at the top. 12 languages are supported, including Hindi, Tamil and Telugu." },
+  { q: "Voice / mic is not working.", a: "Allow the microphone permission when your phone asks for it. If you dismissed it, turn it back on in your phone’s Settings → Apps → JanamJyot → Permissions." },
+  { q: "How do I match two kundlis?", a: "Open Home → Matching (or More → Kundli Matching), fill in the name, date, time and place for both people (choose the place from the suggestions), then tap Match Kundli. You get the full 36-point Ashtakoot result." },
+  { q: "Where are the Daily Panchang and Muhurat?", a: "Panchang has its own tab at the bottom. Muhurat is under the Tools tab. Select a date and city to see the tithi, nakshatra, Rahu Kaal, Choghadiya and the auspicious muhurats." },
+  { q: "How do I change the language of a report or answer?", a: "Life Report, Ask AI, Sectors, Transit and Matching each have a language selector at the top. Settings → Language sets the default; some screens also let you switch per reading." },
   { q: "How do I change the app theme?", a: "Go to Settings → Theme and tap any swatch. The whole app updates instantly, and your choice is remembered." },
   { q: "Why do Live Transit, Sectors and Ask AI have separate chats?", a: "Each one keeps its own conversation so context from one screen never leaks into another. This is intentional." },
-  { q: "Where is my chart data stored? Is it private?", a: "Your charts are stored against your own account and are visible only to you. You can view or delete them any time from Profiles." },
+  { q: "Where is my chart data stored? Is it private?", a: "Your charts are stored against your own account and are visible only to you. You can view, edit or delete them any time from the Kundli tab." },
   { q: "How do I download a report as PDF?", a: "Open the Life Report and tap the PDF button at the top. The PDF includes the charts, birth details, dasha and the full reading." },
 ];
 

@@ -49,7 +49,7 @@ export default function UpdateSheet() {
             {!info.mandatory && (
               <Pressable
                 onClick={close} feedback="tap" aria-label="Close"
-                className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
+                className="tap-44 absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full text-muted-foreground"
               >
                 <X className="h-[18px] w-[18px]" strokeWidth={2.4} />
               </Pressable>

@@ -6,6 +6,7 @@ import SpeakButton from '@/components/SpeakButton';
 import { NorthIndianChart } from '@/components/NorthIndianChart';
 import AstrologerAvatar from '@/components/mobile/AstrologerAvatar';
 import { Pressable } from '@/components/mobile/Pressable';
+import { requestFeedback } from '@/lib/feedback';
 import { haptic } from '@/lib/native';
 import { voiceAvailable, startVoice, stopVoice } from '@/lib/voice';
 
@@ -127,7 +128,7 @@ export default function ConsultPage() {
 
   const kundliName: string = chart?.birth_details?.name || '';
   const planetsMapped: any[] =
-    chart?.planets?.map((p: any) => ({ ...p, short: p.planet.substring(0, 2) })) ?? [];
+    chart?.planets?.map((p: any) => ({ ...p, short: String(p.planet ?? "").substring(0, 2) })) ?? [];
 
   // ── data loads ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -225,7 +226,21 @@ export default function ConsultPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartId, astrologer, language: langRef.current }),
       });
-      if (res.status === 429) return;
+      // Bailing silently here meant the astrologer never even said hello —
+      // the user landed on a completely empty chat with no explanation.
+      if (res.status === 429) {
+        setTyping(false);
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            bubbles: ["You've used up today's questions. They reset tomorrow — or see your plan for more."],
+            time: Date.now(),
+            error: true,
+          },
+        ]);
+        return;
+      }
       const data = await res.json();
       const raw: string[] = Array.isArray(data?.bubbles) ? data.bubbles : [];
       if (data?.already || !raw.length) return;
@@ -268,8 +283,10 @@ export default function ConsultPage() {
     setPhase('connecting');
     const name = persona?.name || 'The astrologer';
     setConnectMsg('Connecting you to the astrologer…');
-    const t1 = setTimeout(() => setConnectMsg(`${name} is joining the chat…`), 2200);
-    const t2 = setTimeout(() => setConnectMsg(`${name} is reviewing your kundli…`), 4600);
+    // No "is joining" / "is reviewing your kundli" — nothing is in flight
+    // during this wait, so those lines described a person who does not exist.
+    const t1 = setTimeout(() => setConnectMsg('Reading your chart…'), 2200);
+    const t2 = setTimeout(() => setConnectMsg('Preparing your reading…'), 4600);
     const total = 5200 + Math.floor(Math.random() * 4200); // 5.2–9.4s
     const t3 = setTimeout(() => {
       setConnectMsg(`${name} is online`);
@@ -329,12 +346,32 @@ export default function ConsultPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chartId, astrologer, question: q, language: langRef.current }),
       });
-      if (res.status === 429) return;
+      // The global quota sheet still fires from the interceptor, but bailing
+      // here left the user's question sitting in the thread with no reply at
+      // all once that sheet was dismissed.
+      if (res.status === 429) {
+        setTyping(false);
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            bubbles: ["You've used up today's questions. They reset tomorrow — or see your plan for more."],
+            time: Date.now(),
+            error: true,
+          },
+        ]);
+        return;
+      }
       const data = await res.json();
       if (res.ok && Array.isArray(data.bubbles) && data.bubbles.length) {
         setTyping(false);
         await revealBubbles(toMessages(data.bubbles as string[]));
         haptic.success();
+        // Ask for a rating only after the app has actually delivered something
+        // — a real answer to a real question. It used to fire seconds after
+        // chart creation, before the user had read anything. The helper
+        // self-limits, so this never nags.
+        setTimeout(() => requestFeedback('consult'), 2500);
       } else {
         setTyping(false);
         haptic.error();
@@ -433,7 +470,6 @@ export default function ConsultPage() {
             <span className="relative block overflow-hidden rounded-full ring-4" style={{ ['--tw-ring-color' as any]: `${tint}55` }}>
               {astrologer ? <AstrologerAvatar id={astrologer} size={104} /> : null}
             </span>
-            <span className="absolute bottom-1 right-1 h-5 w-5 rounded-full border-2 border-background bg-emerald-500" />
           </div>
           <h1 className="text-[19px] font-bold">{persona?.name ?? 'AI Astrologer'}</h1>
           <p className="mt-3 flex items-center gap-2 text-[13.5px] text-muted-foreground">
@@ -446,7 +482,8 @@ export default function ConsultPage() {
   }
 
   // ── Chat ───────────────────────────────────────────────────────────────────
-  const subtitle = typing ? 'typing…' : 'online';
+  // Not 'online' — this is an AI persona, not a person with a presence state.
+  const subtitle = typing ? 'typing…' : (persona?.title ?? 'AI Astrologer');
 
   return (
     <div className="-mx-4 -mb-6 flex flex-col overflow-hidden" style={shellStyle}>
@@ -457,7 +494,6 @@ export default function ConsultPage() {
             {astrologer ? <AstrologerAvatar id={astrologer} size={44} /> : null}
           </span>
           <span className="absolute -bottom-0 -right-0 grid h-3.5 w-3.5 place-items-center rounded-full bg-background">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
           </span>
         </div>
         <div className="min-w-0 flex-1">
@@ -507,7 +543,7 @@ export default function ConsultPage() {
                     <div className="skeleton aspect-square w-full" />
                   )}
                   <p className="mt-2 text-center text-[11px] font-medium text-muted-foreground">
-                    Aapki Janma Kundli (D1)
+                    Aapki Janma Kundli
                   </p>
                 </div>
               </div>

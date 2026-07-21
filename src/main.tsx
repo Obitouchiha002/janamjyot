@@ -13,10 +13,19 @@ import './lib/quota';
 import './lib/offline';
 
 import App from './App.tsx';
+import { ErrorBoundary } from './components/ErrorState';
 import './index.css';
+
+// A rejected promise nobody handled shouldn't be invisible in a shipped APK,
+// where there is no console to open.
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[JanamJyot] unhandled rejection', e.reason);
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

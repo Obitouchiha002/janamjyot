@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
+import { LoadError } from "@/components/ErrorState";
 import { getLang } from "@/lib/prefs";
 
 const AREAS = [
@@ -29,15 +30,18 @@ export default function DailyGuidancePage() {
   const [loading, setLoading] = useState(true);
   const lang = getLang();
 
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
+
   useEffect(() => {
     if (!chartId) return;
-    setLoading(true);
-    fetch(`/api/chart/${chartId}/daily-guidance`)
-      .then((r) => r.json())
-      .then((j) => { if (!j.error) setData(j); })
-      .catch(() => {})
+    setLoading(true); setFailed(false);
+    fetch(`/api/chart/${chartId}/daily-guidance?lang=${encodeURIComponent(lang)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => (j?.error ? setFailed(true) : setData(j)))
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
-  }, [chartId]);
+  }, [chartId, reload]);
 
   if (loading) {
     return (
@@ -49,7 +53,14 @@ export default function DailyGuidancePage() {
       </div>
     );
   }
-  if (!data) return null;
+  if (failed || !data) {
+    return (
+      <LoadError
+        title="Couldn't load today's guidance"
+        onRetry={() => setReload((n) => n + 1)}
+      />
+    );
+  }
 
   const g = data.guidance || {};
   const best = (data.best_times || []) as { name: string; start: string; end: string }[];
@@ -96,7 +107,7 @@ export default function DailyGuidancePage() {
               ))}
             </div>
           ) : (
-            <p className="mt-1.5 text-[12.5px] text-muted-foreground">Add birth place for timings.</p>
+            <p className="mt-1.5 text-[12.5px] text-muted-foreground">No clear window today.</p>
           )}
         </div>
 
@@ -113,7 +124,7 @@ export default function DailyGuidancePage() {
               ))}
             </div>
           ) : (
-            <p className="mt-1.5 text-[12.5px] text-muted-foreground">Add birth place for timings.</p>
+            <p className="mt-1.5 text-[12.5px] text-muted-foreground">Nothing to avoid today.</p>
           )}
         </div>
       </div>

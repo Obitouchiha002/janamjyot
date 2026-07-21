@@ -4,8 +4,7 @@ import { haptic } from '@/lib/native';
 import { useParams } from 'react-router-dom';
 import {
   FileText, LayoutGrid, Clock, CircleDot, Heart, Globe2, Layers, Gem,
-  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2,
-} from 'lucide-react';
+  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2, Compass,} from 'lucide-react';
 import TodayCard from '@/components/TodayCard';
 import { Pressable } from '@/components/mobile/Pressable';
 
@@ -60,6 +59,11 @@ export default function DashboardPage() {
   const sun = data.planets.find((p: any) => p.planet === 'Sun')?.sign ?? 'N/A';
 
   const tools = [
+    // Right Now lives here as well as on Home. On Home it is a live card that
+    // renders null until /api/right-now answers — so if that call was slow or
+    // failed, an entire feature (including its reminder flow) simply did not
+    // exist for the user. A tool tile is unconditional.
+    { to: `/right-now/${chartId}`, icon: Compass, label: 'Abhi Sahi Hai?', sub: 'Is now a good time?' },
     { to: `/transit/${chartId}`, icon: Globe2, label: 'Live Transit', sub: 'Transits — now' },
     { to: `/sectors/${chartId}`, icon: Layers, label: 'Life Sectors', sub: 'Career, Love…' },
     { to: `/chart/${chartId}/d1`, icon: CircleDot, label: 'D1 Chart', sub: 'Lagna kundli' },
@@ -119,28 +123,30 @@ export default function DashboardPage() {
         </Pressable>
       </section>
 
-      {/* daily guidance — the everyday hook */}
+      {/* Today's snapshot, then the link into the full day. The card answers
+          "what about today?" on its own; the row below is the way deeper in —
+          the other order made the screen read as two competing "today" blocks. */}
+      <section className="m-enter" style={{ animationDelay: '0.04s' }}>
+        <TodayCard chartId={chartId} lang={b?.language} />
+      </section>
+
       <Pressable
         to={`/daily/${chartId}`}
         feedback="select"
-        className="m-card m-enter flex items-center gap-3.5 p-4"
-        style={{ animationDelay: '0.04s', background: 'linear-gradient(180deg, rgba(232,180,74,0.12), transparent)' }}
+        className="m-enter flex w-full items-center gap-3.5 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5"
+        style={{ animationDelay: '0.05s' }}
       >
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
-          <Sparkles className="h-[21px] w-[21px]" />
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground shadow-md shadow-accent/25">
+          <Sparkles className="h-[19px] w-[19px]" />
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[15px] font-bold leading-tight">Today's Guidance</span>
-          <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
-            Career · Money · Relationship · Health · Best time
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-[14.5px] font-bold leading-tight">See your full day</span>
+          <span className="mt-0.5 block truncate text-[12px] leading-snug text-muted-foreground">
+            Career · Money · Love · Health · your best hours
           </span>
         </span>
-        <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+        <ChevronRight className="h-[18px] w-[18px] shrink-0 text-accent" />
       </Pressable>
-
-      <section className="m-enter" style={{ animationDelay: '0.05s' }}>
-        <TodayCard chartId={chartId} lang={b?.language} />
-      </section>
 
       {/* key positions */}
       <section className="m-enter grid grid-cols-2 gap-2.5" style={{ animationDelay: '0.08s' }}>

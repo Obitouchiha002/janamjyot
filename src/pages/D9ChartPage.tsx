@@ -2,17 +2,28 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { Pressable } from "@/components/mobile/Pressable";
+import { LoadError } from "@/components/ErrorState";
 
 export default function D9ChartPage() {
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [shortNames, setShortNames] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    let alive = true;
+    setFailed(false);
     fetch(`/api/chart/${chartId}/d9`)
-      .then(res => res.json())
-      .then(d => setData(d));
-  }, [chartId]);
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then(d => { if (alive) (d?.error ? setFailed(true) : setData(d)); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [chartId, reload]);
+
+  if (failed) {
+    return <LoadError title="Couldn't load this chart" onRetry={() => setReload(n => n + 1)} />;
+  }
 
   if (!data) {
     return (
@@ -23,7 +34,7 @@ export default function D9ChartPage() {
     );
   }
 
-  const planetsMapped = data.planets.map((p: any) => ({
+  const planetsMapped = (data.planets ?? []).map((p: any) => ({
     ...p,
     short: p.planet.substring(0, 2)
   }));
@@ -67,7 +78,7 @@ export default function D9ChartPage() {
             <p className="text-[14.5px] font-bold text-accent">Ascendant</p>
             <p className="text-[13px] font-semibold">House 1</p>
           </div>
-          {data.planets.map((p: any) => (
+          {(data.planets ?? []).map((p: any) => (
             <div key={p.planet} className="flex items-center justify-between gap-3 px-4 py-3.5">
               <p className="text-[14.5px] font-bold">{p.planet}</p>
               <p className="shrink-0 text-[13px] font-semibold text-muted-foreground">

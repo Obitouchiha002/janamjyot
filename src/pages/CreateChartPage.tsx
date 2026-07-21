@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  MapPin, Calendar, Clock, UserIcon, Check, Loader2, ChevronRight, ChevronLeft, Sparkles,
+  MapPin, Calendar, Clock, UserIcon, Check, Loader2, ChevronRight, ChevronLeft, Sparkles, ShieldCheck,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { haptic } from '@/lib/native';
-import { requestFeedback } from '@/lib/feedback';
+import { invalidateProfiles } from '@/pages/HomePage';
 
 interface Place {
   label: string;
@@ -64,7 +64,13 @@ const inputCls =
 
 export default function CreateChartPage() {
   const navigate = useNavigate();
+  // Same screen, two jobs. `/create-chart` builds a new kundli; `/edit/:chartId`
+  // corrects an existing one in place — which the app had been promising on
+  // this very page while offering no way to do it.
+  const { chartId } = useParams();
+  const editing = !!chartId;
   const [step, setStep] = useState(0);
+  const [prefilling, setPrefilling] = useState(editing);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +85,8 @@ export default function CreateChartPage() {
   // <input type=time> is where the old AM/PM bugs came from, and a wrong AM/PM
   // moves the Lagna by half a zodiac — so this stays explicit.
   const [time, setTime] = useState({ hour: '', minute: '', ampm: 'AM' });
+  const [unknownTime, setUnknownTime] = useState(false);
+  const [placeError, setPlaceError] = useState('');
 
   const [placeQuery, setPlaceQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Place[]>([]);
@@ -96,18 +104,62 @@ export default function CreateChartPage() {
     setSearching(true);
     const t = setTimeout(async () => {
       try {
+        setPlaceError('');
         const res = await fetch(`/api/places?q=${encodeURIComponent(placeQuery.trim())}`);
         const data = await res.json();
         setSuggestions(Array.isArray(data) ? data : []);
         setShowSuggestions(true);
       } catch {
+        // Was silent. With no suggestion the user cannot pick a place, and the
+        // submit button below is hard-disabled on `selectedPlace` — so a failed
+        // lookup left them stuck on the last step with their city typed in and
+        // no idea why nothing happened. This was the app's single worst
+        // abandonment point.
         setSuggestions([]);
+        setPlaceError("Couldn't search places. Check your connection and try again.");
       } finally {
         setSearching(false);
       }
     }, 350);
     return () => clearTimeout(t);
   }, [placeQuery, selectedPlace]);
+
+  // Load the existing details when editing.
+  useEffect(() => {
+    if (!chartId) return;
+    let alive = true;
+    fetch(`/api/chart/${chartId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => {
+        if (!alive || d?.error) throw new Error(d?.error || 'load failed');
+        const b = d.birth_details ?? {};
+        setFormData({
+          name: b.name ?? '',
+          date_of_birth: b.date_of_birth ?? '',
+          gender: b.gender || 'male',
+          language: b.language || 'en',
+        });
+        const [hh, mm] = String(b.time_of_birth ?? '').split(':').map(Number);
+        if (Number.isFinite(hh)) {
+          setTime({
+            hour: String(hh % 12 === 0 ? 12 : hh % 12),
+            minute: String(mm ?? 0),
+            ampm: hh >= 12 ? 'PM' : 'AM',
+          });
+        }
+        if (b.place_of_birth) {
+          setPlaceQuery(b.place_of_birth);
+          setSelectedPlace({
+            label: b.place_of_birth, name: b.place_of_birth,
+            latitude: b.latitude, longitude: b.longitude,
+            timezone: b.timezone, country: '',
+          });
+        }
+      })
+      .catch(() => { if (alive) setError("Couldn't load this kundli to edit."); })
+      .finally(() => { if (alive) setPrefilling(false); });
+    return () => { alive = false; };
+  }, [chartId]);
 
   useEffect(() => {
     const onDown = (e: Event) => {
@@ -172,8 +224,8 @@ export default function CreateChartPage() {
     setLoading(true);
     haptic.medium();
     try {
-      const res = await fetch('/api/create-chart', {
-        method: 'POST',
+      const res = await fetch(editing ? `/api/profiles/${chartId}` : '/api/create-chart', {
+        method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
@@ -187,10 +239,14 @@ export default function CreateChartPage() {
       const data = await res.json();
       if (res.ok && data.id) {
         haptic.success();
-        navigate(`/dashboard/${data.id}`);
-        // Everything worked smoothly — ask for a rating once the new chart's
-        // dashboard has settled. The helper self-limits (never nags).
-        setTimeout(() => requestFeedback('chart'), 1400);
+        invalidateProfiles(); // else Home shows a stale list without the new chart
+        // `replace` on edit so Back doesn't drop the user into the form again.
+        navigate(`/dashboard/${data.id}`, { replace: editing });
+        // Deliberately NOT asking for a rating here. It used to fire 1.4s after
+        // the very first kundli — covering the dashboard before the user had
+        // read a single line of their own chart, which is the worst possible
+        // first impression. The ask now happens after they've actually got
+        // value from a reading (see requestFeedback callers elsewhere).
       } else {
         haptic.error();
         setError(
@@ -237,7 +293,7 @@ export default function CreateChartPage() {
                 <input
                   autoFocus
                   className={`${inputCls} pl-11`}
-                  placeholder="Vansh Kashyap"
+                  placeholder="Your full name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -316,9 +372,32 @@ export default function CreateChartPage() {
               </div>
             </Field>
 
+            {/* Plenty of people genuinely don't know the minute they were born.
+                Without this they simply cannot proceed past step 2. */}
+            <Pressable
+              subtle
+              onClick={() => {
+                haptic.tap();
+                setUnknownTime(true);
+                setTime({ hour: '12', minute: '0', ampm: 'PM' });
+              }}
+              className="w-full rounded-2xl border border-dashed border-border py-3 text-[12.5px] font-semibold text-muted-foreground"
+            >
+              I don&apos;t know my exact birth time
+            </Pressable>
+
             <p className="flex items-start gap-2 rounded-2xl bg-accent/10 p-3 text-[12px] leading-relaxed text-accent">
               <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-              Choose AM/PM carefully — even a few minutes can change the Lagna and divisional charts.
+              {unknownTime
+                ? "No problem — we'll use noon. Your Moon sign, nakshatra and dashas stay accurate; only the rising sign (Lagna) and house-based details may shift. You can correct the time later — open the kundli list and tap Edit."
+                : "Pick AM/PM carefully. Birth time decides your rising sign (Lagna), so an accurate time gives a sharper reading."}
+            </p>
+
+            {/* Said at the moment we ask, not buried in a policy page. */}
+            <p className="flex items-start gap-2 px-1 text-[11.5px] leading-relaxed text-muted-foreground">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Your birth details are used only to calculate your chart. They stay
+              private to you and are never shown to anyone else.
             </p>
           </>
         )}
@@ -369,6 +448,16 @@ export default function CreateChartPage() {
                   </ul>
                 )}
               </div>
+
+              {placeError && !selectedPlace && (
+                <button
+                  type="button"
+                  onClick={() => { const q = placeQuery; setPlaceQuery(''); setTimeout(() => setPlaceQuery(q), 0); }}
+                  className="w-full rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-left text-[12.5px] leading-relaxed text-amber-300"
+                >
+                  {placeError} Tap to retry.
+                </button>
+              )}
 
               {selectedPlace ? (
                 <p className="px-1 text-[12px] text-emerald-400">
@@ -430,9 +519,9 @@ export default function CreateChartPage() {
             className="pressable flex flex-1 items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[15px] font-bold text-accent-foreground shadow-lg shadow-accent/25 disabled:opacity-50"
           >
             {loading ? (
-              <><Loader2 className="h-[18px] w-[18px] animate-spin" /> Creating chart…</>
+              <><Loader2 className="h-[18px] w-[18px] animate-spin" /> {editing ? 'Saving…' : 'Creating chart…'}</>
             ) : (
-              <><Sparkles className="h-[18px] w-[18px]" strokeWidth={2.4} /> Create Kundli</>
+              <><Sparkles className="h-[18px] w-[18px]" strokeWidth={2.4} /> {editing ? 'Save changes' : 'Create Kundli'}</>
             )}
           </button>
         )}

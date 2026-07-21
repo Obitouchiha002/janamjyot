@@ -101,8 +101,11 @@ export default function MuhuratPage() {
 
       {/* Calendar — pick a date; auspicious days for the activity are dotted */}
       <section className="m-enter space-y-2" style={{ animationDelay: '0.06s' }}>
-        <MuhuratCalendar value={date} onChange={setDate} activity={activity}
-          place={{ latitude: place.latitude, longitude: place.longitude, timezone: place.timezone }} />
+        {/* `place` is passed by reference, not rebuilt inline. A fresh object
+            literal here is a new identity every render, and the calendar's
+            effect depends on it — so one date tap re-fetched the whole month
+            several times, and typing a city fired a request per keystroke. */}
+        <MuhuratCalendar value={date} onChange={setDate} activity={activity} place={place} />
         <p className="px-1 text-[12px] text-muted-foreground">
           Selected: <b className="text-foreground">{date}</b>{data?.weekday ? ` · ${data.weekday}` : ""}
         </p>
@@ -230,6 +233,31 @@ export default function MuhuratPage() {
                 ))}
               </div>
               <p className="mt-3 px-1 text-[11.5px] text-muted-foreground">For the exact Vivah Lagna, also confirm with a jyotishi.</p>
+            </section>
+          )}
+
+          {/* Abhijit — auspicious, so it belongs above the avoid list, not in it. */}
+          {data.abhijit && (
+            <section className="m-enter" style={{ animationDelay: '0.17s' }}>
+              <div
+                className="m-card flex items-center gap-3.5 p-4"
+                style={{ background: 'linear-gradient(180deg, rgba(52,211,153,0.12), transparent)', borderColor: '#34D39955' }}
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-400">
+                  <CheckCircle2 className="h-[21px] w-[21px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[14.5px] font-bold leading-tight">Abhijit Muhurat</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
+                    {data.abhijit.note ?? 'Around midday — auspicious for almost any beginning'}
+                  </span>
+                </span>
+                {!data.abhijit.note && (
+                  <span className="shrink-0 text-[13px] font-bold" style={{ color: GOOD }}>
+                    {data.abhijit.start} – {data.abhijit.end}
+                  </span>
+                )}
+              </div>
             </section>
           )}
 

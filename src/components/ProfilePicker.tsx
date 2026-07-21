@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { User } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
+import { LoadError } from "@/components/ErrorState";
 
 interface Profile { id: string; name: string; date: string; }
 
@@ -8,15 +9,34 @@ interface Profile { id: string; name: string; date: string; }
 export default function ProfilePicker({ value, onPick }: { value: string; onPick: (id: string) => void }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Kept apart from "empty" on purpose: a failed request used to fall through
+  // to the empty state, telling someone with saved kundlis that they had none
+  // and inviting them to re-enter their birth details.
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    fetch("/api/profiles").then((r) => r.json()).then((d) => {
-      const list: Profile[] = Array.isArray(d) ? d : [];
-      setProfiles(list);
-      setLoaded(true);
-      if (list.length && !value) onPick(list[0].id);
-    }).catch(() => setLoaded(true));
-  }, []); // eslint-disable-line
+    setFailed(false);
+    fetch("/api/profiles")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => {
+        const list: Profile[] = Array.isArray(d) ? d : [];
+        setProfiles(list);
+        setLoaded(true);
+        if (list.length && !value) onPick(list[0].id);
+      })
+      .catch(() => { setFailed(true); setLoaded(true); });
+  }, [reload]); // eslint-disable-line
+
+  if (failed) {
+    return (
+      <LoadError
+        title="Couldn't load your kundlis"
+        hint="Check your connection — your saved kundlis are safe."
+        onRetry={() => setReload((n) => n + 1)}
+      />
+    );
+  }
 
   if (loaded && profiles.length === 0) {
     return (

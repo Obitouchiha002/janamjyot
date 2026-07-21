@@ -287,7 +287,7 @@ export default function LifeReportPage() {
     setFill(C.primary); doc.rect(0, 0, PW, 96, "F");
     setFill(C.accent); doc.rect(0, 96, PW, 3, "F");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); setText(C.accent);
-    doc.text("VEDIC ASTRA", M, 30);
+    doc.text("JanamJyot", M, 30);
     doc.setFontSize(20); setText(C.white);
     doc.text(`${name}`, M, 58);
     doc.setFont("helvetica", "normal"); doc.setFontSize(11); setText([203, 213, 225]);
@@ -497,9 +497,9 @@ export default function LifeReportPage() {
   };
 
   // Build chart props.
-  const d1Planets = (chart?.planets ?? []).map((p: any) => ({ ...p, short: p.planet.substring(0, 2) }));
+  const d1Planets = (chart?.planets ?? []).map((p: any) => ({ ...p, short: String(p.planet ?? "").substring(0, 2) }));
   const d9 = chart?.d9_chart;
-  const d9Planets = (d9?.planet_positions ?? []).map((p: any) => ({ ...p, short: p.planet.substring(0, 2) }));
+  const d9Planets = (d9?.planet_positions ?? []).map((p: any) => ({ ...p, short: String(p.planet ?? "").substring(0, 2) }));
 
   return (
     <div className="space-y-8 animate-in fade-in">

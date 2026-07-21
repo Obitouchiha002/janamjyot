@@ -20,6 +20,7 @@ import { isLockEnabled } from './lib/biometric';
 import TopBar from './components/mobile/TopBar';
 import TabBar from './components/mobile/TabBar';
 import QuotaListener from './components/mobile/QuotaSheet';
+import { LoadError } from './components/ErrorState';
 import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
 import UpdateSheet from './components/mobile/UpdateSheet';
@@ -103,6 +104,23 @@ function AnnouncementBanner() {
  * still mounted, and without a pinned location it would re-render itself as the
  * *incoming* route — so both halves of the animation would show the same page.
  */
+/**
+ * Catch-all. Reached by a stale notification deep-link, an old share URL, or a
+ * typo — without it those rendered the shell around a silently empty body.
+ * Navigates client-side (we are inside the Router here, unlike the crash
+ * boundary in ErrorState, which has to do a real document load).
+ */
+function NotFound() {
+  const navigate = useNavigate();
+  return (
+    <LoadError
+      title="Screen not found"
+      hint="That link doesn't point anywhere in the app any more."
+      onRetry={() => navigate('/', { replace: true })}
+    />
+  );
+}
+
 function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
   return (
     <Routes location={location}>
@@ -111,6 +129,8 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/admin" element={<ProtectedRoute admin><AdminPage /></ProtectedRoute>} />
       <Route path="/" element={<HomePage />} />
       <Route path="/create-chart" element={<CreateChartPage />} />
+      {/* Same component in edit mode — see CreateChartPage. */}
+      <Route path="/edit-chart/:chartId" element={<CreateChartPage />} />
       <Route path="/dashboard/:chartId" element={<DashboardPage />} />
       <Route path="/chart/:chartId/d1" element={<D1ChartPage />} />
       <Route path="/chart/:chartId/d9" element={<D9ChartPage />} />
@@ -142,6 +162,9 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/theme" element={<ThemePage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/developer" element={<DeveloperPage />} />
+      {/* Without this, a stale notification deep-link or a bad share URL renders
+          the shell around an empty body, with no hint anything went wrong. */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
@@ -160,12 +183,6 @@ function Shell() {
   const [theme] = useTheme();
   const dark = isDarkTheme(theme);
   const { user, loading } = useAuth();
-
-  // Launch gate: until the session resolves we show the auth screen first, as
-  // requested. "Continue as guest" is in-memory only, so every cold start lands
-  // on sign-in/sign-up — but within a session a guest is never re-prompted.
-  // A signed-in user (persisted token) skips the gate entirely.
-  const [guest, setGuest] = useState(false);
 
   // App Lock: when enabled, nothing renders until the OS verifies the user, and
   // it re-locks whenever the app has been in the background (so handing the
@@ -276,13 +293,19 @@ function Shell() {
     );
   }
 
-  // Not signed in and not continuing as a guest → the launch auth screen.
-  if (!user && !guest) {
+  // Sign-in wall. Unlike the earlier version of this gate, it is backed by the
+  // server: every non-public /api route now 401s without a token, so this is
+  // the real boundary rather than a screen someone can skip. No "continue as
+  // guest" for the same reason — there is nothing a guest could load.
+  //
+  // Charts a device created before this shipped are adopted on first sign-in
+  // (claimDeviceCharts), so nobody loses the kundlis they already made.
+  if (!user) {
     return (
       <div className="app-shell bg-background text-foreground">
         <div className="app-scroll no-tabbar" style={{ paddingTop: 'calc(var(--sat) + 12px)' }}>
           <div className="px-4 pb-6">
-            <LoginPage onGuest={() => setGuest(true)} />
+            <LoginPage />
           </div>
         </div>
       </div>

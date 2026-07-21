@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Clock, Sparkles } from "lucide-react";
 import ProfilePicker from "@/components/ProfilePicker";
+import { LoadError } from "@/components/ErrorState";
 
 export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: string; onChartId?: (id: string) => void }) {
   const [intId, setIntId] = useState("");
@@ -8,13 +9,20 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
   const setChartId = onChartId ?? setIntId;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!chartId) return;
-    setLoading(true); setData(null);
-    fetch(`/api/chart/${chartId}/alerts`).then((r) => r.json()).then((j) => { if (!j.error) setData(j); })
-      .catch(() => {}).finally(() => setLoading(false));
-  }, [chartId]);
+    setLoading(true); setData(null); setFailed(false);
+    // A swallowed error used to leave the picker above an empty screen
+    // forever, with nothing to tap and no way to tell failure from "empty".
+    fetch(`/api/chart/${chartId}/alerts`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => (j?.error ? setFailed(true) : setData(j)))
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
+  }, [chartId, reload]);
 
   return (
     <div className="space-y-6 pt-2">
@@ -28,6 +36,8 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
           <div className="skeleton h-[120px]" />
           <div className="skeleton h-[120px]" />
         </div>
+      ) : failed ? (
+        <LoadError title="Couldn't load your alerts" onRetry={() => setReload((n) => n + 1)} />
       ) : data && (
         <>
           {data.current && (
