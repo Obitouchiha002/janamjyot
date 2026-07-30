@@ -64,8 +64,8 @@ export default function DashboardPage() {
     // failed, an entire feature (including its reminder flow) simply did not
     // exist for the user. A tool tile is unconditional.
     { to: `/right-now/${chartId}`, icon: Compass, label: 'Abhi Sahi Hai?', sub: 'Is now a good time?' },
-    { to: `/transit/${chartId}`, icon: Globe2, label: 'Live Transit', sub: 'Transits — now' },
-    { to: `/sectors/${chartId}`, icon: Layers, label: 'Life Sectors', sub: 'Career, Love…' },
+    // Live Transit and Life Sectors used to be separate chats; they now live
+    // inside the one Jyotish chat (ask "aaj ke transit" or "career kaisa hai").
     { to: `/chart/${chartId}/d1`, icon: CircleDot, label: 'D1 Chart', sub: 'Lagna kundli' },
     { to: `/chart/${chartId}/d9`, icon: Heart, label: 'D9 Navamsa', sub: 'Marriage & dharma' },
     { to: `/chart/${chartId}/divisional`, icon: LayoutGrid, label: 'Divisional', sub: 'D10, D6, D11' },
@@ -98,7 +98,7 @@ export default function DashboardPage() {
 
         <div className="mt-4 grid grid-cols-2 gap-2.5">
           <Pressable
-            to={`/ask/${chartId}`}
+            to={`/chat/${chartId}`}
             feedback="medium"
             className="flex items-center justify-center gap-1.5 rounded-full bg-accent py-3 text-[13px] font-bold leading-tight text-accent-foreground shadow-lg shadow-accent/25"
           >

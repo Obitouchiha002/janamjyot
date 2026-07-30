@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Shield, Users, FileText, MessageSquare, Sparkles, Activity, KeyRound,
   Power, Megaphone, ToggleLeft, Search, X, Ban, ShieldCheck, UserCog,
-  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff,
+  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee,
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import Switch from "@/components/mobile/Switch";
@@ -539,8 +539,10 @@ function Controls() {
   // APK downloads. Kept next to the other system controls because publishing
   // the number to the public site is a real decision, not a display preference.
   const [dl, setDl] = useState<{ total: number; today: number; week: number; public: boolean } | null>(null);
+  const [pay, setPay] = useState<{ totals: any; payments: any[] } | null>(null);
   useEffect(() => {
     fetch("/api/admin/downloads").then((r) => r.json()).then((d) => !d.error && setDl(d)).catch(() => {});
+    fetch("/api/admin/payments").then((r) => r.json()).then((d) => !d.error && setPay(d)).catch(() => {});
   }, []);
 
   const featureOn = (k: string) => features[k] !== false;
@@ -574,6 +576,54 @@ function Controls() {
           {sysError}
         </p>
       )}
+      <div className="m-card p-4">
+        <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold">
+          <IndianRupee className="h-4 w-4 text-accent" /> Payments
+        </h3>
+        {pay ? (
+          <>
+            <div className="grid grid-cols-4 gap-2">
+              {([
+                ["Earned", "\u20b9" + (pay.totals.paid_paise / 100).toLocaleString("en-IN")],
+                ["Paid", pay.totals.paid_count],
+                ["Trials", pay.totals.trials],
+                ["Failed", pay.totals.failed],
+              ] as const).map(([l, v]) => (
+                <div key={l} className="rounded-2xl bg-muted px-2 py-2.5 text-center">
+                  <p className="text-[16px] font-bold leading-none">{v}</p>
+                  <p className="mt-1 text-[10.5px] text-muted-foreground">{l}</p>
+                </div>
+              ))}
+            </div>
+            {/* Every row names the account, because a dispute is answered with
+                "this email, this order, this amount, this time" — not an id. */}
+            <div className="mt-3 divide-y divide-border">
+              {pay.payments.slice(0, 12).map((p: any) => (
+                <div key={p.order_id} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold">{p.email}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {p.pack_id} · {String(p.created_at).slice(0, 16).replace("T", " ")}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[13px] font-bold">₹{p.amount_paise / 100}</span>
+                    <span className={`block text-[10.5px] font-bold ${p.status === "paid" ? "text-emerald-500" : "text-destructive"}`}>
+                      {p.status}
+                    </span>
+                  </span>
+                </div>
+              ))}
+              {!pay.payments.length && (
+                <p className="py-2 text-[13px] text-muted-foreground">No payments yet.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-[13px] text-muted-foreground">Loading…</p>
+        )}
+      </div>
+
       <div className="m-card p-4">
         <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold">
           <TrendingUp className="h-4 w-4 text-accent" /> App downloads

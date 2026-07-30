@@ -5,6 +5,8 @@ import {
   Route,
   useLocation,
   useNavigate,
+  useParams,
+  Navigate,
 } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Megaphone, WifiOff } from 'lucide-react';
@@ -36,12 +38,11 @@ import D9ChartPage from './pages/D9ChartPage';
 import DivisionalChartsPage from './pages/DivisionalChartsPage';
 import DashaPage from './pages/DashaPage';
 import LifeReportPage from './pages/LifeReportPage';
-// AskQuestionPage is kept in the repo but no longer routed — the "Ask AI" entry
-// now opens the AI-astrologer selection + WhatsApp-style consultation flow.
-import AstrologersPage from './pages/AstrologersPage';
-import ConsultPage from './pages/ConsultPage';
-import TransitPage from './pages/TransitPage';
-import SectorsPage from './pages/SectorsPage';
+// The five old chat surfaces (AskQuestionPage, AstrologersPage, ConsultPage,
+// TransitPage, SectorsPage) are retired in favour of ONE universal chat. Their
+// files stay in the repo for now, but every old path redirects into ChatPage so
+// existing links, buttons and notification deep-links all still land somewhere.
+import ChatPage from './pages/ChatPage';
 import ProfilesPage from './pages/ProfilesPage';
 import SettingsPage from './pages/SettingsPage';
 import AIStatusPage from './pages/AIStatusPage';
@@ -121,6 +122,12 @@ function NotFound() {
   );
 }
 
+/** Redirect any old chat path (/ask, /transit, /sectors) into the one chat. */
+function ToChat() {
+  const { chartId } = useParams();
+  return <Navigate to={chartId ? `/chat/${chartId}` : '/'} replace />;
+}
+
 function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
   return (
     <Routes location={location}>
@@ -143,10 +150,13 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/report/:chartId" element={<LifeReportPage />} />
       <Route path="/reports/:chartId" element={<ReportsPage />} />
       <Route path="/reports/:chartId/:type" element={<ReportViewPage />} />
-      <Route path="/ask/:chartId" element={<AstrologersPage />} />
-      <Route path="/ask/:chartId/:astrologer" element={<ConsultPage />} />
-      <Route path="/transit/:chartId" element={<TransitPage />} />
-      <Route path="/sectors/:chartId" element={<SectorsPage />} />
+      {/* The one chat. */}
+      <Route path="/chat/:chartId" element={<ChatPage />} />
+      {/* Old chat paths → the one chat (keeps every existing link working). */}
+      <Route path="/ask/:chartId" element={<ToChat />} />
+      <Route path="/ask/:chartId/:astrologer" element={<ToChat />} />
+      <Route path="/transit/:chartId" element={<ToChat />} />
+      <Route path="/sectors/:chartId" element={<ToChat />} />
       <Route path="/profiles" element={<ProfilesPage />} />
       <Route path="/ai-status" element={<AIStatusPage />} />
       <Route path="/help" element={<HelpPage />} />

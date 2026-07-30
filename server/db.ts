@@ -52,6 +52,14 @@ interface FileData {
   feedback: any[];
   login_codes: any[];
   chat_memory: Record<string, string>;
+  // Dev-only mirrors of the credit tables. Production cannot reach these: the
+  // startup checks refuse to boot without DATABASE_URL, so the file store only
+  // ever runs locally. That is what makes a simpler, non-transactional
+  // implementation acceptable here.
+  payments: any[];
+  credit_ledger: any[];
+  deliveries: any[];
+  trials: Record<string, { started_at: string; ends_at: string }>;
   settings: Record<string, any>;
 }
 
@@ -79,6 +87,10 @@ let fileData: FileData = {
   feedback: [],
   login_codes: [],
   chat_memory: {},
+  payments: [],
+  credit_ledger: [],
+  deliveries: [],
+  trials: {},
   settings: {},
 };
 let fileLoaded = false;
@@ -97,6 +109,10 @@ function loadFile() {
       fileData.feedback ??= [];
       fileData.login_codes ??= [];
       fileData.chat_memory ??= {};
+      fileData.payments ??= [];
+      fileData.credit_ledger ??= [];
+      fileData.deliveries ??= [];
+      fileData.trials ??= {};
       fileData.settings ??= {};
       const charts = Object.keys(fileData.chart_calculations).length;
       console.log(`[db] loaded ${charts} saved chart(s) from ${STORE_PATH}`);
@@ -245,6 +261,15 @@ CREATE TABLE IF NOT EXISTS app_users (
   last_seen_at  TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- ₹1 / 3-day trial. Deliberately NOT modelled as expiring credits: mixing
+-- expiring and permanent credits in one balance forces a spend-order rule and
+-- produces "my credits vanished" disputes. A time window is its own thing,
+-- with a date the user can see, and it keeps "credits never expire" literally
+-- true. trial_started_at is set once and never cleared, so the trial cannot
+-- be taken twice on one account.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS trial_ends_at    TIMESTAMPTZ;
+
 -- Forgot-password support (added later; safe on existing databases).
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_token   TEXT;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS reset_expires TIMESTAMPTZ;
@@ -320,6 +345,69 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Credits ────────────────────────────────────────────────────────────────
+-- 1 credit = ₹1. Three tables, and the split matters:
+--
+--   payments       what the user paid for      (money in)
+--   credit_ledger  every movement of credits   (append-only, the truth)
+--   deliveries     what a spend produced       (proof for disputes)
+--
+-- The balance is DERIVED from the ledger, never stored as a mutable column.
+-- A stored balance can drift from its history, and once it drifts you cannot
+-- tell whether the user or the code was wrong. Summing an append-only log
+-- cannot drift, and it answers "where did my credits go?" exactly.
+--
+-- Nothing here is ever UPDATEd for business reasons and nothing is DELETEd. A
+-- refund is a new negative row, not an erased positive one.
+CREATE TABLE IF NOT EXISTS payments (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             UUID NOT NULL REFERENCES app_users(id) ON DELETE RESTRICT,
+  provider            TEXT NOT NULL DEFAULT 'razorpay',
+  -- The order we created. UNIQUE so one checkout can only ever grant once.
+  provider_order_id   TEXT UNIQUE NOT NULL,
+  -- Set when the payment is captured. UNIQUE makes a replayed webhook a no-op.
+  provider_payment_id TEXT UNIQUE,
+  amount_paise        INTEGER NOT NULL CHECK (amount_paise > 0),
+  currency            TEXT NOT NULL DEFAULT 'INR',
+  pack_id             TEXT NOT NULL,
+  credits             INTEGER NOT NULL CHECK (credits > 0),
+  status              TEXT NOT NULL DEFAULT 'created',  -- created|paid|failed|refunded
+  failure_reason      TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS credit_ledger (
+  id            BIGSERIAL PRIMARY KEY,
+  user_id       UUID NOT NULL REFERENCES app_users(id) ON DELETE RESTRICT,
+  delta         INTEGER NOT NULL,          -- + granted, − spent
+  reason        TEXT NOT NULL,             -- purchase|spend|refund|bonus|signup|admin
+  ref_type      TEXT,                      -- payment|delivery
+  ref_id        TEXT,
+  note          TEXT,
+  -- Kept for auditing: recompute the sum and it must match, row for row.
+  balance_after INTEGER NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_user ON credit_ledger(user_id, id DESC);
+-- One ledger row per payment, enforced by the database rather than by trusting
+-- the code path: a duplicated webhook cannot grant twice even if it slips past
+-- the application check.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_payment_once
+  ON credit_ledger(ref_id) WHERE ref_type = 'payment';
+
+CREATE TABLE IF NOT EXISTS deliveries (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES app_users(id) ON DELETE RESTRICT,
+  kind       TEXT NOT NULL,                -- life_report|report|chat|matching|chart
+  chart_id   UUID,
+  credits    INTEGER NOT NULL,
+  meta       JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_deliveries_user ON deliveries(user_id, created_at DESC);
 
 -- One row per billable action. This is both the quota counter and the
 -- analytics source, so quotas can never drift from what was actually served.
@@ -993,6 +1081,419 @@ export async function recordUsage(args: {
   } catch (e) {
     console.warn("[usage] failed to record", (e as Error).message);
   }
+}
+
+// ── Credits ────────────────────────────────────────────────────────────────
+
+/**
+ * What each paid action costs, in credits (1 credit = ₹1).
+ *
+ * Only AI-backed work is priced. Everything the engine computes locally —
+ * panchang, choghadiya, hora, muhurat, the charts themselves, dashas, yogas —
+ * costs us nothing to serve, so it stays free however often it is used. That
+ * is also the better product: the free tier is genuinely useful every day,
+ * which is what brings people back, and the paid tier is the deep reading.
+ */
+export const CREDIT_PRICES: Record<string, number> = {
+  chat: 1,          // one question and its answer
+  life_report: 29,  // the long report + PDF
+  report: 19,       // a focused report (career, wealth, marriage…)
+  matching: 19,     // full Ashtakoot + PDF
+  timeline: 15,
+  chart: 10,        // a kundli beyond the free ones
+};
+
+/**
+ * The ₹1 trial: three days of the paid features, once per account.
+ *
+ * Generous but bounded. "Unlimited for 3 days" reads better on the page, but a
+ * life report is the most expensive call the app makes and somebody will run
+ * fifty of them — for one rupee. These caps are far above what a real person
+ * uses in three days and far below what an abuser needs to be worth it.
+ *
+ * It does NOT auto-renew. An auto-renewing ₹1 trial is the single biggest
+ * source of chargebacks and "they charged me without asking" complaints in
+ * India, and avoiding it also avoids the whole mandate/e-mandate apparatus.
+ */
+export const TRIAL = {
+  paise: 100,
+  days: 3,
+  limits: { life_report: 5, chat: 100, matching: 5, report: 5, timeline: 5, chart: 5 },
+} as const;
+
+export interface TrialState {
+  active: boolean;
+  used: boolean;
+  endsAt: string | null;
+}
+
+export async function trialState(userId: string): Promise<TrialState> {
+  if (!USE_PG) {
+    const t = fileData.trials[userId];
+    if (!t) return { active: false, used: false, endsAt: null };
+    return { active: new Date(t.ends_at).getTime() > Date.now(), used: true, endsAt: t.ends_at };
+  }
+  const { rows } = await pool!.query(
+    `SELECT trial_started_at, trial_ends_at FROM app_users WHERE id = $1`,
+    [userId],
+  );
+  const r = rows[0];
+  if (!r?.trial_started_at) return { active: false, used: false, endsAt: null };
+  const endsAt = r.trial_ends_at ? new Date(r.trial_ends_at) : null;
+  return {
+    active: !!endsAt && endsAt.getTime() > Date.now(),
+    used: true,
+    endsAt: endsAt ? endsAt.toISOString() : null,
+  };
+}
+
+/**
+ * Start the trial. Returns false if this account already had one — the guard
+ * is the `trial_started_at IS NULL` in the UPDATE, so two concurrent requests
+ * cannot both succeed.
+ */
+export async function startTrial(userId: string): Promise<boolean> {
+  if (!USE_PG) {
+    if (fileData.trials[userId]) return false;
+    fileData.trials[userId] = {
+      started_at: nowIso(),
+      ends_at: new Date(Date.now() + TRIAL.days * 86400_000).toISOString(),
+    };
+    saveFile();
+    return true;
+  }
+  const { rowCount } = await pool!.query(
+    `UPDATE app_users
+        SET trial_started_at = now(),
+            trial_ends_at    = now() + ($2 || ' days')::interval
+      WHERE id = $1 AND trial_started_at IS NULL`,
+    [userId, TRIAL.days],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export const CREDIT_PACKS: Record<string, { paise: number; credits: number; label: string }> = {
+  starter: { paise: 4900,  credits: 50,  label: "50 credits" },
+  popular: { paise: 14900, credits: 165, label: "165 credits" },
+  value:   { paise: 39900, credits: 460, label: "460 credits" },
+};
+
+/** Balance = the sum of the ledger. Never a stored column — see the schema. */
+export async function creditBalance(userId: string): Promise<number> {
+  if (!USE_PG) {
+    return fileData.credit_ledger
+      .filter((r) => r.user_id === userId)
+      .reduce((n, r) => n + r.delta, 0);
+  }
+  const { rows } = await pool!.query(
+    `SELECT COALESCE(SUM(delta), 0)::int AS n FROM credit_ledger WHERE user_id = $1`,
+    [userId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * Spend credits for something we are about to deliver.
+ *
+ * Serialised per user with a row lock, because two requests arriving together
+ * would otherwise both read the same balance and both pass the check — the
+ * classic double-spend. The lock is on the user row rather than a balance row
+ * precisely because there is no balance row to lock.
+ *
+ * Returns null when the user cannot afford it; the caller must not deliver.
+ */
+export async function spendCredits(args: {
+  userId: string;
+  credits: number;
+  kind: string;
+  chartId?: string | null;
+  meta?: any;
+}): Promise<{ deliveryId: string; balance: number } | null> {
+  if (!USE_PG) {
+    const bal = await creditBalance(args.userId);
+    if (bal < args.credits) return null;
+    const deliveryId = randomUUID();
+    fileData.deliveries.push({
+      id: deliveryId, user_id: args.userId, kind: args.kind,
+      chart_id: args.chartId ?? null, credits: args.credits, created_at: nowIso(),
+    });
+    fileData.credit_ledger.push({
+      user_id: args.userId, delta: -args.credits, reason: "spend",
+      ref_type: "delivery", ref_id: deliveryId, balance_after: bal - args.credits, created_at: nowIso(),
+    });
+    saveFile();
+    return { deliveryId, balance: bal - args.credits };
+  }
+  const client = await pool!.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT id FROM app_users WHERE id = $1 FOR UPDATE`, [args.userId]);
+
+    const { rows: b } = await client.query(
+      `SELECT COALESCE(SUM(delta), 0)::int AS n FROM credit_ledger WHERE user_id = $1`,
+      [args.userId],
+    );
+    const balance = b[0]?.n ?? 0;
+    if (balance < args.credits) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: d } = await client.query(
+      `INSERT INTO deliveries (user_id, kind, chart_id, credits, meta)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [args.userId, args.kind, args.chartId ?? null, args.credits, args.meta ? JSON.stringify(args.meta) : null],
+    );
+    const deliveryId = d[0].id;
+    const after = balance - args.credits;
+
+    await client.query(
+      `INSERT INTO credit_ledger (user_id, delta, reason, ref_type, ref_id, balance_after)
+       VALUES ($1,$2,'spend','delivery',$3,$4)`,
+      [args.userId, -args.credits, deliveryId, after],
+    );
+    await client.query("COMMIT");
+    return { deliveryId, balance: after };
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Give credits back — a delivery that failed after being charged, or a refund.
+ * A new positive row; the original spend stays in the history.
+ */
+export async function grantCredits(args: {
+  userId: string;
+  credits: number;
+  reason: "purchase" | "refund" | "bonus" | "signup" | "admin";
+  refType?: string | null;
+  refId?: string | null;
+  note?: string | null;
+}): Promise<number> {
+  if (!USE_PG) {
+    // Mirrors the unique index in Postgres: one grant per payment, ever.
+    if (args.refType === "payment" && args.refId &&
+        fileData.credit_ledger.some((r) => r.ref_type === "payment" && r.ref_id === args.refId)) {
+      return creditBalance(args.userId);
+    }
+    const after = (await creditBalance(args.userId)) + args.credits;
+    fileData.credit_ledger.push({
+      user_id: args.userId, delta: args.credits, reason: args.reason,
+      ref_type: args.refType ?? null, ref_id: args.refId ?? null,
+      note: args.note ?? null, balance_after: after, created_at: nowIso(),
+    });
+    saveFile();
+    return after;
+  }
+  const client = await pool!.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT id FROM app_users WHERE id = $1 FOR UPDATE`, [args.userId]);
+    const { rows: b } = await client.query(
+      `SELECT COALESCE(SUM(delta), 0)::int AS n FROM credit_ledger WHERE user_id = $1`,
+      [args.userId],
+    );
+    const after = (b[0]?.n ?? 0) + args.credits;
+    await client.query(
+      `INSERT INTO credit_ledger (user_id, delta, reason, ref_type, ref_id, note, balance_after)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [args.userId, args.credits, args.reason, args.refType ?? null, args.refId ?? null, args.note ?? null, after],
+    );
+    await client.query("COMMIT");
+    return after;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Create a pending order. Mirrors what a real provider's create-order call
+ * will store, so switching to Razorpay only changes where the ids come from.
+ */
+export async function createMockOrder(args: {
+  userId: string; packId: string; paise: number; credits: number;
+}): Promise<{ orderId: string }> {
+  const orderIdLocal = "mock_order_" + randomUUID().replace(/-/g, "").slice(0, 18);
+  if (!USE_PG) {
+    fileData.payments.push({
+      id: randomUUID(), user_id: args.userId, provider: "mock",
+      provider_order_id: orderIdLocal, provider_payment_id: null,
+      amount_paise: args.paise, pack_id: args.packId,
+      credits: Math.max(1, args.credits), status: "created", created_at: nowIso(),
+    });
+    saveFile();
+    return { orderId: orderIdLocal };
+  }
+  const orderId = orderIdLocal;
+  await pool!.query(
+    `INSERT INTO payments (user_id, provider, provider_order_id, amount_paise, pack_id, credits, status)
+     VALUES ($1,'mock',$2,$3,$4,$5,'created')`,
+    // credits must be > 0 by the CHECK, and the trial grants none — record 1
+    // so the row is valid; the trial path never reads this field.
+    [args.userId, orderId, args.paise, args.packId, Math.max(1, args.credits)],
+  );
+  return { orderId };
+}
+
+/**
+ * Settle an order the way a webhook would.
+ *
+ * Idempotent on purpose: providers retry, and a second delivery of the same
+ * event must not grant twice. An order already marked paid returns its
+ * original result with `alreadySettled`, so the caller can be safely re-run.
+ */
+export async function settleMockOrder(
+  orderId: string,
+  status: "paid" | "failed",
+): Promise<{
+  ok: boolean; error?: string; status?: string;
+  userId?: string; credits?: number; packId?: string; paymentId?: string;
+  alreadySettled?: boolean;
+}> {
+  if (!USE_PG) {
+    const row = fileData.payments.find((p) => p.provider_order_id === orderId);
+    if (!row) return { ok: false, error: "Unknown order." };
+    if (row.status === "paid") {
+      return { ok: true, status: "paid", userId: row.user_id, credits: row.credits,
+               packId: row.pack_id, paymentId: row.provider_payment_id, alreadySettled: true };
+    }
+    const pid = "mock_pay_" + randomUUID().replace(/-/g, "").slice(0, 18);
+    row.status = status;
+    row.provider_payment_id = status === "paid" ? pid : null;
+    saveFile();
+    return { ok: true, status, userId: row.user_id, credits: row.credits, packId: row.pack_id, paymentId: pid };
+  }
+  const { rows } = await pool!.query(
+    `SELECT id, user_id, credits, pack_id, status, provider_payment_id
+       FROM payments WHERE provider_order_id = $1`,
+    [orderId],
+  );
+  const row = rows[0];
+  if (!row) return { ok: false, error: "Unknown order." };
+
+  if (row.status === "paid") {
+    return {
+      ok: true, status: "paid", userId: row.user_id, credits: row.credits,
+      packId: row.pack_id, paymentId: row.provider_payment_id, alreadySettled: true,
+    };
+  }
+
+  const paymentId = "mock_pay_" + randomUUID().replace(/-/g, "").slice(0, 18);
+  await pool!.query(
+    `UPDATE payments SET status = $2, provider_payment_id = $3, updated_at = now()
+      WHERE provider_order_id = $1`,
+    [orderId, status, status === "paid" ? paymentId : null],
+  );
+  return {
+    ok: true, status, userId: row.user_id, credits: row.credits,
+    packId: row.pack_id, paymentId,
+  };
+}
+
+/** A user's own purchase history — the receipt trail they can point at. */
+export async function paymentHistory(userId: string, limit = 50) {
+  if (!USE_PG) {
+    return fileData.payments
+      .filter((p) => p.user_id === userId)
+      .slice(-limit).reverse()
+      .map((p) => ({
+        order_id: p.provider_order_id, payment_id: p.provider_payment_id,
+        pack_id: p.pack_id, amount_paise: p.amount_paise, credits: p.credits,
+        status: p.status, created_at: p.created_at,
+      }));
+  }
+  const { rows } = await pool!.query(
+    `SELECT provider_order_id AS order_id, provider_payment_id AS payment_id,
+            pack_id, amount_paise, credits, status, created_at
+       FROM payments WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [userId, limit],
+  );
+  return rows;
+}
+
+/**
+ * Every payment, for the admin. Joined to the account so a dispute can be
+ * answered with "this email, this order, this amount, at this time" rather
+ * than a bare id.
+ */
+export async function allPayments(limit = 200) {
+  if (!USE_PG) {
+    const byId = new Map(fileData.users.map((u: any) => [u.id, u]));
+    return fileData.payments.slice(-limit).reverse().map((p) => ({
+      order_id: p.provider_order_id, payment_id: p.provider_payment_id,
+      pack_id: p.pack_id, amount_paise: p.amount_paise, credits: p.credits,
+      status: p.status, created_at: p.created_at,
+      email: byId.get(p.user_id)?.email ?? "—", name: byId.get(p.user_id)?.name ?? "—",
+      user_id: p.user_id,
+    }));
+  }
+  const { rows } = await pool!.query(
+    `SELECT p.provider_order_id AS order_id, p.provider_payment_id AS payment_id,
+            p.pack_id, p.amount_paise, p.credits, p.status, p.created_at,
+            u.email, u.name, p.user_id
+       FROM payments p JOIN app_users u ON u.id = p.user_id
+      ORDER BY p.created_at DESC LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+/** Money totals for the admin dashboard. */
+export async function paymentTotals() {
+  if (!USE_PG) {
+    const paid = fileData.payments.filter((p) => p.status === "paid");
+    return {
+      paid_count: paid.length,
+      paid_paise: paid.reduce((n, p) => n + p.amount_paise, 0),
+      trials: paid.filter((p) => p.pack_id === "trial").length,
+      failed: fileData.payments.filter((p) => p.status === "failed").length,
+    };
+  }
+  const { rows } = await pool!.query(
+    `SELECT count(*) FILTER (WHERE status='paid')::int                       AS paid_count,
+            COALESCE(SUM(amount_paise) FILTER (WHERE status='paid'),0)::int  AS paid_paise,
+            count(*) FILTER (WHERE status='paid' AND pack_id='trial')::int   AS trials,
+            count(*) FILTER (WHERE status='failed')::int                     AS failed
+       FROM payments`,
+  );
+  return rows[0];
+}
+
+/** How many of `kind` this user has had during the current trial window. */
+export async function deliveryCountSince(userId: string, kind: string, endsAtIso: string): Promise<number> {
+  if (!USE_PG) {
+    const from = new Date(endsAtIso).getTime() - TRIAL.days * 86400_000;
+    return fileData.deliveries.filter(
+      (d) => d.user_id === userId && d.kind === kind && new Date(d.created_at).getTime() > from,
+    ).length;
+  }
+  const { rows } = await pool!.query(
+    `SELECT count(*)::int AS n FROM deliveries
+      WHERE user_id = $1 AND kind = $2
+        AND created_at > ($3::timestamptz - ($4 || ' days')::interval)`,
+    [userId, kind, endsAtIso, TRIAL.days],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/** The user's own statement — every credit in and out, newest first. */
+export async function creditHistory(userId: string, limit = 50) {
+  if (!USE_PG) {
+    return fileData.credit_ledger.filter((r) => r.user_id === userId).slice(-limit).reverse();
+  }
+  const { rows } = await pool!.query(
+    `SELECT delta, reason, ref_type, note, balance_after, created_at
+       FROM credit_ledger WHERE user_id = $1 ORDER BY id DESC LIMIT $2`,
+    [userId, limit],
+  );
+  return rows;
 }
 
 /**

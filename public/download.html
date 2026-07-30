@@ -103,7 +103,6 @@
   .rise.d2 > .rise-i{transition-delay:.12s}
   @media (prefers-reduced-motion:reduce){.rise > .rise-i{transform:none;transition:none}}
   /* magnetic buttons follow the cursor a little */
-  .btn{will-change:transform}
 
   /* scroll progress bar */
   .progress{position:fixed;top:0;left:0;height:3px;width:100%;z-index:80;transform-origin:0 50%;transform:scaleX(0);
@@ -566,7 +565,7 @@
     .mmenu{background:#050B1E !important}
     .glass{background:rgba(13,27,61,.94) !important}
     /* Speculative GPU layers compound badly on low-RAM devices. */
-    .btn, .csl-track, #stars, #meteors, .reveal{will-change:auto !important}
+    .csl-track, #stars, #meteors, .reveal{will-change:auto !important}
     /* Purely decorative glows cost real frames on a phone. */
     .phone-glow, .sky .glow{display:none !important}
     .reveal.rv-blur{filter:none !important}
@@ -577,6 +576,69 @@
   .as-brand img{border-radius:7px}
   .as-brand>span{color:var(--gold-lt)}
   .as-get{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#1A1305;font-weight:800;font-size:13px;border:none;border-radius:999px;padding:8px 16px}
+  .as-top-cta{display:flex;align-items:center;gap:7px}
+  .as-ghost{background:rgba(255,255,255,.07);border:1px solid var(--wht-brd);color:var(--ink);
+    font-weight:700;font-size:12px;border-radius:999px;padding:7px 12px}
+  /* Plans screen */
+  .as-acct{margin:12px 0 0;background:rgba(255,255,255,.05);border:1px solid var(--wht-brd);
+    border-radius:14px;padding:10px 13px;font-size:12px;color:var(--ink2);line-height:1.5}
+  .as-acct b{color:var(--gold-lt)}
+  .as-acct button{background:none;border:0;color:var(--muted);font:inherit;font-size:11.5px;text-decoration:underline;padding:0}
+  .as-free{margin-top:16px;border:1px dashed var(--wht-brd);border-radius:16px;padding:14px}
+  .as-free-h{margin:0 0 10px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .as-free-tags{display:flex;flex-wrap:wrap;gap:6px}
+  .as-free-tags span{background:rgba(255,255,255,.05);border:1px solid var(--wht-brd);border-radius:99px;padding:5px 10px;font-size:11.5px}
+  .as-hint{margin:20px 0 10px;font-size:11.5px;color:var(--muted);text-align:center}
+  .as-plans{display:grid;gap:11px;padding-bottom:8px}
+  .as-plan{position:relative;text-align:left;color:inherit;font:inherit;width:100%;
+    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));
+    border:1px solid var(--wht-brd);border-radius:18px;padding:18px 16px}
+  .as-plan.hero{border-color:rgba(232,180,74,.5);background:linear-gradient(150deg,rgba(232,180,74,.16),rgba(232,180,74,.03) 62%,transparent)}
+  .as-plan-flag{position:absolute;top:-9px;left:16px;background:var(--gold);color:#1a1206;font-size:9.5px;font-weight:800;
+    letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:99px}
+  .as-plan-n{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 0 7px}
+  .as-plan-p{display:flex;align-items:baseline;gap:7px}
+  .as-plan-rs{font-family:var(--serif);font-size:32px;line-height:1;font-weight:800;color:var(--gold-lt)}
+  .as-plan-u{font-size:11.5px;color:var(--muted)}
+  .as-plan-t{margin:9px 0 0;font-size:12.5px;line-height:1.5;color:var(--ink2)}
+  .as-plan-m{display:block;margin-top:12px;font-size:12px;font-weight:700;color:var(--gold-lt)}
+
+  /* Compare, phone edition.
+     A five-column table cannot fit 390px, and shrinking the type until it does
+     makes it unreadable — so the feature name is pinned with position:sticky
+     and only the plan columns scroll, snapping one column at a time. The card
+     needs a SOLID background: the shell paints a radial gradient, and a
+     transparent sticky cell would let the scrolling numbers show through it. */
+  .ascmp-card{margin-top:26px;background:#0B1730;border:1px solid var(--wht-brd);border-radius:18px;overflow:hidden}
+  .ascmp-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:14px 15px 11px}
+  .ascmp-head h3{margin:0;font-family:var(--serif);font-size:17px;font-weight:700}
+  .ascmp-swipe{font-size:10.5px;color:var(--muted);white-space:nowrap;transition:opacity .3s}
+  .ascmp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;
+    scrollbar-width:none}
+  .ascmp-wrap::-webkit-scrollbar{display:none}
+  .ascmp{border-collapse:separate;border-spacing:0;width:max-content}
+  .ascmp th,.ascmp td{padding:9px 8px;font-size:11.5px;text-align:center;vertical-align:middle;
+    border-top:1px solid rgba(255,255,255,.06)}
+  .ascmp thead th{border-top:0}
+  /* the pinned feature column */
+  .ascmp tbody th,.ascmp thead th:first-child,.ascmp tfoot td:first-child{
+    position:sticky;left:0;z-index:2;background:#0B1730;text-align:left;
+    min-width:118px;max-width:118px;font-weight:600;color:var(--ink2);line-height:1.3;
+    box-shadow:1px 0 0 rgba(255,255,255,.07)}
+  .ascmp thead th{min-width:96px;scroll-snap-align:start;padding:11px 8px 12px;
+    font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .ascmp-rs{display:block;margin-top:4px;font-family:var(--serif);font-size:19px;font-weight:800;
+    letter-spacing:0;text-transform:none;color:var(--gold-lt)}
+  .ascmp-sub{display:block;margin-top:2px;font-size:9px;font-weight:600;letter-spacing:0;
+    text-transform:none;color:var(--muted);line-height:1.25}
+  .ascmp .hero-col{background:rgba(232,180,74,.09)}
+  .ascmp .yes{color:var(--gold-lt);font-weight:700}
+  .ascmp .no{color:#59617A}
+  .ascmp tfoot td{padding:12px 7px 14px}
+  .ascmp-buy{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--wht-brd);color:var(--ink);
+    font:inherit;font-size:11.5px;font-weight:700;border-radius:99px;padding:8px 6px}
+  .ascmp-buy.hero{background:linear-gradient(135deg,var(--gold-lt),var(--gold));border-color:transparent;color:#1A1305}
+  .ascmp-note{margin:0;padding:0 15px 15px;font-size:10.5px;line-height:1.5;color:var(--muted)}
 
   .as-screens{position:absolute;left:0;right:0;top:calc(56px + env(safe-area-inset-top,0px));bottom:calc(62px + env(safe-area-inset-bottom,0px));overflow:hidden}
   .as-screen{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
@@ -609,6 +671,114 @@
   .as-h{font-family:var(--serif);font-size:26px;margin-bottom:3px}
   .as-sub{color:var(--ink2);font-size:13.5px;margin-bottom:20px}
   .as-dlcount{margin-top:10px;font-size:12.5px;font-weight:700;color:var(--gold-lt);letter-spacing:.02em}
+  /* Plans */
+  .acct-chip{display:inline-flex;align-items:center;gap:8px;margin-top:16px;background:rgba(255,255,255,.05);
+    border:1px solid var(--wht-brd);border-radius:99px;padding:7px 14px;font-size:12.5px;color:var(--ink2)}
+  .acct-chip b{color:var(--gold-lt);font-weight:700}
+  .acct-chip button{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline}
+  .free-strip{margin-top:26px;padding:22px;border:1px dashed var(--wht-brd);border-radius:20px;text-align:center}
+  .free-strip h3{margin:0 0 14px;font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .free-tags{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .free-tags span{background:rgba(255,255,255,.05);border:1px solid var(--wht-brd);border-radius:99px;padding:6px 13px;font-size:12.5px}
+  .plans-hint{text-align:center;margin:34px 0 14px;font-size:12.5px;color:var(--muted)}
+  .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .plan{position:relative;text-align:left;cursor:pointer;color:inherit;font:inherit;
+    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.015));
+    border:1px solid var(--wht-brd);border-radius:20px;padding:22px 20px 20px;
+    transition:border-color .2s,transform .2s,box-shadow .2s}
+  .plan:hover{border-color:rgba(232,180,74,.55);transform:translateY(-3px);box-shadow:0 14px 34px rgba(0,0,0,.32)}
+  .plan.hero{border-color:rgba(232,180,74,.5);background:linear-gradient(150deg,rgba(232,180,74,.16),rgba(232,180,74,.03) 62%,transparent)}
+  .plan-flag{position:absolute;top:-10px;left:20px;background:var(--gold);color:#1a1206;font-size:10px;font-weight:800;
+    letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:99px;white-space:nowrap}
+  .plan-name{font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:2px 0 10px}
+  .plan-price{display:flex;align-items:baseline;gap:7px}
+  .plan-rs{font-family:var(--serif,Georgia,serif);font-size:40px;line-height:1;font-weight:800;color:var(--gold-lt)}
+  .plan-unit{font-size:12.5px;color:var(--muted)}
+  .plan-tag{margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--ink2)}
+  .plan-more{display:flex;align-items:center;gap:6px;margin-top:16px;font-size:12.5px;font-weight:700;color:var(--gold-lt)}
+  /* detail sheet */
+  .pd-head{border-bottom:1px solid var(--wht-brd);padding-bottom:16px;margin-bottom:16px}
+  .pd-price{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+  .pd-rs{font-family:var(--serif,Georgia,serif);font-size:42px;line-height:1;font-weight:800;color:var(--gold-lt)}
+  .pd-unit{font-size:13px;color:var(--muted)}
+  .pd-list{list-style:none;margin:0;padding:0;display:grid;gap:11px}
+  .pd-list li{position:relative;padding-left:22px;font-size:13.5px;line-height:1.55}
+  .pd-list li:before{content:"✓";position:absolute;left:0;color:var(--gold-lt);font-weight:800}
+  .pd-buys{margin-top:18px;border:1px solid var(--wht-brd);border-radius:16px;overflow:hidden}
+  .pd-buys h4{margin:0;padding:11px 16px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);background:rgba(255,255,255,.035)}
+  .pd-buys ul{list-style:none;margin:0;padding:0}
+  .pd-buys li{padding:12px 16px;font-size:14px;line-height:1.35;border-top:1px solid var(--wht-brd)}
+  .pd-buys li b{font-family:var(--serif,Georgia,serif);font-size:19px;color:var(--gold-lt);margin-right:6px}
+  .pd-buys li s{display:block;margin-top:3px;font-size:11.5px;color:var(--muted);text-decoration:none}
+  .pd-fine{margin:14px 0 0;font-size:11.5px;line-height:1.6;color:var(--muted)}
+  /* receipts */
+  .rcpt{border:1px solid var(--wht-brd);border-radius:14px;overflow:hidden;margin-top:14px}
+  .rcpt-row{display:flex;justify-content:space-between;gap:10px;padding:11px 14px;font-size:12.5px}
+  .rcpt-row+.rcpt-row{border-top:1px solid var(--wht-brd)}
+  .rcpt-row s{color:var(--muted);text-decoration:none}
+  .rcpt-ok{color:#6ee7b7}.rcpt-bad{color:#fca5a5}
+  .pr-fine{margin-top:24px;font-size:12px;color:var(--muted)}
+  /* Compare */
+  .cmp-h{margin:44px 0 4px;text-align:center;font-size:20px;font-weight:800}
+  .cmp-wrap{margin-top:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    border:1px solid var(--wht-brd);border-radius:18px}
+  .cmp{width:100%;border-collapse:collapse;min-width:520px;font-size:13.5px}
+  .cmp th,.cmp td{padding:13px 14px;text-align:center;border-top:1px solid var(--wht-brd)}
+  .cmp thead th{border-top:0;background:rgba(255,255,255,.035);font-size:12px;font-weight:800;
+    letter-spacing:.04em;text-transform:uppercase;color:var(--muted);position:sticky;top:0}
+  .cmp tbody th{text-align:left;font-weight:600;color:var(--ink2);white-space:nowrap}
+  .cmp .col-hero{background:rgba(232,180,74,.07)}
+  .cmp .cmp-price{font-family:var(--serif,Georgia,serif);font-size:22px;color:var(--gold-lt);display:block}
+  .cmp .cmp-sub{display:block;margin-top:2px;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:0;text-transform:none}
+  .cmp .yes{color:var(--gold-lt);font-weight:800}
+  .cmp .no{color:var(--muted)}
+  .cmp tfoot td{border-top:1px solid var(--wht-brd);padding:14px}
+  .cmp-buy{width:100%;background:rgba(255,255,255,.06);border:1px solid var(--wht-brd);color:inherit;font:inherit;
+    font-weight:700;font-size:12.5px;border-radius:99px;padding:9px 10px;cursor:pointer}
+  .cmp-buy.hero{background:linear-gradient(135deg,var(--gold-lt),var(--gold));color:#1a1206;border-color:transparent}
+  .cmp-note{margin-top:12px;text-align:center;font-size:11.5px;color:var(--muted)}
+  /* Nav-opened pages. The home scroll is one document; these are separate
+     views on top of it, so a nav click lands somewhere rather than scrolling. */
+  /* Pricing held back until payments are live — hides every entry point.
+     Re-enable by removing this rule and restoring 'pricing' in PAGES. */
+  [data-page="pricing"], [data-tab-go="pricing"], [data-tab="pricing"]{display:none !important}
+  .page{display:none;min-height:70vh}
+  /* The scroll sections live inside .content, not directly under <body> — a
+     body-level child selector silently matches nothing here, which is exactly
+     how the first attempt "worked" while showing the whole home page. */
+  /* One animation on one element beats forty scroll reveals: a dashboard view
+     opens at scrollTop 0, so per-element reveals below the fold just sit at
+     opacity:0 and then flash in. */
+  body.on-page .page.open{display:block;animation:pageIn .34s cubic-bezier(.16,1,.3,1) both}
+  @keyframes pageIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  /* Nothing of the marketing scroll is on screen while a page is open, so the
+     star field's 46 infinite animations and the meteor loop are pure cost. */
+  body.on-page .star{animation:none}
+  body.on-page #meteors{display:none}
+  @media (prefers-reduced-motion:reduce){.page.open{animation:none !important}}
+  body.on-page .content > section:not(.page),
+  body.on-page .content > .hero,
+  body.on-page .content > footer,
+  body.on-page .content > .dl-band{display:none}
+  nav.links a.on,.mmenu a.on{color:var(--gold-lt)}
+  .acct-empty{max-width:420px;margin:26px auto 0;text-align:center;border:1px dashed var(--wht-brd);border-radius:20px;padding:30px 22px}
+  .acct-empty p{margin:0 0 16px;color:var(--ink2);font-size:14px}
+  .acct-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:26px}
+  .acct-card{background:rgba(255,255,255,.04);border:1px solid var(--wht-brd);border-radius:16px;padding:16px}
+  .acct-card span{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .acct-card b{display:block;margin-top:7px;font-size:19px;color:var(--gold-lt);word-break:break-all}
+  .acct-h{margin:30px 0 0;font-size:13px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .pol-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:26px}
+  .pol{background:rgba(255,255,255,.04);border:1px solid var(--wht-brd);border-radius:18px;padding:20px}
+  .pol h3{margin:0 0 10px;font-size:15px;font-weight:800}
+  .pol p{margin:0 0 10px;font-size:13.5px;line-height:1.65;color:var(--ink2)}
+  .pol p:last-child{margin-bottom:0}
+  .pol a{color:var(--gold-lt)}
+  @media(max-width:520px){
+    .plans{grid-template-columns:1fr}
+    .plan-rs{font-size:36px}
+  }
 
   .as-form{display:flex;flex-direction:column;gap:13px}
   .as-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);position:relative}
@@ -753,7 +923,11 @@
 <div id="appshell">
   <header class="as-top">
     <span class="as-brand"><img src="/favicon.svg" alt="" width="26" height="26" /> Janam<span>Jyot</span></span>
-    <button class="as-get" data-modal>Get App</button>
+    <span class="as-top-cta">
+      <button class="as-ghost" data-tab-go="pricing">Pricing</button>
+      <button class="as-ghost" id="asSign">Sign in</button>
+      <button class="as-get" data-modal>Get App</button>
+    </span>
   </header>
 
   <main class="as-screens" id="asScreens">
@@ -897,6 +1071,35 @@
     </section>
 
     <!-- GET APP -->
+    <!-- PRICING -->
+    <section class="as-screen" data-screen="pricing">
+      <div class="as-pad">
+        <h2 class="as-h">Plans</h2>
+        <p class="as-sub">Everyday astrology is free. Pay only for the deep readings.</p>
+        <div id="asAcct" class="as-acct" hidden></div>
+
+        <div class="as-free">
+          <p class="as-free-h">Free forever</p>
+          <div class="as-free-tags">
+            <span>Kundli</span><span>All charts</span><span>Dasha</span><span>Yogas</span>
+            <span>Panchang</span><span>Choghadiya</span><span>Muhurat</span><span>Daily guidance</span>
+          </div>
+        </div>
+
+        <p class="as-hint">Tap a plan to see what you get.</p>
+        <div id="asPlans" class="as-plans"></div>
+
+        <div class="ascmp-card">
+          <div class="ascmp-head">
+            <h3>Compare</h3>
+            <span class="ascmp-swipe" id="asCmpSwipe">swipe →</span>
+          </div>
+          <div class="ascmp-wrap" id="asCmpWrap"><table class="ascmp" id="asCmpTable"></table></div>
+          <p class="ascmp-note">Counts are what the credits buy if you spend them all on one thing. Mix them however you like.</p>
+        </div>
+      </div>
+    </section>
+
     <section class="as-screen" data-screen="app">
       <h2 class="as-h">Get JanamJyot</h2>
       <p class="as-sub">Free for Android · secure APK.</p>
@@ -919,6 +1122,7 @@
     <button data-tab="home" class="active" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg><span>Home</span></button>
     <button data-tab="kundli" aria-label="Kundli"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg><span>Kundli</span></button>
     <button data-tab="tools" aria-label="Tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>Tools</span></button>
+    <button data-tab="pricing" aria-label="Plans"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg><span>Plans</span></button>
     <button data-tab="talk" aria-label="Talk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Talk</span></button>
     <button data-tab="app" aria-label="Get App"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>Get App</span></button>
   </nav>
@@ -934,11 +1138,10 @@
       Janam<span class="n2">Jyot</span>
     </a>
     <nav class="links" id="navLinks">
-      <a href="#free-kundli">Free Kundli</a>
-      <a href="#tools">Tools</a>
-      <a href="#astrologers">Astrologers</a>
-      <a href="#how">How It Works</a>
-      <a href="#faq">FAQ</a>
+      <a href="#home" data-page="home">Home</a>
+      <a href="#pricing" data-page="pricing">Pricing</a>
+      <a href="#account" data-page="account">My account</a>
+      <a href="#support" data-page="support">Help &amp; policies</a>
     </nav>
     <div class="hdr-cta">
       <a class="btn btn-gold" style="padding:11px 20px;font-size:14px" href="#download" data-dl>Download App</a>
@@ -957,11 +1160,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <a href="#free-kundli" data-m>Free Kundli</a>
-  <a href="#tools" data-m>Tools</a>
-  <a href="#astrologers" data-m>Astrologers</a>
-  <a href="#how" data-m>How It Works</a>
-  <a href="#faq" data-m>FAQ</a>
+  <a href="#home" data-m data-page="home">Home</a>
+  <a href="#pricing" data-m data-page="pricing">Pricing</a>
+  <a href="#account" data-m data-page="account">My account</a>
+  <a href="#support" data-m data-page="support">Help &amp; policies</a>
   <a href="#download" data-m data-dl style="color:var(--gold-lt)">Download App ↓</a>
 </div>
 
@@ -980,7 +1182,7 @@
       <p class="micro"><span class="dot"></span> Available for Android • Secure APK Download</p>
     </div>
 
-    <div class="phone-stage reveal rv-scale">
+    <div class="phone-stage reveal">
       <div class="phone-glow"></div>
       <div class="phone">
         <span class="notch"></span>
@@ -1220,6 +1422,113 @@
       <div class="card astro reveal"><span class="av" style="background:#7C3AED18;color:#7C3AED"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v3M5.6 5.6l1.8 1.8M18.4 5.6l-1.8 1.8"/><path d="M8 13a4 4 0 0 1 8 0c0 2-1.6 3-1.6 4.5H9.6C9.6 16 8 15 8 13z"/><path d="M9.5 21h5"/></svg></span><h3>Upaya Guru</h3><span class="role">AI Remedies Astrologer</span><span class="tags">Remedies · Mantras · Daily habits</span></div>
     </div>
     <p class="center reveal" style="margin-top:22px"><button class="btn btn-gold" data-modal>⬇ Talk to them in the app</button></p>
+  </div>
+</section>
+
+<!-- ACCOUNT (its own page, opened from the nav) -->
+<section class="sec page" id="account" data-pageview>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">✦ Your account</span>
+      <h2 style="margin-top:14px">Credits, receipts and <span class="gold">everything you've bought</span></h2>
+      <p class="lead" style="margin:12px auto 0">Signed in on this website with the same email you use in the app.</p>
+    </div>
+
+    <div id="acctSignedOut" class="acct-empty">
+      <p>You're not signed in on this browser.</p>
+      <button class="btn btn-gold" id="acctSignIn">Sign in with email</button>
+      <p class="pd-fine" style="text-align:center">We send a 6-digit code — no password to remember.</p>
+    </div>
+
+    <div id="acctSignedIn" hidden>
+      <div class="acct-grid">
+        <div class="acct-card"><span>Email</span><b id="acEmail">—</b></div>
+        <div class="acct-card"><span>Credits</span><b id="acCredits">—</b></div>
+        <div class="acct-card"><span>Trial</span><b id="acTrial">—</b></div>
+      </div>
+      <h3 class="acct-h">Purchase history</h3>
+      <div id="acReceipts" class="rcpt"></div>
+      <h3 class="acct-h">Credit statement</h3>
+      <div id="acLedger" class="rcpt"></div>
+      <p class="pd-fine">Every credit in and out is listed here. Nothing is ever removed from this record — a refund appears as its own line.</p>
+      <button class="btn btn-ghost" id="acSignOut" style="margin-top:16px">Sign out of this browser</button>
+    </div>
+  </div>
+</section>
+
+<!-- HELP & POLICIES (its own page) -->
+<section class="sec page" id="support" data-pageview>
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">✦ Help &amp; policies</span>
+      <h2 style="margin-top:14px">Straight answers about <span class="gold">money and data</span></h2>
+    </div>
+
+    <div class="pol-grid">
+      <div class="pol">
+        <h3>Refunds &amp; cancellation</h3>
+        <p>Readings are digital and delivered immediately, so a completed reading is not refundable. But if a reading <b>fails for a technical reason</b>, the credits are returned automatically — you do not need to ask.</p>
+        <p>Credit packs are one-time purchases. Nothing renews, so there is nothing to cancel.</p>
+      </div>
+      <div class="pol">
+        <h3>Delivery</h3>
+        <p>Credits appear in your account the moment the payment is confirmed — usually within seconds. If the app closed mid-payment they still arrive: the confirmation reaches our server directly, not through your phone.</p>
+      </div>
+      <div class="pol">
+        <h3>The ₹1 trial</h3>
+        <p>Three days of full access, once per account. It <b>does not renew</b> and no card is stored. Fair-use caps apply so it cannot be abused.</p>
+      </div>
+      <div class="pol">
+        <h3>Your data</h3>
+        <p>Birth details are used to calculate your chart and nothing else. They are never sold. You can delete your account and everything in it from Settings in the app.</p>
+        <p><a href="/privacy.html">Privacy Policy</a> · <a href="/terms.html">Terms of Use</a></p>
+      </div>
+      <div class="pol">
+        <h3>What this app is not</h3>
+        <p>JanamJyot is for reflection and guidance. It is not medical, legal, financial or psychological advice, and it should not replace a professional.</p>
+      </div>
+      <div class="pol">
+        <h3>Contact &amp; grievances</h3>
+        <p>Email <a href="mailto:vk1234888i@gmail.com">vk1234888i@gmail.com</a> for anything — a payment problem, a refund, or a complaint. We aim to reply within 48 hours.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="sec page" id="pricing" data-pageview>
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">✦ Plans</span>
+      <h2 style="margin-top:14px">Everyday astrology is <span class="gold">free</span>.<br>Deep readings, when you want them.</h2>
+      <p class="lead" style="margin:12px auto 0">
+        No subscription. Nothing auto-renews. Credits never expire.
+      </p>
+      <div id="acctChip" class="acct-chip" hidden></div>
+    </div>
+
+    <!-- free, stated once and clearly -->
+    <div class="free-strip reveal">
+      <h3>Free forever · no account limits</h3>
+      <div class="free-tags">
+        <span>Janam Kundli</span><span>All divisional charts</span><span>Dasha timeline</span>
+        <span>Yogas</span><span>Ashtakavarga</span><span>Daily Panchang</span>
+        <span>Choghadiya &amp; Hora</span><span>Muhurat</span><span>“Abhi sahi hai?”</span>
+        <span>Daily guidance</span><span>2 saved kundlis</span>
+      </div>
+    </div>
+
+    <p class="plans-hint reveal">Tap a plan to see exactly what you get.</p>
+    <div class="plans reveal" id="plans"><!-- built by JS from PLANS --></div>
+
+    <!-- side by side, so the choice is obvious rather than a guess -->
+    <h3 class="cmp-h reveal">Compare</h3>
+    <div class="cmp-wrap reveal"><table class="cmp" id="cmpTable"></table></div>
+    <p class="cmp-note reveal">Counts are what the credits buy if you spend them all on one thing. Mix them however you like.</p>
+
+    <p class="center reveal pr-fine">
+      If a reading fails for a technical reason, the credits come straight back.
+    </p>
   </div>
 </section>
 
@@ -1466,6 +1775,67 @@
 </div><!-- /content -->
 
 <!-- DOWNLOAD MODAL -->
+<!-- ── Plan detail → buy (test mode) ──────────────────────────────────────── -->
+<div class="modal" id="buyModal">
+  <div class="box">
+    <h3 id="buyTitle">Plan</h3>
+    <p id="buyBanner" class="buy-banner" hidden></p>
+
+    <!-- step 0: what this plan actually is -->
+    <div id="buyStepDetail">
+      <div class="pd-head">
+        <div class="plan-name" id="pdName"></div>
+        <div class="pd-price"><span class="pd-rs" id="pdRs"></span><span class="pd-unit" id="pdUnit"></span></div>
+        <p class="plan-tag" id="pdTag" style="margin-top:10px"></p>
+      </div>
+      <ul class="pd-list" id="pdList"></ul>
+      <div class="pd-buys" id="pdBuys" hidden><h4>₹149 gets you any of these</h4><ul id="pdBuysRows"></ul></div>
+      <p class="pd-fine" id="pdFine"></p>
+      <button class="btn btn-gold buy-go" id="pdBuy">Continue</button>
+      <button class="btn btn-ghost buy-go2" id="pdBack">Back to plans</button>
+    </div>
+
+    <!-- step 1: who are you -->
+    <div id="buyStepEmail" hidden>
+      <p class="buy-note">Sign in first, so this purchase is tied to your account — the same one you use in the app. Your receipts stay on this email.</p>
+      <label class="buy-lbl">Email</label>
+      <input id="buyEmail" class="buy-in" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com">
+      <button class="btn btn-gold buy-go" id="buySendCode">Send code</button>
+      <button class="btn btn-ghost buy-go2" id="buyBackDetail">Back</button>
+    </div>
+
+    <!-- step 2: prove it -->
+    <div id="buyStepCode" hidden>
+      <p class="buy-note">We sent a 6-digit code to <b id="buyEmailEcho"></b>.</p>
+      <label class="buy-lbl">6-digit code</label>
+      <input id="buyCode" class="buy-in" inputmode="numeric" maxlength="6" placeholder="••••••">
+      <button class="btn btn-gold buy-go" id="buyVerify">Verify &amp; continue</button>
+      <button class="btn btn-ghost buy-go2" id="buyBackEmail">Use a different email</button>
+    </div>
+
+    <!-- step 3: pay -->
+    <div id="buyStepPay" hidden>
+      <div class="buy-sum">
+        <div class="row"><span id="buyItem"></span><b id="buyAmt"></b></div>
+        <div class="row"><span>Account</span><span id="buyWho"></span></div>
+        <div class="row"><span>Your credits</span><span id="buyBal">0</span></div>
+      </div>
+      <p class="buy-test">⚠ Test mode — no real money moves. These buttons simulate how a payment can actually end.</p>
+      <button class="btn btn-gold buy-go" id="buyPaySuccess">Pay — simulate success</button>
+      <button class="btn btn-ghost buy-go2" id="buyPayFail">Simulate a failed payment</button>
+      <button class="btn btn-ghost buy-go2" id="buyPayTwice">Simulate the same payment arriving twice</button>
+    </div>
+
+    <!-- done -->
+    <div id="buyStepDone" hidden>
+      <p class="buy-done" id="buyDoneMsg"></p>
+      <div id="buyReceipts"></div>
+    </div>
+
+    <button class="btn btn-ghost buy-go2" id="buyClose">Close</button>
+  </div>
+</div>
+
 <div class="modal" id="modal">
   <div class="box">
     <h3><span id="modalLogo" style="width:30px;height:30px;display:inline-block"></span> Download JanamJyot</h3>
@@ -1498,8 +1868,8 @@
 
   var CONFIG = {
     appName: "JanamJyot",
-    apkUrl: "/JanamJyot-v1.3.apk",
-    version: "v1.3",
+    apkUrl: "/JanamJyot-v1.4.apk",
+    version: "v1.4",
     fileSize: "~9.3 MB",
     supportEmail: "vk1234888i@gmail.com",
     website: "https://janamjyot.vercel.app"
@@ -1515,6 +1885,447 @@
 
   // download links
   document.querySelectorAll('[data-dl]').forEach(function(a){ if(a.tagName==='A' && a.getAttribute('href')==='#download') return; });
+  /* ── Page router ────────────────────────────────────────────────────────
+     The marketing story stays one scroll. Pricing, account and policies are
+     their own views: a nav click should arrive somewhere, not fling you down
+     a page. Hash-driven, so Back works and links are shareable. */
+  (function(){
+    var PAGES = ['account','support']; // 'pricing' held back — see CSS note
+    function show(name, push){
+      var isPage = PAGES.indexOf(name) >= 0;
+      document.querySelectorAll('[data-pageview]').forEach(function(el){
+        el.classList.toggle('open', el.id === name);
+      });
+      document.body.classList.toggle('on-page', isPage);
+      document.querySelectorAll('[data-page]').forEach(function(a){
+        a.classList.toggle('on', a.getAttribute('data-page') === (isPage ? name : 'home'));
+      });
+      window.scrollTo(0, 0);
+      if(push) history.replaceState(null, '', isPage ? '#' + name : location.pathname);
+      if(isPage) document.dispatchEvent(new CustomEvent('page:' + name));
+    }
+    document.querySelectorAll('[data-page]').forEach(function(a){
+      a.addEventListener('click', function(e){
+        e.preventDefault();
+        show(a.getAttribute('data-page'), true);
+        var mm = document.getElementById('mmenu');
+        if(mm) mm.classList.remove('open');
+      });
+    });
+    window.addEventListener('hashchange', function(){ show(location.hash.slice(1), false); });
+    show(location.hash.slice(1), false);
+    window.__goPage = show;
+  })();
+
+  /* ── Plans → detail → buy (test mode) ───────────────────────────────────
+     One catalog drives the cards AND the detail sheet, so the page can never
+     advertise something the sheet contradicts. Prices come from the server's
+     own list at /api/credits; these labels only describe them. */
+  (function(){
+    var TOKEN_KEY = 'jj:web-token';
+    var $ = function(id){ return document.getElementById(id); };
+    var modal = $('buyModal'), grid = $('plans');
+    if(!modal || !grid) return;
+
+    var RATE = { life_report:29, report:19, matching:19, chat:1, chart:10, timeline:15 };
+
+    var PLANS = [
+      { id:'trial', hero:true, flag:'Best way to start',
+        name:'3-day full access', rs:1, unit:'once · does not renew',
+        tag:'Everything the app can do, open for three days. One time per account.',
+        list:[
+          'Full Life Report — your whole chart read end to end',
+          'Ask the astrologer anything, all three days',
+          'Kundli Matching — all 36 gunas, with PDF',
+          'Career, wealth and marriage reports',
+          'Life Timeline — 5 years ahead',
+        ],
+        fine:'Fair-use caps apply during the trial (5 life reports, 100 questions, 5 matchings) so it cannot be abused. It ends on its own after 3 days — there is nothing to cancel and no card is saved.' },
+      { id:'starter', name:'Starter', rs:49, credits:50, unit:'50 credits',
+        tag:'A little top-up. Good for one deep reading plus a long conversation.',
+        list:['50 credits','Credits never expire','Use them on anything below'] },
+      { id:'popular', flag:'Most popular', name:'Popular', rs:149, credits:165, bonus:16, unit:'165 credits',
+        tag:'The usual choice — a few reports and plenty of questions.',
+        list:['149 credits + 16 free','Credits never expire','Use them on anything below'] },
+      { id:'value', name:'Value', rs:399, credits:460, bonus:61, unit:'460 credits',
+        tag:'Best rate per credit. For a whole family\u2019s charts.',
+        list:['399 credits + 61 free','Credits never expire','Use them on anything below'] },
+    ];
+
+    /* Concrete value beats a credit count: "165 credits" means nothing until
+       you say it is five full readings. */
+    function buysRows(credits){
+      /* One line per item, count first — the count is the point, the price is
+         supporting detail. A three-column grid wrapped every label onto four
+         lines and read as noise. */
+      return [
+        ['Full Life Reports', RATE.life_report, 'with PDF'],
+        ['Kundli Matchings',  RATE.matching,    'all 36 gunas, with PDF'],
+        ['Focused reports',   RATE.report,      'career, wealth or marriage'],
+        ['Astrologer questions', RATE.chat,     'ask anything about your chart'],
+      ].map(function(r){
+        var n = Math.floor(credits / r[1]);
+        if(n < 1) return '';
+        return '<li><b>' + n + '</b> ' + r[0] +
+               '<s>' + r[2] + ' · ₹' + r[1] + ' each</s></li>';
+      }).join('');
+    }
+
+    grid.innerHTML = PLANS.map(function(p){
+      return '<button class="plan' + (p.hero ? ' hero' : '') + '" data-plan="' + p.id + '">' +
+        (p.flag ? '<i class="plan-flag">' + p.flag + '</i>' : '') +
+        '<div class="plan-name">' + p.name + '</div>' +
+        '<div class="plan-price"><span class="plan-rs">₹' + p.rs + '</span><span class="plan-unit">' + p.unit + '</span></div>' +
+        '<p class="plan-tag">' + p.tag + '</p>' +
+        '<span class="plan-more">See what you get →</span>' +
+      '</button>';
+    }).join('');
+
+    var plan = null, email = '', me = null;
+    function token(){ try { return localStorage.getItem(TOKEN_KEY) || ''; } catch(e){ return ''; } }
+    function setToken(t){ try { t ? localStorage.setItem(TOKEN_KEY,t) : localStorage.removeItem(TOKEN_KEY); } catch(e){} }
+
+    function api(path, opts){
+      opts = opts || {};
+      var h = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+      if(token()) h.Authorization = 'Bearer ' + token();
+      return fetch(path, Object.assign({}, opts, { headers:h })).then(function(r){
+        return r.json().catch(function(){ return {}; }).then(function(j){
+          if(!r.ok) throw new Error(j.error || ('Request failed (' + r.status + ')'));
+          return j;
+        });
+      });
+    }
+    function banner(msg){ var b=$('buyBanner'); if(!msg){ b.hidden=true; return; } b.textContent=msg; b.hidden=false; }
+    function step(which){
+      ['buyStepDetail','buyStepEmail','buyStepCode','buyStepPay','buyStepDone']
+        .forEach(function(id){ $(id).hidden = (id !== which); });
+    }
+    function busy(btn,on,label){
+      btn.disabled=on;
+      if(on){ btn.dataset.t=btn.textContent; btn.textContent=label||'Please wait…'; }
+      else if(btn.dataset.t){ btn.textContent=btn.dataset.t; }
+    }
+
+    /* Signed-in chip on the page, so it is obvious which account a purchase
+       will land on before anyone pays. */
+    function refreshChip(){
+      var chips = [$('acctChip'), $('asAcct')].filter(Boolean);
+      var sign = $('asSign');
+      if(!token()){
+        chips.forEach(function(c){ c.hidden = true; });
+        if(sign) sign.textContent = 'Sign in';
+        return;
+      }
+      api('/api/billing/history').then(function(h){
+        var paid = (h.payments||[]).filter(function(p){ return p.status==='paid'; }).length;
+        chips.forEach(function(c, i){
+          c.innerHTML = 'Signed in as <b>' + h.email + '</b>' +
+            (paid ? ' · ' + paid + ' purchase' + (paid>1?'s':'') : '') +
+            ' <button data-signout="' + i + '">sign out</button>';
+          c.hidden = false;
+          c.querySelector('[data-signout]').onclick = function(){
+            setToken(''); me = null; refreshChip();
+          };
+        });
+        if(sign) sign.textContent = 'Account';
+      }).catch(function(){ setToken(''); chips.forEach(function(c){ c.hidden = true; }); });
+    }
+    refreshChip();
+
+    function open(id){
+      plan = PLANS.filter(function(p){ return p.id===id; })[0];
+      if(!plan) return;
+      banner('');
+      $('buyTitle').textContent = plan.id==='trial' ? 'Start for ₹1' : plan.name + ' pack';
+      $('pdName').textContent = plan.name;
+      $('pdRs').textContent = '₹' + plan.rs;
+      $('pdUnit').textContent = plan.unit;
+      $('pdTag').textContent = plan.tag;
+      $('pdList').innerHTML = plan.list.map(function(l){ return '<li>' + l + '</li>'; }).join('');
+      if(plan.credits){
+        $('pdBuys').hidden = false;
+        $('pdBuys').querySelector('h4').textContent = '₹' + plan.rs + ' gets you any of these';
+        $('pdBuysRows').innerHTML = buysRows(plan.credits);
+      }
+      else { $('pdBuys').hidden=true; }
+      $('pdFine').textContent = plan.fine || 'Credits never expire and nothing renews. If a reading fails for a technical reason, the credits come straight back.';
+      $('pdBuy').textContent = 'Continue — ₹' + plan.rs;
+      $('buyItem').textContent = plan.name;
+      $('buyAmt').textContent = '₹' + plan.rs;
+      step('buyStepDetail');
+      modal.style.display='flex'; document.body.style.overflow='hidden';
+    }
+    function close(){ modal.style.display='none'; document.body.style.overflow=''; refreshChip(); }
+
+    /* The phone layout is a different DOM (#appshell), so the same catalog
+       renders there too — one source, so the two can never disagree. */
+    var mgrid = $('asPlans');
+    if(mgrid){
+      mgrid.innerHTML = PLANS.map(function(p){
+        return '<button class="as-plan' + (p.hero ? ' hero' : '') + '" data-plan="' + p.id + '">' +
+          (p.flag ? '<i class="as-plan-flag">' + p.flag + '</i>' : '') +
+          '<p class="as-plan-n">' + p.name + '</p>' +
+          '<div class="as-plan-p"><span class="as-plan-rs">₹' + p.rs + '</span><span class="as-plan-u">' + p.unit + '</span></div>' +
+          '<p class="as-plan-t">' + p.tag + '</p>' +
+          '<span class="as-plan-m">See what you get →</span>' +
+        '</button>';
+      }).join('');
+    }
+
+    /* Compare table — built from the same catalog, so a row can never claim
+       something the plan sheet contradicts. Free is a column too: the honest
+       comparison is "what do I get for nothing" against "what do I get for ₹X". */
+    var COLS = [{ id:null, name:'Free', rs:0, sub:'always' }].concat(PLANS.map(function(p){
+      return { id:p.id, name:p.name, rs:p.rs, sub:p.unit, hero:!!p.hero, credits:p.credits };
+    }));
+    // n(col) -> what that column gets for a given per-unit price
+    function n(col, price, freeText){
+      if(col.id === null) return freeText;
+      if(col.id === 'trial') return '<span class="yes">Included</span>';
+      return col.credits ? '× ' + Math.floor(col.credits / price) : '—';
+    }
+    /* [full label, cell fn, short label]. The short label is for the phone,
+       where the feature column is 118px — "Panchang, choghadiya, muhurat"
+       wraps to three lines there and pushes every row out of line. */
+    var ROWS = [
+      ['Kundli, charts, dasha, yogas', function(){ return '<span class="yes">✓</span>'; }, 'Kundli & charts'],
+      ['Panchang, choghadiya, muhurat', function(){ return '<span class="yes">✓</span>'; }, 'Panchang & muhurat'],
+      ['Daily guidance',               function(){ return '<span class="yes">✓</span>'; }, 'Daily guidance'],
+      ['Full Life Report + PDF',       function(c){ return n(c, RATE.life_report, '<span class="no">—</span>'); }, 'Life Report'],
+      ['Astrologer questions',         function(c){ return n(c, RATE.chat, '<span class="no">—</span>'); }, 'Questions'],
+      ['Kundli Matching + PDF',        function(c){ return n(c, RATE.matching, '<span class="no">—</span>'); }, 'Matching'],
+      ['Career / wealth / marriage',   function(c){ return n(c, RATE.report, '<span class="no">—</span>'); }, 'Career / wealth'],
+      ['Life Timeline',                function(c){ return n(c, RATE.timeline, '<span class="no">—</span>'); }, 'Life Timeline'],
+      ['Credits expire?',              function(c){ return c.id ? '<span class="yes">Never</span>' : '<span class="no">—</span>'; }, 'Expire?'],
+      ['Auto-renews?',                 function(){ return '<span class="yes">No</span>'; }, 'Auto-renews?'],
+    ];
+
+    var cmp = $('cmpTable');
+    if(cmp){
+      cmp.innerHTML =
+        '<thead><tr><th></th>' + COLS.map(function(c){
+          return '<th class="' + (c.hero ? 'col-hero' : '') + '">' + c.name +
+            '<span class="cmp-price">' + (c.rs ? '₹' + c.rs : '₹0') + '</span>' +
+            '<span class="cmp-sub">' + c.sub + '</span></th>';
+        }).join('') + '</tr></thead>' +
+        '<tbody>' + ROWS.map(function(r){
+          return '<tr><th>' + r[0] + '</th>' + COLS.map(function(c){
+            return '<td class="' + (c.hero ? 'col-hero' : '') + '">' + r[1](c) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody>' +
+        '<tfoot><tr><td></td>' + COLS.map(function(c){
+          return '<td class="' + (c.hero ? 'col-hero' : '') + '">' +
+            (c.id ? '<button class="cmp-buy' + (c.hero ? ' hero' : '') + '" data-plan="' + c.id + '">Choose</button>'
+                  : '<span class="cmp-sub">no account needed</span>') + '</td>';
+        }).join('') + '</tr></tfoot>';
+    }
+
+    /* Same rows, phone layout: the feature name is pinned and the plan columns
+       snap-scroll. Built from COLS/ROWS above, so the two tables cannot drift. */
+    var mcmp = $('asCmpTable');
+    if(mcmp){
+      mcmp.innerHTML =
+        '<thead><tr><th></th>' + COLS.map(function(c){
+          return '<th class="' + (c.hero ? 'hero-col' : '') + '">' + c.name +
+            '<span class="ascmp-rs">₹' + c.rs + '</span>' +
+            '<span class="ascmp-sub">' + c.sub + '</span></th>';
+        }).join('') + '</tr></thead>' +
+        '<tbody>' + ROWS.map(function(r){
+          return '<tr><th>' + (r[2] || r[0]) + '</th>' + COLS.map(function(c){
+            return '<td class="' + (c.hero ? 'hero-col' : '') + '">' + r[1](c) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody>' +
+        '<tfoot><tr><td></td>' + COLS.map(function(c){
+          return '<td class="' + (c.hero ? 'hero-col' : '') + '">' +
+            (c.id ? '<button class="ascmp-buy' + (c.hero ? ' hero' : '') + '" data-plan="' + c.id + '">Choose</button>'
+                  : '<span class="ascmp-sub">free</span>') + '</td>';
+        }).join('') + '</tr></tfoot>';
+
+      /* The hint is only true until they scroll; leave it up after that and it
+         reads as an instruction they already followed. */
+      var wrap = $('asCmpWrap'), hint = $('asCmpSwipe');
+      if(wrap){
+        wrap.addEventListener('scroll', function(){
+          if(hint && wrap.scrollLeft > 8) hint.style.opacity = '0';
+        }, { passive:true });
+      }
+    }
+
+    document.querySelectorAll('[data-plan]').forEach(function(b){
+      b.addEventListener('click', function(){ open(b.getAttribute('data-plan')); });
+    });
+
+    /* Header: jump to the Plans tab, and a sign-in entry that reuses the same
+       modal — signing in there is signing in everywhere on this page. */
+    document.querySelectorAll('[data-tab-go]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var t = b.getAttribute('data-tab-go');
+        var tab = document.querySelector('.as-tabs [data-tab="' + t + '"]');
+        if(tab) tab.click();
+      });
+    });
+    var signBtn = $('asSign');
+    if(signBtn){
+      signBtn.onclick = function(){
+        if(token()){ setToken(''); me = null; refreshChip(); signBtn.textContent = 'Sign in'; return; }
+        // No plan chosen yet — open the sheet straight at the email step.
+        plan = PLANS[0];
+        $('buyTitle').textContent = 'Sign in';
+        banner('');
+        step('buyStepEmail');
+        modal.style.display = 'flex'; document.body.style.overflow = 'hidden';
+      };
+    }
+    document.querySelectorAll('[data-buy]').forEach(function(b){
+      b.addEventListener('click', function(e){ e.preventDefault(); open(b.getAttribute('data-buy')); });
+    });
+    $('buyClose').onclick = close;
+    $('pdBack').onclick = close;
+    modal.addEventListener('click', function(e){ if(e.target===modal) close(); });
+
+    $('pdBuy').onclick = function(){ token() ? loadMe() : step('buyStepEmail'); };
+    $('buyBackDetail').onclick = function(){ banner(''); step('buyStepDetail'); };
+    $('buyBackEmail').onclick = function(){ banner(''); step('buyStepEmail'); };
+
+    function loadMe(){
+      api('/api/credits').then(function(c){
+        me = c;
+        $('buyBal').textContent = c.balance + ' credits';
+        $('buyWho').textContent = email || 'this account';
+        if(plan.id==='trial' && c.trial && c.trial.used){
+          banner('This account has already used its trial. Choose a credit pack instead.');
+        }
+        step('buyStepPay');
+      }).catch(function(){ setToken(''); step('buyStepEmail'); });
+    }
+
+    $('buySendCode').onclick = function(){
+      email = ($('buyEmail').value||'').trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ banner('Please enter a valid email address.'); return; }
+      banner(''); var btn=this; busy(btn,true,'Sending…');
+      api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({email:email})})
+        .then(function(){ $('buyEmailEcho').textContent=email; step('buyStepCode'); })
+        .catch(function(e){ banner(e.message); })
+        .finally(function(){ busy(btn,false); });
+    };
+
+    $('buyVerify').onclick = function(){
+      var code=($('buyCode').value||'').trim();
+      if(code.length!==6){ banner('Enter the 6-digit code from your email.'); return; }
+      banner(''); var btn=this; busy(btn,true,'Verifying…');
+      api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({email:email,code:code})})
+        .then(function(j){ setToken(j.token); refreshChip(); renderAccount(); loadMe(); })
+        .catch(function(e){ banner(e.message); })
+        .finally(function(){ busy(btn,false); });
+    };
+
+    function receipts(){
+      return api('/api/billing/history').then(function(h){
+        var rows = (h.payments||[]).slice(0,6).map(function(p){
+          var when = new Date(p.created_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
+          return '<div class="rcpt-row"><span>₹' + (p.amount_paise/100) + ' · ' + p.pack_id +
+                 '<br><s>' + when + '</s></span>' +
+                 '<span class="' + (p.status==='paid'?'rcpt-ok':'rcpt-bad') + '">' + p.status + '</span></div>';
+        }).join('');
+        $('buyReceipts').innerHTML = rows
+          ? '<p class="buy-lbl" style="margin-top:18px">Your receipts · ' + h.email + '</p><div class="rcpt">' + rows + '</div>'
+          : '';
+      }).catch(function(){});
+    }
+
+    /* 'twice' settles the SAME order again — a provider retrying its webhook.
+       The balance must not move the second time. */
+    function pay(outcome, btn){
+      banner(''); busy(btn,true,'Processing…');
+      var orderId;
+      api('/api/billing/mock/order',{method:'POST',body:JSON.stringify({pack:plan.id})})
+        .then(function(o){ orderId=o.order_id;
+          return api('/api/billing/mock/pay',{method:'POST',
+            body:JSON.stringify({order_id:orderId,outcome:outcome==='fail'?'fail':'success'})}); })
+        .then(function(r){
+          if(outcome!=='twice') return r;
+          return api('/api/billing/mock/pay',{method:'POST',
+            body:JSON.stringify({order_id:orderId,outcome:'success'})})
+            .then(function(x){ x.__twice=true; x.__first=r.balance; return x; });
+        })
+        .then(function(r){
+          if(r.status==='failed'){ banner('Payment failed — nothing was charged and no credits were added.'); return; }
+          var msg = plan.id==='trial'
+            ? 'Your 3-day full access is on. It ends ' +
+              (r.trial_ends_at ? new Date(r.trial_ends_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : 'in 3 days') +
+              '. Nothing will renew.'
+            : 'Done — your balance is now ' + r.balance + ' credits. They never expire.';
+          if(r.__twice){
+            msg += '\n\nThe duplicate was ignored: the balance stayed at ' + r.balance +
+                   ' (it was ' + r.__first + ' after the first). A retried webhook can never credit twice.';
+          }
+          $('buyDoneMsg').textContent = msg;
+          step('buyStepDone');
+          receipts(); refreshChip(); renderAccount();
+        })
+        .catch(function(e){ banner(e.message); })
+        .finally(function(){ busy(btn,false); });
+    }
+    /* ── Account page ──────────────────────────────────────────────────── */
+    function money(p){ return '₹' + (p/100).toLocaleString('en-IN'); }
+    function when(t){ return new Date(t).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}); }
+
+    function renderAccount(){
+      var out = $('acctSignedOut'), inn = $('acctSignedIn');
+      if(!out || !inn) return;
+      if(!token()){ out.hidden = false; inn.hidden = true; return; }
+      out.hidden = true; inn.hidden = false;
+
+      Promise.all([
+        api('/api/credits').catch(function(){ return null; }),
+        api('/api/billing/history').catch(function(){ return null; }),
+        api('/api/credits/history').catch(function(){ return null; }),
+      ]).then(function(r){
+        var c = r[0], h = r[1], led = r[2];
+        if(!c || !h){ setToken(''); renderAccount(); return; }
+        $('acEmail').textContent   = h.email;
+        $('acCredits').textContent = c.balance + ' credits';
+        $('acTrial').textContent   = c.trial.active ? 'Active till ' + when(c.trial.ends_at)
+                                   : c.trial.used   ? 'Used'
+                                   : 'Not used yet';
+
+        $('acReceipts').innerHTML = (h.payments||[]).length
+          ? h.payments.map(function(p){
+              return '<div class="rcpt-row"><span>' + money(p.amount_paise) + ' · ' + p.pack_id +
+                     '<br><s>' + when(p.created_at) + ' · ' + p.order_id + '</s></span>' +
+                     '<span class="' + (p.status==='paid'?'rcpt-ok':'rcpt-bad') + '">' + p.status + '</span></div>';
+            }).join('')
+          : '<div class="rcpt-row"><span>No purchases yet.</span></div>';
+
+        $('acLedger').innerHTML = (led||[]).length
+          ? led.map(function(l){
+              var sign = l.delta > 0 ? '+' : '';
+              return '<div class="rcpt-row"><span>' + l.reason +
+                     (l.note ? ' · ' + l.note : '') + '<br><s>' + when(l.created_at) + '</s></span>' +
+                     '<span class="' + (l.delta>0?'rcpt-ok':'') + '">' + sign + l.delta +
+                     ' <s>→ ' + l.balance_after + '</s></span></div>';
+            }).join('')
+          : '<div class="rcpt-row"><span>No credit activity yet.</span></div>';
+      });
+    }
+    document.addEventListener('page:account', renderAccount);
+
+    var acctBtn = $('acctSignIn');
+    if(acctBtn) acctBtn.onclick = function(){
+      plan = PLANS[0];
+      $('buyTitle').textContent = 'Sign in';
+      banner(''); step('buyStepEmail');
+      modal.style.display='flex'; document.body.style.overflow='hidden';
+    };
+    var outBtn = $('acSignOut');
+    if(outBtn) outBtn.onclick = function(){ setToken(''); me=null; refreshChip(); renderAccount(); };
+
+    $('buyPaySuccess').onclick=function(){ pay('success',this); };
+    $('buyPayFail').onclick   =function(){ pay('fail',this); };
+    $('buyPayTwice').onclick  =function(){ pay('twice',this); };
+  })();
+
   function triggerDownload(){
     // Count it server-side. keepalive so the request survives the navigation
     // the download itself causes, and fire-and-forget so a failure here can
@@ -1536,7 +2347,13 @@
   })();
 
   // stars
-  (function(){if(window.matchMedia('(max-width:820px)').matches)return;var s=document.getElementById('stars');var f=document.createDocumentFragment();for(var i=0;i<46;i++){var d=document.createElement('div');d.className='star';d.style.left=Math.random()*100+'%';d.style.top=Math.random()*100+'%';d.style.animationDelay=(Math.random()*3)+'s';d.style.width=d.style.height=(Math.random()*1.5+1)+'px';f.appendChild(d);}s.appendChild(f);})();
+  (function(){if(window.matchMedia('(max-width:820px)').matches)return;var s=document.getElementById('stars');var f=document.createDocumentFragment();for(var i=0;i<46;i++){var d=document.createElement('div');d.className='star';d.style.left=Math.random()*100+'%';d.style.top=Math.random()*100+'%';d.style.width=d.style.height=(Math.random()*1.5+1)+'px';
+    /* Only a third twinkle. Each animated star is its own compositor layer, and
+       46 of them ran forever behind every screen; at this density the eye reads
+       the same sky from 15. The rest get a fixed opacity in the same range. */
+    if(i%3===0){d.style.animationDelay=(Math.random()*3)+'s';}
+    else{d.style.animation='none';d.style.opacity=(0.18+Math.random()*0.45).toFixed(2);}
+    f.appendChild(d);}s.appendChild(f);})();
 
   // ── meteor shower (auto) — streaks across the dark sky ──
   // Skip entirely on phones (the app-shell hides .sky) and when reduced-motion
@@ -1545,7 +2362,7 @@
   if(!isPhone && !window.matchMedia('(prefers-reduced-motion:reduce)').matches){
     var host=document.getElementById('meteors');
     function meteor(){
-      if(!host||document.hidden)return;
+      if(!host||document.hidden||document.body.classList.contains('on-page'))return;
       var m=document.createElement('div'); m.className='meteor';
       var x=Math.random()*window.innerWidth, y=-40, d=280+Math.random()*380, len=90+Math.random()*150;
       m.style.width=len+'px';
@@ -1568,6 +2385,7 @@
     var starL=document.getElementById('stars'), metL=document.getElementById('meteors'), pmx=0,pmy=0,pticking=false;
     window.addEventListener('mousemove',function(e){
       pmx=(e.clientX/window.innerWidth-0.5); pmy=(e.clientY/window.innerHeight-0.5);
+      if(document.body.classList.contains('on-page'))return;   // sky is behind a page
       if(!pticking){pticking=true;requestAnimationFrame(function(){
         var tx=pmx*18, ty=pmy*18;
         if(starL)starL.style.transform='translate('+tx+'px,'+ty+'px)';
@@ -1656,14 +2474,40 @@
   var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12,rootMargin:'0px 0px -8% 0px'});
   document.querySelectorAll('.reveal,.rise').forEach(function(el){io.observe(el);});
 
+  /* A dashboard page opens at scrollTop 0. Its below-the-fold content — the
+     whole Compare table, on the pricing page — was still at opacity:0 waiting
+     for the observer, so the view opened half-empty and then flashed in piece
+     by piece. A page is not a scroll story: show all of it at once and let the
+     single `pageIn` animation on the container carry the motion. */
+  function revealNow(root){
+    if(!root)return;
+    root.querySelectorAll('.reveal,.rise').forEach(function(el){
+      io.unobserve(el); el.classList.add('in');
+    });
+  }
+  ['pricing','account','support'].forEach(function(id){
+    document.addEventListener('page:'+id,function(){ revealNow(document.getElementById(id)); });
+  });
+  // the router already ran once, before this observer existed (deep link / reload)
+  document.querySelectorAll('[data-pageview].open').forEach(revealNow);
+
   // magnetic buttons (desktop pointers only)
+  /* Magnetic buttons. Two things matter here: the write is rAF-throttled (a
+     mousemove can fire far more often than the screen refreshes, and each write
+     forced a style recalc), and `will-change` is set only while the pointer is
+     actually on the button — as a permanent CSS rule it promoted every button
+     on the page to its own compositor layer for the whole session. */
   if(window.matchMedia('(pointer:fine)').matches){
     document.querySelectorAll('.btn').forEach(function(b){
+      var mx=0,my=0,q=false;
+      b.addEventListener('mouseenter',function(){b.style.willChange='transform';},{passive:true});
       b.addEventListener('mousemove',function(e){
         var r=b.getBoundingClientRect();
-        b.style.transform='translate('+((e.clientX-r.left-r.width/2)*0.25)+'px,'+((e.clientY-r.top-r.height/2)*0.35)+'px)';
-      });
-      b.addEventListener('mouseleave',function(){b.style.transform='';});
+        mx=(e.clientX-r.left-r.width/2)*0.25; my=(e.clientY-r.top-r.height/2)*0.35;
+        if(q)return; q=true;
+        requestAnimationFrame(function(){ b.style.transform='translate('+mx+'px,'+my+'px)'; q=false; });
+      },{passive:true});
+      b.addEventListener('mouseleave',function(){b.style.transform='';b.style.willChange='auto';},{passive:true});
     });
   }
 
@@ -1861,6 +2705,18 @@
     }
     tabs.forEach(function(b){ b.onclick=function(){ go(b.dataset.tab); }; });
     shell.querySelectorAll('[data-goto]').forEach(function(b){ b.onclick=function(){ go(b.getAttribute('data-goto')); }; });
+
+    /* The desktop nav writes #pricing / #account / #support into the URL, so a
+       link shared from a laptop has to land somewhere sensible on a phone.
+       Only tabs that exist here are honoured; anything else stays on Home. */
+    function fromHash(){
+      var h=(location.hash||'').slice(1);
+      var hk=h.replace(/[^a-z]/g,'');
+      if(hk==='pricing') return; // held back
+      if(h && shell.querySelector('[data-screen="'+hk+'"]')) go(hk);
+    }
+    window.addEventListener('hashchange', fromHash);
+    fromHash();
 
     // mobile free-kundli tool (own IDs so it never clashes with the desktop one)
     var form=document.getElementById('mkForm'); if(!form)return;

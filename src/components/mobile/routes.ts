@@ -54,10 +54,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/reports\/[^/]+\/[^/]+$/, 'Report'],
   [/^\/reports\//, 'Reports'],
   [/^\/report\//, 'Life Report'],
-  [/^\/ask\/[^/]+\/[^/]+$/, 'Consultation'],
-  [/^\/ask\/[^/]+$/, 'AI Astrologers'],
-  [/^\/transit\//, 'Live Transits'],
-  [/^\/sectors\//, 'Life Sectors'],
+  [/^\/chat\//, 'Jyotish'],
   [/^\/match$/, 'Kundli Matching'],
   [/^\/muhurat$/, 'Muhurat'],
   [/^\/yogas$/, 'Yogas'],
@@ -88,13 +85,10 @@ export function depthOf(pathname: string): number {
   if (/^\/edit-chart\//.test(pathname)) return 1;
   if (/^\/theme$/.test(pathname)) return 2;
   if (/^\/dashboard\//.test(pathname)) return 1;
-  // The consultation chat is pushed from the astrologer-selection screen, so it
-  // must read as deeper for the back-slide to animate the right way.
-  if (/^\/ask\/[^/]+\/[^/]+$/.test(pathname)) return 3;
-  return 2; // chart sub-screens, report, ask (selection), transit, sectors
+  return 2; // chart sub-screens, report, chat
 }
 
 /** Screens that hide the tab bar to give the content the full height. */
 export function hidesTabBar(pathname: string): boolean {
-  return /^\/(login)$/.test(pathname) || /^\/(report|ask)\//.test(pathname);
+  return /^\/(login)$/.test(pathname) || /^\/(report|chat)\//.test(pathname);
 }

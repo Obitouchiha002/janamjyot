@@ -27,6 +27,21 @@ import {
   updateChart,
   recordDownload,
   downloadStats,
+  creditBalance,
+  creditHistory,
+  spendCredits,
+  grantCredits,
+  CREDIT_PACKS,
+  CREDIT_PRICES,
+  trialState,
+  startTrial,
+  TRIAL,
+  deliveryCountSince,
+  createMockOrder,
+  settleMockOrder,
+  paymentHistory,
+  allPayments,
+  paymentTotals,
   insertReport,
   getReport,
   insertChatMessage,
@@ -103,6 +118,8 @@ import { buildTransit, compactTransitForAI } from "./server/transit";
 import {
   detectCategory,
   answerQuestion,
+  answerUniversal,
+  APP_GUIDE,
   answerAsAstrologer,
   astrologerIntro,
   generateLifeReport,
@@ -126,6 +143,7 @@ import { personMoon, matchKundli } from "./server/matching";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
+import { buildDaySignals, buildUpcomingDaySignals } from "./server/day-signals";
 import { buildMuhurat, scanMonth } from "./server/muhurat";
 import { detectYogas } from "./server/yogas";
 import { computeAshtakavarga } from "./server/ashtakavarga";
@@ -189,6 +207,20 @@ const IS_PROD = process.env.NODE_ENV === "production" || !!process.env.VERCEL;
 // meaningless. `1` = trust exactly one hop, not an attacker-supplied chain.
 app.set("trust proxy", 1);
 
+/**
+ * Every origin this backend may legitimately be reached at — the canonical one
+ * plus any alternates the app is built to fall back to. Used by BOTH the CSP
+ * and the CORS allowlist so the two can never disagree (a mismatch there is
+ * invisible in testing and fatal in production).
+ */
+const API_ORIGINS: string[] = Array.from(new Set(
+  [
+    process.env.PUBLIC_APP_URL,
+    "https://janamjyot.vercel.app",
+    ...(process.env.API_FALLBACK_ORIGINS || "").split(",").map((s) => s.trim()),
+  ].filter(Boolean) as string[],
+));
+
 // ── Security headers ───────────────────────────────────────────────────────
 // NOTE on `'unsafe-inline'` for scripts: the landing page (public/download.html)
 // and the boot loader in index.html both rely on inline <script>/<style>, so a
@@ -206,7 +238,11 @@ app.use(helmet({
       mediaSrc: ["'self'", "data:", "blob:"],
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       // The Android app is served from localhost and calls this API directly.
-      connectSrc: ["'self'", "https://janamjyot.vercel.app"],
+      // Every host the app may fall back to has to be listed: CSP is evaluated
+      // BEFORE the request leaves, so an unlisted alternate is blocked by the
+      // browser and the failover silently cannot work. Driven by env so moving
+      // hosts never needs a code change.
+      connectSrc: ["'self'", ...API_ORIGINS],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
@@ -230,8 +266,7 @@ app.use(helmet({
 // `https://localhost`, so those must be allowed or the APK breaks entirely.
 const ALLOWED_ORIGINS = new Set(
   [
-    process.env.PUBLIC_APP_URL,
-    "https://janamjyot.vercel.app",
+    ...API_ORIGINS,
     "capacitor://localhost",
     "ionic://localhost",
     "https://localhost",
@@ -914,6 +949,226 @@ app.get("/api/config", (_req, res) => {
       mandatory: !!getSetting("app_update_mandatory"),
     },
   });
+});
+
+/**
+ * The free-tier-then-credits gate.
+ *
+ * Order matters and is deliberate: the free allowance is spent FIRST, so a
+ * user who has bought credits still gets their daily free usage rather than
+ * silently paying for something they were entitled to.
+ *
+ * Nothing is charged here. The caller must deliver first and then call
+ * `settleCharge` — an AI call that fails must never cost the user a credit,
+ * which is the single biggest source of "you took my money" complaints.
+ *
+ * Returns `null` to proceed free, a charge handle to proceed and settle after,
+ * or throws a 402-shaped object when they can neither use free nor pay.
+ */
+async function authoriseAction(
+  req: any,
+  action: QuotaAction,
+  priceKey: keyof typeof CREDIT_PRICES,
+): Promise<{ credits: number } | null> {
+  const over = await checkQuota(req, action);
+  if (!over) return null; // still inside the free allowance
+
+  // Inside the ₹1 trial the paid features are open, up to the trial's own caps.
+  // Checked after the free allowance so trial days are not burned on usage the
+  // user was entitled to anyway.
+  const trial = await trialState(req.user.id);
+  if (trial.active) {
+    const cap = (TRIAL.limits as Record<string, number>)[priceKey];
+    if (cap != null) {
+      const used = await deliveryCountSince(req.user.id, priceKey, trial.endsAt!);
+      if (used < cap) return null;
+    }
+  }
+
+  const credits = CREDIT_PRICES[priceKey];
+  const balance = await creditBalance(req.user.id);
+  if (balance < credits) {
+    throw {
+      __httpStatus: 402,
+      error: `${over.error} You can continue with credits — this costs ${credits} credit${credits === 1 ? "" : "s"}.`,
+      needs_credits: credits,
+      balance,
+      free_limit: over.limit,
+    };
+  }
+  return { credits };
+}
+
+/** Charge only once the thing actually exists. Never before. */
+async function settleCharge(
+  req: any,
+  charge: { credits: number } | null,
+  kind: string,
+  chartId?: string | null,
+): Promise<void> {
+  if (!charge) return;
+  await spendCredits({
+    userId: req.user.id,
+    credits: charge.credits,
+    kind,
+    chartId: chartId ?? null,
+  });
+}
+
+// ── Credits ────────────────────────────────────────────────────────────────
+// 1 credit = ₹1. Balances live in the ledger (see db.ts); nothing here ever
+// trusts a number the client sent.
+
+/** GET /api/credits — balance, the price list, and the packs on sale. */
+app.get("/api/credits", async (req: any, res) => {
+  try {
+    const [balance, trial] = await Promise.all([
+      creditBalance(req.user.id),
+      trialState(req.user.id),
+    ]);
+    res.json({
+      balance,
+      trial: {
+        active: trial.active,
+        used: trial.used,
+        ends_at: trial.endsAt,
+        rupees: TRIAL.paise / 100,
+        days: TRIAL.days,
+        limits: TRIAL.limits,
+      },
+      prices: CREDIT_PRICES,
+      packs: Object.entries(CREDIT_PACKS).map(([id, p]) => ({
+        id, label: p.label, credits: p.credits, rupees: p.paise / 100,
+      })),
+      mock_billing: MOCK_BILLING,
+    });
+  } catch (err: any) {
+    fail(res, 500, "Could not load your credits.", err, "credits");
+  }
+});
+
+/** GET /api/billing/history — this account's own receipts. */
+app.get("/api/billing/history", async (req: any, res) => {
+  try {
+    res.json({ email: req.user.email, payments: await paymentHistory(req.user.id, 50) });
+  } catch (err: any) {
+    fail(res, 500, "Could not load your purchase history.", err, "billing-history");
+  }
+});
+
+/** GET /api/admin/payments — every payment, with the account it belongs to. */
+app.get("/api/admin/payments", requireAdmin, async (_req, res) => {
+  try {
+    const [payments, totals] = await Promise.all([allPayments(200), paymentTotals()]);
+    res.json({ totals, payments });
+  } catch (err: any) {
+    fail(res, 500, "Could not load payments.", err, "admin-payments");
+  }
+});
+
+/**
+ * Mock billing — the real purchase FLOW with a fake payment provider.
+ *
+ * Everything around the money is the shape it will ship as: the order is
+ * created server-side against the session's user, the grant happens in a
+ * "webhook" the client cannot forge the contents of, and the payment id is
+ * unique so a replay is a no-op. Only the provider is fake. Swapping Razorpay
+ * in later replaces one adapter, not the flow.
+ *
+ * HARD RULE: these routes do not exist in production. Not behind a flag, not
+ * behind a header — an endpoint that mints credits must be unreachable on the
+ * live site, because one misconfigured env var would otherwise hand out free
+ * credits to anyone who found the URL.
+ */
+const MOCK_BILLING = !IS_PROD;
+
+function requireMockBilling(res: any): boolean {
+  if (MOCK_BILLING) return true;
+  res.status(404).json({ error: "Not found." });
+  return false;
+}
+
+/** POST /api/billing/mock/order { pack } — create a pending order. */
+app.post("/api/billing/mock/order", async (req: any, res) => {
+  if (!requireMockBilling(res)) return;
+  try {
+    const packId = String(req.body?.pack ?? "");
+    const isTrial = packId === "trial";
+    const pack = isTrial
+      ? { paise: TRIAL.paise, credits: 0, label: "3-day trial" }
+      : CREDIT_PACKS[packId];
+    if (!pack) return res.status(400).json({ error: "Unknown pack." });
+
+    if (isTrial) {
+      const t = await trialState(req.user.id);
+      if (t.used) return res.status(409).json({ error: "This account has already used its trial." });
+    }
+
+    // The order carries the user id from the SESSION. Nothing the client sends
+    // can change whose account gets credited — this is what makes it
+    // impossible for a payment to land on the wrong account.
+    const order = await createMockOrder({
+      userId: req.user.id,
+      packId,
+      paise: pack.paise,
+      credits: pack.credits,
+    });
+    res.json({ order_id: order.orderId, amount: pack.paise, currency: "INR", pack: packId });
+  } catch (err: any) {
+    fail(res, 500, "Could not start this purchase.", err, "mock-order");
+  }
+});
+
+/**
+ * POST /api/billing/mock/pay { order_id, outcome } — stands in for the
+ * provider's webhook. `outcome` lets the flow be tested when a payment fails
+ * or arrives twice, which is where real money actually goes missing.
+ */
+app.post("/api/billing/mock/pay", async (req: any, res) => {
+  if (!requireMockBilling(res)) return;
+  try {
+    const orderId = String(req.body?.order_id ?? "");
+    const outcome = String(req.body?.outcome ?? "success");
+    const result = await settleMockOrder(orderId, outcome === "fail" ? "failed" : "paid");
+    if (!result.ok) return res.status(400).json({ error: result.error });
+
+    let trialEndsAt: string | null = null;
+    if (result.status === "paid") {
+      if (result.packId === "trial") {
+        await startTrial(result.userId!);
+        trialEndsAt = (await trialState(result.userId!)).endsAt;
+      } else if (result.credits) {
+        // Granting is keyed on the payment id, and the ledger has a unique
+        // index on it — so a replayed settlement cannot credit twice even if
+        // this code runs again.
+        await grantCredits({
+          userId: result.userId!,
+          credits: result.credits,
+          reason: "purchase",
+          refType: "payment",
+          refId: result.paymentId!,
+          note: result.packId,
+        });
+      }
+    }
+    res.json({
+      status: result.status,
+      balance: result.userId ? await creditBalance(result.userId) : 0,
+      trial_ends_at: trialEndsAt,
+      already_settled: result.alreadySettled ?? false,
+    });
+  } catch (err: any) {
+    fail(res, 500, "Could not complete this purchase.", err, "mock-pay");
+  }
+});
+
+/** GET /api/credits/history — the user's own statement, for disputes. */
+app.get("/api/credits/history", async (req: any, res) => {
+  try {
+    res.json(await creditHistory(req.user.id, 100));
+  } catch (err: any) {
+    fail(res, 500, "Could not load your credit history.", err, "credits-history");
+  }
 });
 
 /**
@@ -1850,6 +2105,78 @@ app.get("/api/chart/:chartId/daily-guidance", async (req, res) => {
   }
 });
 
+/**
+ * GET /api/chart/:chartId/day-signals?date=&lang=&lat=&lon=&tz=
+ *
+ * The deterministic "how is today, and why" used by the home banner and the
+ * chat. NO AI, so no quota and no cache — it is cheap, instant and identical
+ * every time, which is the whole point (and lets the phone compute a week of
+ * these offline for notifications via the /upcoming sibling).
+ *
+ * `lat/lon/tz` override the birth place so the best/caution WINDOWS follow where
+ * the user is now; the natal signals (dasha, Moon-from-Moon, Sade Sati) are
+ * location-independent and always use the chart.
+ */
+app.get("/api/chart/:chartId/day-signals", async (req, res) => {
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    const b = chart.birth_details || {};
+    const tz = (typeof req.query.tz === "string" && req.query.tz) || b.timezone || "Asia/Kolkata";
+    const lang = normalizeLanguage(req.query.lang, b.language || "en");
+    const date =
+      typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+        ? req.query.date
+        : new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+
+    const lat = Number(req.query.lat ?? b.latitude);
+    const lon = Number(req.query.lon ?? b.longitude);
+
+    const signals = buildDaySignals({
+      chart, date, tz, lang, ayanamsa: AYANAMSA, name: b.name,
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lon) ? lon : undefined,
+    });
+    res.json(signals);
+  } catch (err: any) {
+    console.error("[day-signals] error:", err?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/**
+ * GET /api/chart/:chartId/day-signals/upcoming?days=7&lang=&lat=&lon=&tz=
+ *
+ * today .. today+days-1 in one call. The app fetches this while online and then
+ * schedules one local notification per day with the real predicted line, so the
+ * 8 AM message fires with the app closed and no network. Capped so a bad query
+ * can't turn into a month of AI-free-but-still-work computation.
+ */
+app.get("/api/chart/:chartId/day-signals/upcoming", async (req, res) => {
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    const b = chart.birth_details || {};
+    const tz = (typeof req.query.tz === "string" && req.query.tz) || b.timezone || "Asia/Kolkata";
+    const lang = normalizeLanguage(req.query.lang, b.language || "en");
+    const days = Math.min(14, Math.max(1, Number(req.query.days) || 7));
+    const startDate = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+
+    const lat = Number(req.query.lat ?? b.latitude);
+    const lon = Number(req.query.lon ?? b.longitude);
+
+    const list = buildUpcomingDaySignals({
+      chart, startDate, days, tz, lang, ayanamsa: AYANAMSA, name: b.name,
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lon) ? lon : undefined,
+    });
+    res.json({ days: list });
+  } catch (err: any) {
+    console.error("[day-signals/upcoming] error:", err?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
 /** GET /api/chart/:chartId/remedies — personalised remedies (+ optional AI note). */
 app.get("/api/chart/:chartId/remedies", async (req, res) => {
   try {
@@ -2306,6 +2633,96 @@ async function handleChat(req: express.Request, res: express.Response) {
 }
 app.post("/api/chat", handleChat);
 app.post("/api/ask-question", handleChat);
+
+/**
+ * POST /api/chat/universal — the ONE chat.
+ *
+ * One entry point for everything the five old chats did: it auto-detects the
+ * topic, grounds "today/tomorrow" questions in the deterministic day-signals,
+ * can answer "how does this feature work" from the app guide, and returns a
+ * CLEAR answer plus a separate REASON the UI hides behind a tap. No persona
+ * picker, no four-phase essay — that structure was the friction users hit.
+ */
+const TODAY_RE = /\b(today|aaj|tonight|abhi)\b/i;
+const TOMORROW_RE = /\b(tomorrow|kal|agle din)\b/i;
+const APP_RE = /\b(app|feature|button|screen|kaise (use|kaam)|kaam kaise|how (do|to)|use kaise|option|setting|notif)/i;
+
+app.post("/api/chat/universal", async (req, res) => {
+  const chartId = req.body?.chartId;
+  const question = req.body?.question;
+  if (!chartId || !question) return res.status(400).json({ error: "chartId and question are required" });
+  if (!featureOn("chat")) return res.status(503).json({ error: "AI chat is temporarily disabled by the admin." });
+  try {
+    const chart = await getNormalizedChart(chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    if (!canAccessChart(req as any, chart)) {
+      return res.status(403).json({ error: "This chart is not available on this account/device." });
+    }
+    if (String(chart.validation_status || "").startsWith("partial")) {
+      return res.status(409).json({ error: "Chart data is not fully verified; chat is blocked.", validation_status: chart.validation_status });
+    }
+
+    const over = await checkQuota(req as any, "ask");
+    if (over) return res.status(429).json(over);
+    const asker = identityOf(req as any);
+    recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
+
+    const language = typeof req.body?.language === "string" && req.body.language.trim() ? req.body.language.trim() : "en";
+    const category = detectCategory(question);
+
+    // Live transit for present/future grounding.
+    let transit: any = null;
+    try { transit = compactTransitForAI(buildTransit(chart, AYANAMSA, new Date().toISOString())); }
+    catch (e: any) { console.warn("[chat-u] transit skipped:", e?.message); }
+
+    // If they asked about today/tomorrow, hand the model the SAME computed
+    // day-signals the banner and notification use — so the chat can never
+    // disagree with them.
+    let dayContext: any = null;
+    try {
+      const b = chart.birth_details || {};
+      const tz = b.timezone || "Asia/Kolkata";
+      const wantTomorrow = TOMORROW_RE.test(question);
+      if (wantTomorrow || TODAY_RE.test(question)) {
+        const base = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+        const [yy, mm, dd] = base.split("-").map(Number);
+        const date = wantTomorrow ? new Date(Date.UTC(yy, mm - 1, dd + 1)).toISOString().slice(0, 10) : base;
+        const sig = buildDaySignals({
+          chart, date, tz, lang: language, ayanamsa: AYANAMSA, name: b.name,
+          latitude: Number.isFinite(b.latitude) ? b.latitude : undefined,
+          longitude: Number.isFinite(b.longitude) ? b.longitude : undefined,
+        });
+        dayContext = { date: sig.date, when: wantTomorrow ? "tomorrow" : "today", lean: sig.lean, headline: sig.headline, factors: sig.factors.map((f) => f.detail) };
+      }
+    } catch (e: any) { console.warn("[chat-u] day-signals skipped:", e?.message); }
+
+    // Recent turns, with the hidden REASON stripped back off before the model
+    // sees them — the model should continue from the plain answers.
+    const raw = await getChatHistory(chartId, "chat");
+    const history = raw.slice(-8).map((m) => ({
+      role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+      text: String(m.message || "").split("\n<<REASON>>\n")[0],
+    }));
+
+    await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
+    const { answer, reason } = await answerUniversal({
+      chart, question, language, category, transit, dayContext,
+      appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
+      history,
+    });
+
+    // Store answer + reason together behind the same marker, so a reload can
+    // split them exactly like a live reply (no schema change needed).
+    const stored = reason ? `${answer}\n<<REASON>>\n${reason}` : answer;
+    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category } });
+
+    res.json({ answer, reason, category });
+  } catch (err: any) {
+    console.error("[chat-u] error:", err?.message);
+    const quota = /429|quota|rate limit/i.test(err?.message ?? "");
+    res.status(quota ? 429 : 500).json({ error: friendlyError(err?.message) });
+  }
+});
 
 /** GET /api/astrologers — the 5 AI-astrologer personas (display data only). */
 app.get("/api/astrologers", (_req, res) => res.json(publicAstrologers()));

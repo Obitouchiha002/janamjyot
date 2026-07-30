@@ -483,6 +483,95 @@ then give a real, grounded answer with timing and one practical step.
   return splitBubbles(raw);
 }
 
+/** What the app can do — so the ONE chat can also answer "how do I use X". Kept
+ *  short and factual; the model must not invent features that aren't here. */
+export const APP_GUIDE = `JanamJyot app — what it does (answer feature questions from THIS list only, never invent a feature):
+• Janam Kundli — full birth chart (D1) plus divisional charts D9, D10, D6, D11.
+• Dasha timeline — Vimshottari mahadasha/antardasha with dates.
+• Daily guidance / "Aaj ka din" — today's clear line + a Reason with the real placements; a notification comes each morning.
+• Right Now — is this a good moment (choghadiya + Rahu Kaal) to start something.
+• Panchang, Choghadiya, Hora, Muhurat calendar.
+• Kundli Matching (36 gunas) with PDF.
+• Full Life Report, and focused reports (career, wealth, marriage) with PDF.
+• This chat — ask anything about your chart, today/tomorrow, or the app.
+• Free: everyday things (kundli, charts, panchang, daily guidance, 2 kundlis). Deep readings use credits; a ₹1 trial opens everything for 3 days.`;
+
+/**
+ * The ONE universal chat answer.
+ *
+ * This is the deliberate opposite of answerQuestion's four-phase essay — that
+ * structure is exactly the "friction" users complained about. Here the model
+ * returns TWO parts, split by a marker:
+ *
+ *   • ANSWER — a short, direct, plain-language reply. No jargon, no "Shani is
+ *     in your 8th" up here. Just what to do / what it means. This is what shows.
+ *   • REASON — the astrological basis (planets, houses, dasha, transit). This is
+ *     hidden behind a tap, for the user who wants to see WHY. Technical language
+ *     belongs ONLY here.
+ *
+ * `dayContext` (today/tomorrow's computed day-signals) and `appGuide` are folded
+ * in when relevant so "how is tomorrow" and "what does this feature do" both get
+ * a grounded, non-vague answer.
+ */
+export async function answerUniversal(args: {
+  chart: any;
+  question: string;
+  language: string;
+  category: Category;
+  transit?: any;
+  dayContext?: any;   // compact day-signals for a date the question is about
+  appGuide?: string;  // APP_GUIDE, included when the question is about the app
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+}): Promise<{ answer: string; reason: string }> {
+  const packet = buildChartPacket(args.chart, args.category, args.transit);
+  const convo = (args.history ?? [])
+    .slice(-8)
+    .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`)
+    .join("\n");
+
+  const prompt = `${SYSTEM_PROMPT}
+
+${languageInstruction(args.language)}
+
+This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, D10,
+D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
+natal lagna & moon). Use dasha + live_transit for anything about now or the future.
+${JSON.stringify(packet, null, 2)}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}
+The user asks: "${args.question}"
+
+Answer in TWO parts, separated by a line that is EXACTLY "<<REASON>>":
+
+PART 1 — the answer (before the marker):
+  • Speak like a clear, warm person, NOT a textbook. Give the DIRECT answer to
+    what they asked — no preamble, no "as per your chart", no four-phase essay.
+  • Plain language ONLY. NO astrology jargon here — no planet names, house
+    numbers, dasha or Sanskrit terms in this part. Just what it means for them
+    and, where it helps, one concrete thing to do or a time window.
+  • Keep it short: 2-5 short lines. If it's a yes/no, lead with the yes/no.
+  • For a feature/how-to question, answer from the app guide plainly.
+  • Bold the single most important phrase with **double asterisks**. No other
+    markdown, no bullets in this part.
+
+PART 2 — the reason (after the "<<REASON>>" marker):
+  • 1-3 short lines naming the REAL basis: the placements, dasha lord, or transit
+    (e.g. "Chandrama aaj aapki rashi se 8ve bhaav mein; Shani ki dhristi 7ve se").
+    Technical terms are fine HERE. Ground every claim in the chart data above —
+    never invent a placement. For a pure app/how-to question, write "—".
+
+Write PART 1, then the marker line "<<REASON>>", then PART 2. Nothing else.
+
+${languageInstruction(args.language)}`;
+
+  const raw = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0 });
+  const idx = raw.indexOf("<<REASON>>");
+  if (idx === -1) return { answer: raw.trim(), reason: "" };
+  const answer = raw.slice(0, idx).trim();
+  let reason = raw.slice(idx + "<<REASON>>".length).trim();
+  if (reason === "—" || reason === "-") reason = "";
+  return { answer, reason };
+}
+
 /**
  * The astrologer's OPENING message when a consultation starts — a warm greeting,
  * then a plain-language read of the person's D1 (birth chart) that someone with

@@ -11,8 +11,11 @@
     "lint": "tsc --noEmit",
     "check:accuracy": "tsx server/__checks__/accuracy.ts",
     "check:panchang": "tsx server/__checks__/panchang.ts",
-    "check": "npm run lint && npm run check:accuracy && npm run check:panchang",
-    "sync:app": "node scripts/prune-app-dist.mjs && cap sync android"
+    "check:credits": "tsx server/__checks__/credits.ts",
+    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals",
+    "sync:app": "node scripts/prune-app-dist.mjs && cap sync android",
+    "check:failover": "tsx server/__checks__/failover.ts",
+    "check:day-signals": "tsx server/__checks__/day-signals.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
@@ -71,6 +74,7 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "pg-mem": "^3.0.14",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",

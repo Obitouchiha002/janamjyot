@@ -13,6 +13,7 @@
  */
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { isNative } from "./native";
+import { getLang } from "./prefs";
 
 const PREF_KEY = "jj:notif";
 
@@ -29,6 +30,14 @@ const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, remedy: f
 
 // Stable ids so re-scheduling replaces (never duplicates) each reminder.
 const ID = { daily: 1001, remedy: 1002, monthly: 1003, dasha: 1004, window: 1005 };
+
+// The daily message is not one repeating reminder any more — it is a queue of
+// real, day-specific predictions. Each day gets its own one-off notification in
+// this reserved id block, pre-filled with that day's computed line so it fires
+// with the app closed and no network. The app re-tops-up the queue every launch.
+const DAILY_BASE = 1100;
+const DAILY_SPAN = 14; // days pre-scheduled; the server caps the batch at 14 too
+const DAILY_IDS = Array.from({ length: DAILY_SPAN }, (_, i) => DAILY_BASE + i);
 
 /**
  * One-off "ping me when the good window opens", used by Right Now.
@@ -98,22 +107,22 @@ export async function applyNotifications(opts: {
   const prefs = getNotifPrefs();
   const route = (r: string) => (opts.chartId ? r : "/");
 
-  // Clear our slots first so toggling off truly removes them.
+  // Clear our fixed slots first so toggling off truly removes them. The daily
+  // QUEUE (below) is handled separately: we only clear it once we have fresh
+  // content to replace it with, so a transient offline failure never wipes a
+  // week of good notifications and leaves the user with silence.
   try {
     await LocalNotifications.cancel({ notifications: Object.values(ID).map((id) => ({ id })) });
   } catch { /* nothing scheduled yet */ }
 
-  const notifications: any[] = [];
-
-  if (prefs.daily) {
-    notifications.push({
-      id: ID.daily,
-      title: "🕉️ Your daily guidance is ready",
-      body: "Today's career, money, relationships & your best time — tap to read.",
-      schedule: { on: { hour: prefs.dailyHour, minute: prefs.dailyMin }, repeats: true, allowWhileIdle: true },
-      extra: { route: route(`/daily/${opts.chartId}`) },
-    });
+  if (prefs.daily && opts.chartId) {
+    await scheduleDailyQueue(opts.chartId, prefs, route);
+  } else {
+    // Daily turned off — tear the whole queue down.
+    try { await LocalNotifications.cancel({ notifications: DAILY_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
   }
+
+  const notifications: any[] = [];
   if (prefs.remedy) {
     notifications.push({
       id: ID.remedy,
@@ -148,4 +157,71 @@ export async function applyNotifications(opts: {
   if (notifications.length) {
     try { await LocalNotifications.schedule({ notifications }); } catch { /* ignore */ }
   }
+}
+
+type DaySig = { date: string; short: string; tone: "good" | "advice" | "warn"; name?: string | null };
+
+/**
+ * Fill the daily queue with real, day-specific lines.
+ *
+ * Fetches the coming ~2 weeks of computed day-signals in one call (deterministic
+ * server-side, no AI), then schedules one notification per day AT the user's
+ * chosen hour with that day's actual message as the body. The whole point is
+ * that the 8 AM buzz already contains the prediction — the user gets value
+ * without opening the app, which a generic "your guidance is ready" never did.
+ *
+ * Failure-safe: if the fetch fails (offline), we return WITHOUT touching the
+ * existing queue, so yesterday's fetched week keeps firing rather than going
+ * dark. The queue is only cancelled-and-replaced once fresh content is in hand.
+ */
+async function scheduleDailyQueue(
+  chartId: string,
+  prefs: NotifPrefs,
+  route: (r: string) => string,
+): Promise<void> {
+  let days: DaySig[] = [];
+  try {
+    const r = await fetch(
+      `/api/chart/${chartId}/day-signals/upcoming?days=${DAILY_SPAN}&lang=${encodeURIComponent(getLang())}`,
+    );
+    const j = await r.json();
+    if (j?.error || !Array.isArray(j?.days)) return; // leave the existing queue intact
+    days = j.days;
+  } catch {
+    return; // offline — do not wipe what's already scheduled
+  }
+  if (!days.length) return;
+
+  const icon = (t: DaySig["tone"]) => (t === "warn" ? "⚠️" : t === "good" ? "☀️" : "🕉️");
+  const first = (name?: string | null) => (name ? name.trim().split(/\s+/)[0] : "");
+
+  const now = Date.now();
+  const notifications = days.slice(0, DAILY_SPAN).map((d, i) => {
+    // Fire at the chosen time on that calendar date, in the DEVICE's local zone
+    // (which is the user's zone in practice). Date-only string → no tz parsing.
+    const [y, m, dd] = d.date.split("-").map(Number);
+    const at = new Date(y, m - 1, dd, prefs.dailyHour, prefs.dailyMin, 0, 0);
+    return {
+      id: DAILY_BASE + i,
+      at,
+      title: `${icon(d.tone)} ${first(d.name) ? first(d.name) + ", " : ""}aaj ka din`.trim(),
+      body: d.short,
+      route: route(`/daily/${chartId}`),
+    };
+  }).filter((n) => n.at.getTime() > now); // today's slot may already be past
+
+  // Swap atomically-ish: clear the block, then schedule the fresh set.
+  try { await LocalNotifications.cancel({ notifications: DAILY_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
+  if (!notifications.length) return;
+  try {
+    await LocalNotifications.schedule({
+      notifications: notifications.map((n) => ({
+        id: n.id,
+        title: n.title,
+        body: n.body,
+        schedule: { at: n.at, allowWhileIdle: true },
+        extra: { route: n.route },
+      })),
+    });
+  } catch { /* ignore */ }
 }

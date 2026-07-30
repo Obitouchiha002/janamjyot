@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import TodayCard from '@/components/TodayCard';
+import DayBanner from '@/components/DayBanner';
 import { useAuth } from '@/auth';
 
 /**
@@ -224,6 +225,12 @@ export default function HomePage() {
         )}
       </section>
 
+      {/* ── Today, in one line ───────────────────────────────────────────
+          The reason to open the app daily: a clear read on today with the real
+          astrology one tap away under "Reason". Same message the 8 AM
+          notification carried; deterministic, so it loads instantly. */}
+      {primary && <DayBanner chartId={primary.id} />}
+
       {/* ── Right now ────────────────────────────────────────────────────
           The everyday reason to open the app: a live read on whether this is a
           good moment to do something. Deterministic, so it loads instantly. */}
@@ -325,7 +332,7 @@ export default function HomePage() {
           page instead of the viewport and drifted over the cards. */}
       {primary && createPortal(
         <Pressable
-          to={`/ask/${primary.id}`}
+          to={`/chat/${primary.id}`}
           feedback="medium"
           aria-label="Talk to an Astrologer"
           className="fixed right-4 z-40 flex items-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-xl shadow-accent/35"
