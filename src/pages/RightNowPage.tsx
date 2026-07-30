@@ -34,9 +34,23 @@ const VERDICT = {
 } as const;
 
 /** "14:32" → minutes since midnight. */
-function toMin(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
+/**
+ * Minutes-since-midnight from a clock string.
+ *
+ * The server sends 12-hour times WITH a suffix — "12:27 PM", "9:04 AM". The old
+ * parser did `"12:27 PM".split(':')` → Number("27 PM") = NaN, which flowed all
+ * the way to the screen as "NaNh left" / "opens in NaNh". Parse the AM/PM (and
+ * still accept a bare 24h "HH:MM").
+ */
+function toMin(t: string): number {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(String(t).trim());
+  if (!m) return NaN;
+  let h = Number(m[1]);
+  const mins = Number(m[2]);
+  const ap = m[3]?.toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return h * 60 + mins;
 }
 
 /**
@@ -52,6 +66,7 @@ function minutesUntil(from: string, to: string): number {
 
 /** 94 → "1h 34m", 34 → "34 min". Absolute clock times make people do the maths. */
 function human(mins: number): string {
+  if (!Number.isFinite(mins)) return 'a little while'; // never render "NaNh"
   if (mins < 1) return 'less than a minute';
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
@@ -59,11 +74,13 @@ function human(mins: number): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-/** A Date for the next occurrence of "HH:MM" — tomorrow if it already passed. */
-function nextOccurrence(hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
+/** A Date for the next occurrence of a clock time — tomorrow if it already
+ *  passed. Uses the same AM/PM-aware parser as toMin (a bare split broke on the
+ *  server's "12:27 PM" times, so the reminder was scheduled at an invalid hour). */
+function nextOccurrence(t: string): Date {
+  const total = toMin(t);
   const d = new Date();
-  d.setHours(h, m, 0, 0);
+  if (Number.isFinite(total)) d.setHours(Math.floor(total / 60), total % 60, 0, 0);
   if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
   return d;
 }

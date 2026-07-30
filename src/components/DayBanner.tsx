@@ -21,6 +21,7 @@ import { haptic } from "@/lib/native";
 type Factor = { code: string; kind: "good" | "careful" | "neutral"; title: string; detail: string };
 type Signals = {
   headline: string;
+  label: string;
   lean: "good" | "mixed" | "careful";
   severity: 0 | 1 | 2 | 3;
   tone: "good" | "advice" | "warn";
@@ -29,10 +30,12 @@ type Signals = {
   caution_time: { name: string; start: string; end: string } | null;
 };
 
+// Colour + icon only — the LABEL text now comes from the engine (localized),
+// so a Hindi user never sees a Hinglish eyebrow over an English line again.
 const TONE = {
-  warn:   { tint: "#F0A93B", Icon: TriangleAlert, label: "Aaj sambhal ke" },
-  advice: { tint: "#C9A24B", Icon: Info,          label: "Aaj ka din" },
-  good:   { tint: "#22C55E", Icon: Sun,           label: "Aaj ka din" },
+  warn:   { tint: "#F0A93B", Icon: TriangleAlert },
+  advice: { tint: "#C9A24B", Icon: Info },
+  good:   { tint: "#22C55E", Icon: Sun },
 } as const;
 
 const DOT = { good: "#22C55E", careful: "#F0A93B", neutral: "#8C93A4" } as const;
@@ -68,7 +71,7 @@ export default function DayBanner({ chartId }: { chartId: string }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: t.tint }}>
-            {t.label}
+            {d.label}
           </p>
           <p className="mt-1 text-[15.5px] font-semibold leading-snug">{d.headline}</p>
 

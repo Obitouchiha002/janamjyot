@@ -47,8 +47,13 @@ export interface DayFactor {
   weight: number;
   /** Short chip, e.g. "Chandrama 8ve bhaav mein". */
   title: string;
-  /** The reason line the user opens — the real astrological cause. */
+  /** The reason line the user opens — the real astrological cause (may name the
+   *  planet/house; this is where the technical detail is allowed). */
   detail: string;
+  /** Plain-language, headline-worthy one-liner for THIS factor — no jargon, the
+   *  real-life "what today feels like / what to do". Only set on factors worth
+   *  leading with (Moon house, Sade Sati). */
+  lead?: string;
   time?: { start: string; end: string };
 }
 
@@ -59,6 +64,8 @@ export interface DaySignals {
   lean: Lean;
   severity: 0 | 1 | 2 | 3;
   tone: Tone;
+  /** Short localized eyebrow for the banner, e.g. "Aaj dhyan se". */
+  label: string;
   /** One clear line, with greeting/name — home banner + chat. */
   headline: string;
   /** Notification body: the same message without the greeting. */
@@ -101,52 +108,88 @@ const PLANET: Record<string, { kind: Kind; theme: Tri }> = {
    1,3,6,7,10,11 support the day; 2,5,9 are mixed; 4,8,12 drain it. Each carries
    a plain-language "what today feels like" and, for the heavy ones, what to
    watch. Weight tracks how strongly the tradition reads that house. */
-const MOON_HOUSE: Record<number, { kind: Kind; weight: number; title: Tri; detail: Tri }> = {
+const MOON_HOUSE: Record<number, { kind: Kind; weight: number; title: Tri; detail: Tri; lead: Tri }> = {
   1:  { kind: "neutral", weight: 0, title: { en: "Moon over your sign", hi: "चंद्रमा आपकी राशि पर", hinglish: "Chandrama aapki rashi par" },
+        lead: { en: "your feelings run close to the surface — a day more for yourself than for others",
+                hi: "भावनाएँ आज ऊपर रहेंगी — यह दिन दूसरों से ज़्यादा अपने लिए है",
+                hinglish: "aaj bhavnaayein upar rahengi — ye din doosron se zyada apne liye hai" },
         detail: { en: "The Moon is on your birth sign today — feelings run close to the surface. A day for yourself more than for others.",
                   hi: "आज चंद्रमा आपकी जन्म राशि पर है — भावनाएँ ऊपर रहेंगी। यह दिन दूसरों से ज़्यादा अपने लिए है।",
                   hinglish: "Aaj Chandrama aapki janam rashi par hai — bhavnaayein upar rahengi. Ye din doosron se zyada apne liye hai." } },
   3:  { kind: "good", weight: 1, title: { en: "Moon in your 3rd", hi: "तीसरे भाव में चंद्रमा", hinglish: "Teesre bhaav mein Chandrama" },
+        lead: { en: "your courage and effort will pay off — a good day to push a task forward",
+                hi: "आज हिम्मत और मेहनत रंग लाएगी — किसी काम को आगे बढ़ाने का दिन",
+                hinglish: "aaj himmat aur mehnat rang laayegi — kisi kaam ko aage badhane ka din" },
         detail: { en: "Moon in your 3rd from birth — courage and effort pay off. Good for pushing a task forward or a hard conversation.",
                   hi: "जन्म राशि से तीसरे भाव में चंद्रमा — हिम्मत और मेहनत रंग लाएगी। किसी काम को आगे बढ़ाने का दिन।",
                   hinglish: "Janam rashi se teesre bhaav mein Chandrama — himmat aur mehnat rang laayegi. Kisi kaam ko aage badhane ka din." } },
   6:  { kind: "good", weight: 1, title: { en: "Moon in your 6th", hi: "छठे भाव में चंद्रमा", hinglish: "Chhathe bhaav mein Chandrama" },
+        lead: { en: "you have the upper hand over problems today — settle something that's been pending",
+                hi: "आज समस्याओं पर आपका पलड़ा भारी है — कोई रुका काम निपटा लें",
+                hinglish: "aaj samasyaon par aapka palda bhaari hai — koi ruka kaam nipta lein" },
         detail: { en: "Moon in your 6th — you have the upper hand over problems and rivals today. A good day to settle something pending.",
                   hi: "छठे भाव में चंद्रमा — आज समस्याओं और विरोधियों पर आपका पलड़ा भारी है। कोई रुका काम निपटाने का दिन।",
                   hinglish: "Chhathe bhaav mein Chandrama — aaj samasyaon aur virodhiyon par aapka palda bhaari hai. Koi ruka kaam niptaane ka din." } },
   7:  { kind: "good", weight: 1, title: { en: "Moon in your 7th", hi: "सातवें भाव में चंद्रमा", hinglish: "Saatvein bhaav mein Chandrama" },
+        lead: { en: "dealings with people go smoothly — good for meetings, partners and travel",
+                hi: "लोगों के साथ काम अच्छे से चलेंगे — मीटिंग, साझेदारी और यात्रा के लिए अच्छा",
+                hinglish: "logon ke saath kaam acche se chalenge — meeting, partnership aur yatra ke liye accha" },
         detail: { en: "Moon in your 7th — dealings with others go smoothly. Good for meetings, partners and travel out.",
                   hi: "सातवें भाव में चंद्रमा — दूसरों के साथ काम अच्छे से चलेंगे। मीटिंग, साझेदारी और यात्रा के लिए अच्छा।",
                   hinglish: "Saatvein bhaav mein Chandrama — doosron ke saath kaam acche se chalenge. Meeting, saajhedari aur yatra ke liye accha." } },
   10: { kind: "good", weight: 1, title: { en: "Moon in your 10th", hi: "दसवें भाव में चंद्रमा", hinglish: "Dasvein bhaav mein Chandrama" },
+        lead: { en: "work and reputation are on your side — put your name to something today",
+                hi: "काम और प्रतिष्ठा आपके साथ हैं — आज किसी काम में आगे आएँ",
+                hinglish: "kaam aur naam aapke saath hain — aaj kisi kaam mein aage aayein" },
         detail: { en: "Moon in your 10th — work and reputation are favoured. Put your name to something today.",
                   hi: "दसवें भाव में चंद्रमा — काम और प्रतिष्ठा के लिए अच्छा। आज किसी काम में आगे आएँ।",
                   hinglish: "Dasvein bhaav mein Chandrama — kaam aur pratishtha ke liye accha. Aaj kisi kaam mein aage aayein." } },
   11: { kind: "good", weight: 1, title: { en: "Moon in your 11th", hi: "ग्यारहवें भाव में चंद्रमा", hinglish: "Gyaarahvein bhaav mein Chandrama" },
+        lead: { en: "gains and good news lean your way — a good day to ask, and for money matters",
+                hi: "लाभ और अच्छी ख़बर की ओर झुकाव — माँगने और धन के काम के लिए अच्छा दिन",
+                hinglish: "laabh aur acchi khabar ki or jhukaav — maangne aur paise ke kaam ke liye accha din" },
         detail: { en: "Moon in your 11th — gains and good news lean your way. A favourable day for asking and for money matters.",
                   hi: "ग्यारहवें भाव में चंद्रमा — लाभ और अच्छी ख़बर की ओर झुकाव। माँगने और धन के काम के लिए अच्छा दिन।",
                   hinglish: "Gyaarahvein bhaav mein Chandrama — laabh aur acchi khabar ki or jhukaav. Maangne aur dhan ke kaam ke liye accha din." } },
   2:  { kind: "neutral", weight: 0, title: { en: "Moon in your 2nd", hi: "दूसरे भाव में चंद्रमा", hinglish: "Doosre bhaav mein Chandrama" },
+        lead: { en: "a steady, ordinary day — good for money and family routine, nothing dramatic",
+                hi: "एक सामान्य, टिका हुआ दिन — धन और परिवार के रोज़ के काम के लिए ठीक",
+                hinglish: "ek samanya, tika hua din — paise aur parivaar ke roz ke kaam ke liye theek" },
         detail: { en: "Moon in your 2nd — a steady day for money and family. Nothing dramatic; handle the routine.",
                   hi: "दूसरे भाव में चंद्रमा — धन और परिवार के लिए सामान्य दिन। रोज़ के काम निपटाएँ।",
                   hinglish: "Doosre bhaav mein Chandrama — dhan aur parivaar ke liye samanya din. Roz ke kaam niptaayein." } },
   5:  { kind: "neutral", weight: 0, title: { en: "Moon in your 5th", hi: "पाँचवें भाव में चंद्रमा", hinglish: "Paanchvein bhaav mein Chandrama" },
+        lead: { en: "a lighter, creative day — good with children and for anything you enjoy",
+                hi: "हल्का और रचनात्मक दिन — बच्चों और पसंद के कामों के लिए अच्छा",
+                hinglish: "halka aur creative din — bachchon aur pasand ke kaamon ke liye accha" },
         detail: { en: "Moon in your 5th — a lighter, creative day. Good with children and for anything you enjoy.",
                   hi: "पाँचवें भाव में चंद्रमा — हल्का और रचनात्मक दिन। बच्चों और पसंद के कामों के लिए अच्छा।",
                   hinglish: "Paanchvein bhaav mein Chandrama — halka aur creative din. Bachchon aur pasand ke kaamon ke liye accha." } },
   9:  { kind: "neutral", weight: 0, title: { en: "Moon in your 9th", hi: "नवें भाव में चंद्रमा", hinglish: "Navein bhaav mein Chandrama" },
+        lead: { en: "a calm, fortunate feeling — fine for travel and matters of belief",
+                hi: "शांत और भाग्यशाली अनुभव — यात्रा और आस्था के काम ठीक रहेंगे",
+                hinglish: "shaant aur bhagyashali anubhav — yatra aur aastha ke kaam theek rahenge" },
         detail: { en: "Moon in your 9th — a calm, fortunate feeling. Fine for travel and for matters of belief.",
                   hi: "नवें भाव में चंद्रमा — शांत और भाग्यशाली अनुभव। यात्रा और आस्था के काम ठीक रहेंगे।",
                   hinglish: "Navein bhaav mein Chandrama — shaant aur bhagyashali anubhav. Yatra aur aastha ke kaam theek rahenge." } },
   4:  { kind: "careful", weight: 2, title: { en: "Moon in your 4th", hi: "चौथे भाव में चंद्रमा", hinglish: "Chauthe bhaav mein Chandrama" },
+        lead: { en: "your mind will feel restless and home matters may tug — keep the day light, don't force big moves",
+                hi: "मन बेचैन रहेगा और घर की बातें खींच सकती हैं — दिन हल्का रखें, बड़े फ़ैसले न थोपें",
+                hinglish: "mann bechain rahega aur ghar ki baatein kheench sakti hain — din halka rakho, bada faisla mat thopo" },
         detail: { en: "Moon in your 4th — the mind is restless and home matters may tug at you. Keep the day light and don't force big moves.",
                   hi: "चौथे भाव में चंद्रमा — मन बेचैन रहेगा, घर की बातें खींच सकती हैं। दिन हल्का रखें, बड़े फ़ैसले न थोपें।",
                   hinglish: "Chauthe bhaav mein Chandrama — mann bechain rahega, ghar ki baatein kheench sakti hain. Din halka rakhein, bade faisle na thopein." } },
   8:  { kind: "careful", weight: 3, title: { en: "Moon in your 8th", hi: "आठवें भाव में चंद्रमा", hinglish: "Aathvein bhaav mein Chandrama" },
+        lead: { en: "your mind will feel heavy and small things may sting — put off new starts, travel and money decisions, and just hold steady",
+                hi: "मन भारी रहेगा और छोटी बातें चुभेंगी — नई शुरुआत, यात्रा और पैसे के फ़ैसले टाल दें, बस स्थिर रहें",
+                hinglish: "mann bhaari rahega aur choti baatein chubh sakti hain — nayi shuruaat, safar aur paise ke bade faisle aaj taal do, bas tike raho" },
         detail: { en: "Moon in your 8th from birth — the heaviest day of the Moon's cycle. Mind feels low, small things get under your skin. Avoid new starts, travel and money moves; keep to what's already running.",
                   hi: "जन्म राशि से आठवें भाव में चंद्रमा — चंद्र चक्र का सबसे भारी दिन। मन उदास, छोटी बातें चुभेंगी। नई शुरुआत, यात्रा और धन के फ़ैसले टालें; जो चल रहा है उसी पर रहें।",
                   hinglish: "Janam rashi se aathvein bhaav mein Chandrama — Chandra chakra ka sabse bhaari din. Mann udaas, choti baatein chubhengi. Nai shuruaat, yatra aur dhan ke faisle taalein; jo chal raha hai usi par rahein." } },
   12: { kind: "careful", weight: 2, title: { en: "Moon in your 12th", hi: "बारहवें भाव में चंद्रमा", hinglish: "Baarahvein bhaav mein Chandrama" },
+        lead: { en: "energy and focus will run low and spending can slip — rest, don't overcommit, and watch the wallet",
+                hi: "ऊर्जा और ध्यान कम रहेगा और ख़र्च बढ़ सकता है — आराम करें, ज़्यादा वादे न लें, ख़र्च पर नज़र रखें",
+                hinglish: "energy aur dhyan kam rahega aur kharch badh sakta hai — aaram karo, zyada vaade mat lo, kharch par nazar rakho" },
         detail: { en: "Moon in your 12th — energy and focus run low, and spending can slip. Rest, don't overcommit, and watch the wallet.",
                   hi: "बारहवें भाव में चंद्रमा — ऊर्जा और ध्यान कम रहेगा, ख़र्च बढ़ सकता है। आराम करें, ज़्यादा वादे न लें, ख़र्च पर नज़र रखें।",
                   hinglish: "Baarahvein bhaav mein Chandrama — energy aur dhyan kam rahega, kharch badh sakta hai. Aaram karein, zyada vaade na lein, kharch par nazar rakhein." } },
@@ -172,24 +215,13 @@ const CAUTION_LINE: Tri = {
 const fillTime = (tpl: string, t: { start: string; end: string; name?: string }) =>
   tpl.replace("{a}", t.start).replace("{b}", t.end).replace("{name}", t.name ?? "");
 
-/* Openers that carry the TONE the user asked for — heavy days speak plainly,
-   light days only nudge, good days encourage. */
-const OPENER: Record<Tone, Tri> = {
-  warn: {
-    en: "go carefully today.",
-    hi: "आज ज़रा सँभल के चलिए।",
-    hinglish: "aaj zara sambhal ke chaliye.",
-  },
-  advice: {
-    en: "nothing heavy today — just a couple of things to keep in mind.",
-    hi: "आज कुछ भारी नहीं — बस थोड़ा ध्यान रखने की बात है।",
-    hinglish: "aaj kuch bhaari nahi — bas thoda dhyan rakhne ki baat hai.",
-  },
-  good: {
-    en: "the day is with you.",
-    hi: "आज दिन आपके साथ है।",
-    hinglish: "aaj din aapke saath hai.",
-  },
+/* Short eyebrow label for the banner, by lean. NOT the message — just a chip.
+   The message itself is built from the day's actual lead factor (below), never
+   from a fixed opener, so two different days never read the same. */
+const LABEL: Record<Tone, Tri> = {
+  warn:   { en: "Take care today", hi: "आज ध्यान से", hinglish: "Aaj dhyan se" },
+  advice: { en: "Today",           hi: "आज का दिन",   hinglish: "Aaj ka din" },
+  good:   { en: "A good day",      hi: "अच्छा दिन",    hinglish: "Accha din" },
 };
 
 /** Noon of `date` in `tz`, as an ISO instant — a fair representative moment for
@@ -229,6 +261,7 @@ export function buildDaySignals(input: {
       weight: m.weight,
       title: pick(m.title, l),
       detail: pick(m.detail, l),
+      lead: pick(m.lead, l),
     });
   }
 
@@ -252,6 +285,11 @@ export function buildDaySignals(input: {
         hi: `चंद्रमा से ${shm === 12 ? "बारहवें" : shm === 1 ? "पहले" : "दूसरे"} भाव में शनि — साढ़े साती का ${pick(phase, l)}। यह समय धैर्य और लगातार मेहनत माँगता है, शॉर्टकट नहीं।`,
         hinglish: `Chandrama se ${shm === 12 ? "baarahvein" : shm === 1 ? "pehle" : "doosre"} bhaav mein Shani — Sade Sati ka ${pick(phase, l)}. Ye samay dhairya aur lagataar mehnat maangta hai, shortcut nahi.`,
       }[l],
+      lead: {
+        en: "you're in a slower stretch that rewards patience — don't chase shortcuts, build steadily",
+        hi: "यह धीमा दौर है जो धैर्य माँगता है — शॉर्टकट के पीछे न भागें, टिककर काम करें",
+        hinglish: "ye dheema daur hai jo dhairya maangta hai — shortcut ke peeche mat bhaago, tik ke kaam karo",
+      }[l],
     });
   } else if (shm && [4, 8].includes(shm)) {
     factors.push({
@@ -263,6 +301,11 @@ export function buildDaySignals(input: {
         en: `Saturn is in the ${shm}th from your Moon (Dhaiya) — pace yourself and don't take on more than you can carry right now.`,
         hi: `चंद्रमा से ${shm === 4 ? "चौथे" : "आठवें"} भाव में शनि (ढैया) — अपनी गति बनाए रखें, इस समय ज़रूरत से ज़्यादा बोझ न लें।`,
         hinglish: `Chandrama se ${shm === 4 ? "chauthe" : "aathvein"} bhaav mein Shani (Dhaiya) — apni gati banaye rakhein, is samay zaroorat se zyada bojh na lein.`,
+      }[l],
+      lead: {
+        en: "pace yourself today — don't take on more than you can carry right now",
+        hi: "आज अपनी गति बनाए रखें — इस समय ज़रूरत से ज़्यादा बोझ न लें",
+        hinglish: "aaj apni gati banaye rakho — is samay zaroorat se zyada bojh mat lo",
       }[l],
     });
   }
@@ -344,21 +387,24 @@ export function buildDaySignals(input: {
   factors.sort((a, b) => rank(b) - rank(a));
 
   // ── the one clear line ────────────────────────────────────────────────────
-  // Opener sets the tone; then the single most important factor's short guidance;
-  // then the best window if we have one. Kept to one breath.
-  const lead = factors.find((f) => f.kind === (tone === "good" ? "good" : "careful")) ?? factors[0] ?? null;
-  const opener = pick(OPENER[tone], l);
+  // Built from the day's ACTUAL dominant factor, never a fixed opener — so a
+  // heavy day and a good day read completely differently, and two people with
+  // different charts get different lines. The lead phrase is plain (no jargon);
+  // the technical placement stays in the factor's `detail` under "Reason".
+  const leadFactor =
+    factors.find((f) => f.lead && f.kind === (tone === "good" ? "good" : "careful")) ??
+    factors.find((f) => f.lead) ?? null;
+  const leadText = leadFactor?.lead ?? "";
   const bestClause = best ? " " + fillTime(pick(BEST_LINE, l), best) : "";
 
-  const leadClause = lead && lead.code !== "best_window" && lead.code !== "rahu_kaal"
-    ? " " + firstSentence(lead.detail)
-    : "";
-
-  // Capitalise the opener only when it actually starts the sentence — after a
-  // "Vansh, " greeting it is mid-sentence and a capital there reads wrong.
+  // After a "Vansh, " greeting the lead is mid-sentence (lowercase reads right);
+  // with no name it starts the sentence (capitalise). Notifications have no
+  // greeting, so they always capitalise.
   const greet = GREET(name, l);
-  const headline = (greet + (greet ? opener : capFirst(opener)) + leadClause + bestClause).trim();
-  const short = (capFirst(opener) + leadClause + bestClause).trim();
+  const headline = leadText
+    ? (greet + (greet ? leadText : capFirst(leadText)) + "." + bestClause).trim()
+    : (greet + pick(LABEL[tone], l) + "." + bestClause).trim();
+  const short = (capFirst(leadText || pick(LABEL[tone], l)) + "." + bestClause).trim();
 
   return {
     date: input.date,
@@ -367,6 +413,7 @@ export function buildDaySignals(input: {
     lean,
     severity,
     tone,
+    label: pick(LABEL[tone], l),
     headline,
     short,
     factors,
@@ -375,11 +422,6 @@ export function buildDaySignals(input: {
   };
 }
 
-/** First sentence of a detail line — the headline wants the gist, not the essay. */
-function firstSentence(s: string): string {
-  const m = /^(.*?[.।!?])(\s|$)/.exec(s.trim());
-  return (m ? m[1] : s).trim();
-}
 function capFirst(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }

@@ -70,17 +70,22 @@ function PersonForm({ title, icon: Icon, tint, value, onChange }: {
 
         <div>
           <label className={LABEL}>Birth time</label>
-          <div className="flex gap-2">
+          {/* A 3-col grid, NOT flex. The old flex row put `w-full` (from FIELD)
+              AND `w-[86px]` on the same select — conflicting width utilities of
+              equal specificity, so the AM/PM box won `w-full`, refused to shrink
+              and blew off the right edge while hour/min collapsed to empty pills.
+              Grid cells own the widths, so each select just fills its cell. */}
+          <div className="grid grid-cols-3 gap-2">
             <select value={value.hour} onChange={(e) => onChange({ ...value, hour: e.target.value })}
-              className={`${FIELD} flex-1 appearance-none text-center`}>
+              aria-label="Hour" className={`${FIELD} appearance-none text-center`}>
               {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((h) => <option key={h}>{h}</option>)}
             </select>
             <select value={value.min} onChange={(e) => onChange({ ...value, min: e.target.value })}
-              className={`${FIELD} flex-1 appearance-none text-center`}>
+              aria-label="Minute" className={`${FIELD} appearance-none text-center`}>
               {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0")).map((m) => <option key={m}>{m}</option>)}
             </select>
             <select value={value.ampm} onChange={(e) => onChange({ ...value, ampm: e.target.value })}
-              className={`${FIELD} w-[86px] shrink-0 appearance-none text-center`}>
+              aria-label="AM or PM" className={`${FIELD} appearance-none text-center`}>
               <option>AM</option><option>PM</option>
             </select>
           </div>

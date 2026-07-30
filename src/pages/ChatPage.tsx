@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Send, Sparkles, ChevronDown, ShieldCheck } from "lucide-react";
+import { Send, ChevronDown, ShieldCheck, Plus } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
+
+const LANGS = [
+  { key: "en", label: "EN" },
+  { key: "hinglish", label: "Hinglish" },
+  { key: "hi", label: "हिंदी" },
+] as const;
 
 /**
  * The ONE chat.
@@ -46,6 +52,7 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const [typing, setTyping] = useState(false);
   const [openReason, setOpenReason] = useState<Record<number, boolean>>({});
+  const [lang, setLang] = useState<string>(getLang());
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -87,7 +94,7 @@ export default function ChatPage() {
       const res = await fetch("/api/chat/universal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chartId, question: q, language: getLang() }),
+        body: JSON.stringify({ chartId, question: q, language: lang }),
       });
       const data = await res.json().catch(() => ({}));
       setTyping(false);
@@ -112,29 +119,57 @@ export default function ChatPage() {
     }
   };
 
+  /** Start a fresh chat: clear the thread on the server and on screen. */
+  const newChat = async () => {
+    if (busy) return;
+    haptic.tap();
+    setTurns([]);
+    setOpenReason({});
+    try { await fetch(`/api/chat-history/${chartId}?context=chat`, { method: "DELETE" }); } catch { /* ignore */ }
+  };
+
+  const switchLang = (k: string) => {
+    if (k === lang) return;
+    haptic.select();
+    setLang(k);
+  };
+
   const shellStyle: React.CSSProperties = {
     height: "calc(100dvh - var(--sat) - var(--topbar-h) - 44px - var(--kb-inset))",
   };
 
   return (
     <div className="-mx-4 -mb-6 flex flex-col overflow-hidden" style={shellStyle}>
-      {/* header */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background px-4 pb-3 pt-1">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
-          <Sparkles className="h-[21px] w-[21px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-[15.5px] font-bold leading-tight">Jyotish</h1>
-          <p className="truncate text-[12px] text-muted-foreground">
-            {typing ? "soch raha hai…" : "aapki kundli padhta hai · seedha jawab"}
-          </p>
+      {/* toolbar — the app-shell top bar already says "Jyotish", so this row is
+          just the controls the old chat was missing: language + a new chat. */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 py-2">
+        <div className="flex items-center gap-1">
+          {LANGS.map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => switchLang(l.key)}
+              className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold transition-colors ${
+                lang === l.key ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {l.label}
+            </button>
+          ))}
         </div>
+        <button
+          type="button"
+          onClick={newChat}
+          className="flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[12px] font-bold text-muted-foreground"
+        >
+          <Plus className="h-[14px] w-[14px]" strokeWidth={2.6} /> New chat
+        </button>
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-1 py-4">
+      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
         {turns.length === 0 && (
-          <div className="px-3 pt-4">
+          <div className="px-1 pt-3">
             <p className="text-[15px] font-semibold">Namaste 🙏</p>
             <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
               Kuch bhi poochho — aaj/kal ka din, career, rishte, ya app kaise chalta hai. Main aapki kundli padh ke seedha jawab dunga.
@@ -159,15 +194,15 @@ export default function ChatPage() {
 
         {turns.map((t, i) =>
           t.role === "user" ? (
-            <div key={i} className="flex justify-end px-2">
-              <div className="max-w-[82%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2.5 text-[14px] font-medium text-accent-foreground">
+            <div key={i} className="flex justify-end">
+              <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-[20px] rounded-br-md bg-accent px-4 py-2.5 text-[14.5px] font-medium leading-[1.5] text-accent-foreground">
                 {t.answer}
               </div>
             </div>
           ) : (
-            <div key={i} className="flex justify-start px-2">
-              <div className={`max-w-[88%] rounded-2xl rounded-bl-md border px-3.5 py-3 ${t.error ? "border-red-500/30 bg-red-500/5" : "border-border bg-card"}`}>
-                <div className="selectable text-[14px] leading-relaxed">
+            <div key={i} className="flex justify-start">
+              <div className={`max-w-[86%] rounded-[20px] rounded-bl-md border px-4 py-3 ${t.error ? "border-red-500/30 bg-red-500/5" : "border-border bg-card shadow-sm"}`}>
+                <div className="selectable text-[14.5px] leading-[1.6]">
                   <AnswerText text={t.answer} />
                 </div>
                 {t.reason && (
@@ -193,7 +228,7 @@ export default function ChatPage() {
         )}
 
         {typing && (
-          <div className="flex justify-start px-2">
+          <div className="flex justify-start">
             <div className="rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3">
               <span className="flex items-center gap-1">
                 {[0, 1, 2].map((k) => (
