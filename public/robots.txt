@@ -1,4 +1,7 @@
+# JanamJyot — https://janamjyot.lzworth.in
 User-agent: *
 Allow: /
+# The app's private API is not content to index.
+Disallow: /api/
 
-Sitemap: https://janamjyot.vercel.app/sitemap.xml
+Sitemap: https://janamjyot.lzworth.in/sitemap.xml
