@@ -118,6 +118,32 @@ check("a heavy day (severity 3) occurs in the sweep", sawSev3,
   "Moon 8th from natal Moon should appear within 60 days");
 check("a clear, encouraging day occurs in the sweep", sawGoodTone);
 
+// ── the DAILY-VARIATION guarantee — the whole reason for Tarabala ────────────
+// The user's complaint was "same message for days". The Moon's nakshatra (hence
+// its tara from the birth star) changes almost daily, so the daily line must
+// change too — and Sade Sati (a 2½-year backdrop) must NOT freeze it.
+const distinctLines = new Set(days.map((d) => d.short)).size;
+check("the daily line varies — many distinct lines over 60 days", distinctLines >= 15,
+  `only ${distinctLines} distinct in 60 days`);
+
+let worstRun = 1, run = 1;
+for (let i = 1; i < days.length; i++) {
+  run = days[i].short === days[i - 1].short ? run + 1 : 1;
+  if (run > worstRun) worstRun = run;
+}
+check("no long run of identical days (Sade Sati no longer freezes the line)", worstRun <= 3,
+  `${worstRun} identical days in a row`);
+
+// Tarabala is present and actually cycles (a real daily signal, not a constant).
+const taras = new Set(days.map((d) => d.factors.find((f) => f.code.startsWith("tara_"))?.code).filter(Boolean));
+check("Tarabala is computed and cycles through several taras", taras.size >= 5,
+  `only ${taras.size} distinct taras seen`);
+
+// Standing factors are CONTEXT — they must never carry a headline `lead`.
+const standingLeaked = days.some((d) =>
+  d.factors.some((f) => /^(sade_sati|dhaiya|dasha_)/.test(f.code) && f.lead));
+check("standing factors (Sade Sati/dasha) never lead the headline", !standingLeaked);
+
 // ── the "reason is real" promise, spelled out on one day ─────────────────────
 const one = buildDaySignals({
   chart, date: days.find((d) => d.severity === 3)?.date ?? "2026-07-30", tz, lang: "hinglish",

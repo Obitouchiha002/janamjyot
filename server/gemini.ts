@@ -1174,9 +1174,18 @@ warm and practical, speak in tendencies (not guarantees), never scary or fatalis
 Use **bold** for the 1-2 key words in each. Do not repeat the same generic sentence
 across areas — make each distinct to that area of life.
 
+CRITICAL STYLE RULES:
+- Write DIRECT STATEMENTS only. NEVER pose a question and then answer it. Do NOT
+  write things like "Will your money grow today? Yes…" or "What about health? …".
+  No rhetorical questions at all — just tell them plainly what today holds.
+- If a "day_state" is given below, it is the ALREADY-COMPUTED truth for today
+  (from real Tarabala + Moon transit). Your cards MUST agree with it — expand on
+  that same day, never contradict its lean or invent a different mood.
+
 Data: ${JSON.stringify(context, null, 2)}
 
-Respond with a SINGLE valid JSON object with EXACTLY these keys:
+Respond with a SINGLE valid JSON object with EXACTLY these keys (each a plain
+statement, no questions):
 - "career": today's work/career tendency + one practical step
 - "money": today's money/finance tendency (no investment guarantees)
 - "relationship": today's relationships/family tendency

@@ -2068,6 +2068,18 @@ app.get("/api/chart/:chartId/daily-guidance", async (req, res) => {
       }
     } catch (e: any) { console.warn("[guidance] panchang skipped:", e?.message); }
 
+    // The deterministic day-signals (Tarabala-led, no AI) are the REAL core of
+    // the page. They also anchor the AI so its area-by-area cards can't drift
+    // from the actual day state.
+    let day: any = null;
+    try {
+      day = buildDaySignals({
+        chart, date: todayLocal, tz, lang: guidanceLang, ayanamsa: AYANAMSA, name: b.name,
+        latitude: Number.isFinite(b.latitude) ? b.latitude : undefined,
+        longitude: Number.isFinite(b.longitude) ? b.longitude : undefined,
+      });
+    } catch (e: any) { console.warn("[guidance] day-signals skipped:", e?.message); }
+
     let guidance: any = null;
     try {
       const language = guidanceLang; // the resolved ?lang, not the chart's frozen one
@@ -2083,11 +2095,15 @@ app.get("/api/chart/:chartId/daily-guidance", async (req, res) => {
         moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
         transit_highlights: tr.highlights,
         panchang: panchang ? { weekday: panchang.weekday, tithi: panchang.tithi, nakshatra: panchang.nakshatra } : null,
+        // Anchor the AI to today's actual computed state so it elaborates on
+        // the SAME real day, never a generic one.
+        day_state: day ? { headline: day.headline, lean: day.lean, factors: day.factors.map((f: any) => f.detail) } : null,
       }, language);
     } catch (e: any) { console.warn("[guidance] AI skipped:", e?.message); }
 
     const payload = {
       date: todayLocal,
+      day,
       dasha: chart.dasha?.current ?? null,
       moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
       panchang,

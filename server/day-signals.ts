@@ -10,15 +10,20 @@
  *
  * NO AI and NO NETWORK. It must run on a phone with the app closed (the week of
  * notifications is scheduled from here), be identical every time the same day
- * is asked about, and cost nothing. Everything is composed from three signals
- * we already compute in plain code:
+ * is asked about, and cost nothing. Everything is composed from real signals we
+ * already compute in plain code, ordered from most-daily to standing-backdrop:
  *
- *   1. Dasha       — the running mahadasha lord colours the whole period.
- *   2. Moon today  — the Moon's house from the natal Moon (Chandra bala) is the
- *                    classic day-to-day mood/luck indicator; it changes every
- *                    ~2¼ days, which is what makes a day feel different.
- *   3. Panchang    — the day's best choghadiya window and its Rahu Kaal, plus
- *                    any standing Sade Sati / heavy transit already flagged.
+ *   1. Tarabala (DRIVES the day) — the Moon's nakshatra counted from the
+ *      person's OWN birth nakshatra, folded into the classical 9 taras. The
+ *      Moon changes nakshatra almost every day, so this is genuinely different
+ *      each day AND unique to this person. This leads the message.
+ *   2. Chandrabala — the Moon's house from the natal Moon (~2¼-day mood).
+ *   3. Panchang    — the day's best choghadiya window, its Rahu Kaal, and the
+ *                    real tithi + nakshatra (daily context in the Reason).
+ *   Backdrop (context only, weight 0, never leads): Sade Sati / Dhaiya (a
+ *   2½-year phase) and the running mahadasha. These used to FREEZE the line —
+ *   Sade Sati made every day read "take care" for years. They now sit in the
+ *   Reason as ongoing context and never decide a single day.
  *
  * Each factor is tagged good / careful / neutral with a weight; the weights add
  * up to a severity (0–3) that drives BOTH the overall lean and the TONE — a
@@ -34,6 +39,7 @@
 import { buildTransit, type TransitResult } from "./transit";
 import { buildPanchang } from "./panchang";
 import { buildIsoDatetime } from "./validate";
+import { NAKSHATRAS } from "./normalize";
 
 export type Kind = "good" | "careful" | "neutral";
 export type Lean = "good" | "mixed" | "careful";
@@ -195,6 +201,89 @@ const MOON_HOUSE: Record<number, { kind: Kind; weight: number; title: Tri; detai
                   hinglish: "Baarahvein bhaav mein Chandrama — energy aur dhyan kam rahega, kharch badh sakta hai. Aaram karein, zyada vaade na lein, kharch par nazar rakhein." } },
 };
 
+/* ── Tarabala — the DAILY-changing signal ──────────────────────────────────
+   The Moon's nakshatra counted from the person's OWN birth nakshatra, folded
+   into the classical 9 taras. Unlike Chandrabala (Moon house, ~2¼ days) and
+   unlike Sade Sati (a 2½-year backdrop), the Moon changes nakshatra almost
+   every day, so this is genuinely different each day AND unique to this person's
+   birth star. This is what makes today's reading actually about TODAY. */
+const TARA: Record<number, { name: string; kind: Kind; weight: number; lead: Tri; detail: Tri }> = {
+  1: { name: "Janma",  kind: "careful", weight: 1,
+       lead: { en: "watch your health and energy today — don't overexert",
+               hi: "आज सेहत और ऊर्जा का ध्यान रखें — ज़्यादा न थकें",
+               hinglish: "aaj sehat aur energy ka dhyan rakho — zyada mat thako" },
+       detail: { en: "Today's Moon sits on your Janma tara (your own birth star group) — a day to protect your body and not overdo things.",
+                 hi: "आज का चंद्रमा आपकी जन्म तारा पर है — शरीर का ध्यान रखने और ज़्यादा न करने का दिन।",
+                 hinglish: "Aaj ka Chandrama aapki Janma tara par hai — sharir ka dhyan rakhne aur zyada na karne ka din." } },
+  2: { name: "Sampat", kind: "good", weight: 2,
+       lead: { en: "a genuinely favourable day — good for money moves and starting things",
+               hi: "आज सचमुच शुभ दिन — धन के काम और नई शुरुआत के लिए अच्छा",
+               hinglish: "aaj sachmuch shubh din — paise ke kaam aur nayi shuruaat ke liye accha" },
+       detail: { en: "Today's Moon makes your Sampat tara — the wealth-giving star. One of the best days of your cycle to begin or invest.",
+                 hi: "आज चंद्रमा आपकी सम्पत तारा बना रहा है — धन देने वाली तारा। शुरुआत या निवेश के लिए बेहतरीन दिन।",
+                 hinglish: "Aaj Chandrama aapki Sampat tara bana raha hai — dhan dene wali tara. Shuruaat ya nivesh ke liye behtareen din." } },
+  3: { name: "Vipat",  kind: "careful", weight: 2,
+       lead: { en: "an accident-prone, slippery day — go slow, avoid risks and rushing",
+               hi: "आज दुर्घटना वाला, फिसलन भरा दिन — धीरे चलें, जोखिम और जल्दबाज़ी से बचें",
+               hinglish: "aaj durghatna wala, phislan bhara din — dheere chalo, jokhim aur jaldbaazi se bacho" },
+       detail: { en: "Today's Moon makes your Vipat tara — the 'danger' star. Small mistakes cost more today; postpone anything risky and drive/handle things carefully.",
+                 hi: "आज चंद्रमा आपकी विपत तारा बना रहा है — 'ख़तरे' की तारा। आज छोटी ग़लतियाँ भारी पड़ती हैं; जोखिम वाला काम टालें, सँभल कर चलें।",
+                 hinglish: "Aaj Chandrama aapki Vipat tara bana raha hai — 'khatre' ki tara. Aaj choti galtiyan bhaari padti hain; jokhim wala kaam taalo, sambhal ke chalo." } },
+  4: { name: "Kshema", kind: "good", weight: 1,
+       lead: { en: "a safe, comfortable day — things you attempt tend to hold",
+               hi: "आज सुरक्षित, आरामदेह दिन — जो करेंगे वो टिकेगा",
+               hinglish: "aaj surakshit, aaramdeh din — jo karoge wo tikega" },
+       detail: { en: "Today's Moon makes your Kshema tara — the well-being star. A steady, protected day; good for anything you want to last.",
+                 hi: "आज चंद्रमा आपकी क्षेम तारा बना रहा है — कल्याण की तारा। टिकाऊ, सुरक्षित दिन।",
+                 hinglish: "Aaj Chandrama aapki Kshema tara bana raha hai — kalyan ki tara. Tikau, surakshit din." } },
+  5: { name: "Pratyak", kind: "careful", weight: 2,
+       lead: { en: "expect friction and pushback — don't force decisions, avoid confrontation",
+               hi: "आज रुकावट और विरोध — फ़ैसले न थोपें, टकराव से बचें",
+               hinglish: "aaj rukawat aur virodh — faisle mat thopo, takraav se bacho" },
+       detail: { en: "Today's Moon makes your Pratyari tara — the 'obstacle/opponent' star. Efforts meet resistance today; a poor day to push hard or pick a fight.",
+                 hi: "आज चंद्रमा आपकी प्रत्यरि तारा बना रहा है — 'बाधा' की तारा। आज मेहनत में रुकावट आती है; ज़ोर लगाने या झगड़े का ग़लत दिन।",
+                 hinglish: "Aaj Chandrama aapki Pratyari tara bana raha hai — 'baadha' ki tara. Aaj mehnat mein rukawat aati hai; zor lagane ya jhagde ka galat din." } },
+  6: { name: "Sadhaka", kind: "good", weight: 2,
+       lead: { en: "a get-things-done day — hard tasks and goals move forward",
+               hi: "आज काम बनने का दिन — मुश्किल काम और लक्ष्य आगे बढ़ेंगे",
+               hinglish: "aaj kaam banne ka din — mushkil kaam aur lakshya aage badhenge" },
+       detail: { en: "Today's Moon makes your Sadhaka tara — the 'accomplishment' star. Effort pays off; a strong day to finish what's been stuck.",
+                 hi: "आज चंद्रमा आपकी साधक तारा बना रहा है — 'सिद्धि' की तारा। मेहनत रंग लाती है; रुका काम पूरा करने का दिन।",
+                 hinglish: "Aaj Chandrama aapki Sadhaka tara bana raha hai — 'siddhi' ki tara. Mehnat rang laati hai; ruka kaam poora karne ka din." } },
+  7: { name: "Vadha",  kind: "careful", weight: 3,
+       lead: { en: "the most cautious day of your cycle — don't start anything new or important",
+               hi: "आपके चक्र का सबसे सावधान दिन — कोई नया या ज़रूरी काम शुरू न करें",
+               hinglish: "aapke cycle ka sabse savdhaan din — koi naya ya zaroori kaam shuru mat karo" },
+       detail: { en: "Today's Moon makes your Vadha tara — traditionally the most avoided star of the cycle. Hold off on new beginnings, big purchases and important commitments; keep to routine.",
+                 hi: "आज चंद्रमा आपकी वध तारा बना रहा है — चक्र की सबसे टालने योग्य तारा। नई शुरुआत, बड़ी ख़रीद और ज़रूरी वादे टालें; रोज़ के काम पर रहें।",
+                 hinglish: "Aaj Chandrama aapki Vadha tara bana raha hai — cycle ki sabse taalne yogya tara. Nayi shuruaat, badi khareed aur zaroori vaade taalo; roz ke kaam par raho." } },
+  8: { name: "Mitra",  kind: "good", weight: 1,
+       lead: { en: "a friendly, supportive day — people and luck are on your side",
+               hi: "आज मित्रवत, सहयोगी दिन — लोग और क़िस्मत साथ हैं",
+               hinglish: "aaj mitravat, sahyogi din — log aur kismat saath hain" },
+       detail: { en: "Today's Moon makes your Mitra tara — the 'friend' star. Help comes easily; good for asking, meeting and cooperation.",
+                 hi: "आज चंद्रमा आपकी मित्र तारा बना रहा है — 'मित्र' की तारा। मदद आसानी से मिलती है; माँगने और मेल-जोल के लिए अच्छा।",
+                 hinglish: "Aaj Chandrama aapki Mitra tara bana raha hai — 'mitra' ki tara. Madad aasani se milti hai; maangne aur mel-jol ke liye accha." } },
+  9: { name: "Ati-Mitra", kind: "good", weight: 2,
+       lead: { en: "one of your strongest days — go ahead with confidence",
+               hi: "आपके सबसे मज़बूत दिनों में से एक — विश्वास के साथ आगे बढ़ें",
+               hinglish: "aapke sabse mazboot dinon mein se ek — vishwas ke saath aage badho" },
+       detail: { en: "Today's Moon makes your Parama-Mitra tara — the most favourable star of the cycle. A green-light day for almost anything you've been planning.",
+                 hi: "आज चंद्रमा आपकी परम-मित्र तारा बना रहा है — चक्र की सबसे शुभ तारा। लगभग हर योजना के लिए हरी झंडी।",
+                 hinglish: "Aaj Chandrama aapki Parama-Mitra tara bana raha hai — cycle ki sabse shubh tara. Lagbhag har yojana ke liye hari jhandi." } },
+};
+
+/** Tarabala: fold the Moon's nakshatra (counted from the birth nakshatra) into
+ *  the 1..9 tara. Returns null if either nakshatra can't be resolved. */
+function tarabala(natalNak: string, todayNak: string): { tara: number; count: number } | null {
+  const a = NAKSHATRAS.indexOf(natalNak);
+  const b = NAKSHATRAS.indexOf(todayNak);
+  if (a < 0 || b < 0) return null;
+  const count = ((b - a + 27) % 27) + 1; // 1..27
+  const tara = ((count - 1) % 9) + 1;     // 1..9
+  return { tara, count };
+}
+
 /* Greeting + closers, tone-aware, per language. */
 const GREET = (name: string | null, l: Lang): string => {
   const n = name?.trim().split(/\s+/)[0];
@@ -250,8 +339,30 @@ export function buildDaySignals(input: {
 
   const factors: DayFactor[] = [];
 
-  // ── 1. Moon today (the day-maker) ────────────────────────────────────────
+  // ── 1. Tarabala — the DAILY driver (Moon's nakshatra vs the birth star) ──
+  // This changes almost every day and is unique to this person, so it's what
+  // makes today's reading actually about today. It leads the message.
   const moon = tr.planets.find((p) => p.planet === "Moon");
+  const natalNak = String(input.chart?.summary?.nakshatra || "").trim();
+  const todayNak = String(moon?.nakshatra || "").trim();
+  const tb = natalNak && todayNak ? tarabala(natalNak, todayNak) : null;
+  if (tb && TARA[tb.tara]) {
+    const ta = TARA[tb.tara];
+    factors.push({
+      code: `tara_${tb.tara}`,
+      kind: ta.kind,
+      weight: ta.weight,
+      title: {
+        en: `${ta.name} tara today`,
+        hi: `आज ${ta.name} तारा`,
+        hinglish: `Aaj ${ta.name} tara`,
+      }[l],
+      detail: pick(ta.detail, l),
+      lead: pick(ta.lead, l),
+    });
+  }
+
+  // ── 2. Chandrabala — the Moon's house from the birth Moon (~2¼-day mood) ──
   const mh = moon?.house_from_moon ?? null;
   if (mh && MOON_HOUSE[mh]) {
     const m = MOON_HOUSE[mh];
@@ -265,7 +376,7 @@ export function buildDaySignals(input: {
     });
   }
 
-  // ── 2. Sade Sati / heavy Saturn (standing, from the transit highlights) ───
+  // ── 3. Sade Sati / Dhaiya — STANDING backdrop (context only) ─────────────
   const sat = tr.planets.find((p) => p.planet === "Saturn");
   const shm = sat?.house_from_moon ?? null;
   if (shm && [12, 1, 2].includes(shm)) {
@@ -275,49 +386,42 @@ export function buildDaySignals(input: {
         : shm === 12
         ? { en: "first phase", hi: "पहला चरण", hinglish: "pehla charan" }
         : { en: "final phase", hi: "अंतिम चरण", hinglish: "antim charan" };
+    // STANDING background (~2½ years) — shown as context, but weight 0 so it
+    // NEVER drives the daily severity or leads the headline. Sade Sati made
+    // every single day read "take care today" for years; that was the bug.
     factors.push({
       code: "sade_sati",
-      kind: "careful",
-      weight: shm === 1 ? 2 : 1,
+      kind: "neutral",
+      weight: 0,
       title: { en: "Sade Sati running", hi: "साढ़े साती चल रही है", hinglish: "Sade Sati chal rahi hai" }[l],
       detail: {
-        en: `Saturn is transiting the ${shm === 12 ? "12th" : shm === 1 ? "1st" : "2nd"} from your Moon — Sade Sati's ${pick(phase, l)}. A stretch that rewards patience and steady effort, not shortcuts.`,
-        hi: `चंद्रमा से ${shm === 12 ? "बारहवें" : shm === 1 ? "पहले" : "दूसरे"} भाव में शनि — साढ़े साती का ${pick(phase, l)}। यह समय धैर्य और लगातार मेहनत माँगता है, शॉर्टकट नहीं।`,
-        hinglish: `Chandrama se ${shm === 12 ? "baarahvein" : shm === 1 ? "pehle" : "doosre"} bhaav mein Shani — Sade Sati ka ${pick(phase, l)}. Ye samay dhairya aur lagataar mehnat maangta hai, shortcut nahi.`,
-      }[l],
-      lead: {
-        en: "you're in a slower stretch that rewards patience — don't chase shortcuts, build steadily",
-        hi: "यह धीमा दौर है जो धैर्य माँगता है — शॉर्टकट के पीछे न भागें, टिककर काम करें",
-        hinglish: "ye dheema daur hai jo dhairya maangta hai — shortcut ke peeche mat bhaago, tik ke kaam karo",
+        en: `Ongoing backdrop: Saturn is transiting the ${shm === 12 ? "12th" : shm === 1 ? "1st" : "2nd"} from your Moon — Sade Sati's ${pick(phase, l)}. A multi-year stretch that rewards patience; it colours the phase, not any single day.`,
+        hi: `चलता हुआ आधार: चंद्रमा से ${shm === 12 ? "बारहवें" : shm === 1 ? "पहले" : "दूसरे"} भाव में शनि — साढ़े साती का ${pick(phase, l)}। यह कई साल का दौर है जो धैर्य माँगता है; यह दौर को रंग देता है, किसी एक दिन को नहीं।`,
+        hinglish: `Chalta hua aadhar: Chandrama se ${shm === 12 ? "baarahvein" : shm === 1 ? "pehle" : "doosre"} bhaav mein Shani — Sade Sati ka ${pick(phase, l)}. Ye kai saal ka daur hai jo dhairya maangta hai; ye daur ko rang deta hai, kisi ek din ko nahi.`,
       }[l],
     });
   } else if (shm && [4, 8].includes(shm)) {
     factors.push({
       code: "dhaiya",
-      kind: "careful",
-      weight: 1,
+      kind: "neutral",
+      weight: 0,
       title: { en: "Dhaiya (small panoti)", hi: "ढैया", hinglish: "Dhaiya" }[l],
       detail: {
-        en: `Saturn is in the ${shm}th from your Moon (Dhaiya) — pace yourself and don't take on more than you can carry right now.`,
-        hi: `चंद्रमा से ${shm === 4 ? "चौथे" : "आठवें"} भाव में शनि (ढैया) — अपनी गति बनाए रखें, इस समय ज़रूरत से ज़्यादा बोझ न लें।`,
-        hinglish: `Chandrama se ${shm === 4 ? "chauthe" : "aathvein"} bhaav mein Shani (Dhaiya) — apni gati banaye rakhein, is samay zaroorat se zyada bojh na lein.`,
-      }[l],
-      lead: {
-        en: "pace yourself today — don't take on more than you can carry right now",
-        hi: "आज अपनी गति बनाए रखें — इस समय ज़रूरत से ज़्यादा बोझ न लें",
-        hinglish: "aaj apni gati banaye rakho — is samay zaroorat se zyada bojh mat lo",
+        en: `Ongoing backdrop: Saturn is in the ${shm}th from your Moon (Dhaiya) — a slower ~2½-year phase. It colours the period, not any single day.`,
+        hi: `चलता हुआ आधार: चंद्रमा से ${shm === 4 ? "चौथे" : "आठवें"} भाव में शनि (ढैया) — क़रीब ढाई साल का धीमा दौर। यह दौर को रंग देता है, किसी एक दिन को नहीं।`,
+        hinglish: `Chalta hua aadhar: Chandrama se ${shm === 4 ? "chauthe" : "aathvein"} bhaav mein Shani (Dhaiya) — kareeb dhaai saal ka dheema daur. Ye daur ko rang deta hai, kisi ek din ko nahi.`,
       }[l],
     });
   }
 
-  // ── 3. Dasha baseline (period mood, low weight) ──────────────────────────
+  // ── 3. Dasha baseline (STANDING period mood, weight 0 — context only) ─────
   const maha = String(input.chart?.dasha?.current?.mahadasha || "").trim();
   if (maha && PLANET[maha]) {
     const pl = PLANET[maha];
     factors.push({
       code: `dasha_${maha.toLowerCase()}`,
-      kind: pl.kind,
-      weight: pl.kind === "careful" ? 1 : 0,
+      kind: "neutral",
+      weight: 0,
       title: {
         en: `${maha} period`,
         hi: `${maha} की महादशा`,
@@ -331,7 +435,7 @@ export function buildDaySignals(input: {
     });
   }
 
-  // ── 4. Panchang: best window + caution window ────────────────────────────
+  // ── 5. Panchang: best/caution windows + today's tithi & nakshatra ────────
   let best: DaySignals["best_time"] = null;
   let caution: DaySignals["caution_time"] = null;
   if (Number.isFinite(input.latitude) && Number.isFinite(input.longitude)) {
@@ -366,6 +470,21 @@ export function buildDaySignals(input: {
           title: { en: "Rahu Kaal", hi: "राहु काल", hinglish: "Rahu Kaal" }[l],
           detail: fillTime(pick(CAUTION_LINE, l), caution),
           time: { start: caution.start, end: caution.end },
+        });
+      }
+      // Real, daily-changing panchang context (proof the reading is today's,
+      // not a template): the tithi and the nakshatra the Moon sits in today.
+      if (p.tithi && p.nakshatra) {
+        factors.push({
+          code: "panchang_today",
+          kind: "neutral",
+          weight: 0,
+          title: { en: "Today's panchang", hi: "आज का पंचांग", hinglish: "Aaj ka panchang" }[l],
+          detail: {
+            en: `Today is ${p.tithi}, with the Moon in ${p.nakshatra} nakshatra.`,
+            hi: `आज ${p.tithi} है, चंद्रमा ${p.nakshatra} नक्षत्र में।`,
+            hinglish: `Aaj ${p.tithi} hai, Chandrama ${p.nakshatra} nakshatra mein.`,
+          }[l],
         });
       }
     } catch { /* polar / no sunrise — skip timing, keep the rest */ }

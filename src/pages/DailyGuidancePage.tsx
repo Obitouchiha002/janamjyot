@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
+import DayBanner from "@/components/DayBanner";
 import { LoadError } from "@/components/ErrorState";
 import { getLang } from "@/lib/prefs";
 
@@ -91,6 +92,11 @@ export default function DailyGuidancePage() {
           )}
         </div>
       </section>
+
+      {/* The REAL, deterministic day (Tarabala-led) — the same clear line as the
+          home banner, with its Reason. This is the "aaj ka din" core; the AI
+          area-cards below only elaborate on it. */}
+      {chartId && <DayBanner chartId={chartId} />}
 
       {/* best time + caution */}
       <div className="grid grid-cols-2 gap-3">
