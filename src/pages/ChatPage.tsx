@@ -38,12 +38,25 @@ function splitReason(raw: string): { answer: string; reason?: string } {
   return { answer: raw.slice(0, i).trim(), reason: reason || undefined };
 }
 
-const STARTERS = [
-  "Aaj mera din kaisa rahega?",
-  "Kal ka din kaisa hai?",
-  "Meri job/career kab set hogi?",
-  "Ye app kaise use karun?",
-];
+// Greeting + starter questions follow the SELECTED language, so an English
+// user doesn't see a Hinglish welcome (that mismatch read as sloppy).
+const GREETING: Record<string, { hi: string; sub: string; starters: string[] }> = {
+  en: {
+    hi: "Namaste 🙏",
+    sub: "Ask me anything — how today or tomorrow looks, your career, relationships, or how the app works. I'll read your chart and answer in plain words.",
+    starters: ["How will my day go today?", "How is tomorrow?", "When will my career settle?", "How do I use this app?"],
+  },
+  hinglish: {
+    hi: "Namaste 🙏",
+    sub: "Kuch bhi poochho — aaj/kal ka din, career, rishte, ya app kaise chalta hai. Main aapki kundli padh ke seedha jawab dunga.",
+    starters: ["Aaj mera din kaisa rahega?", "Kal ka din kaisa hai?", "Meri job/career kab set hogi?", "Ye app kaise use karun?"],
+  },
+  hi: {
+    hi: "नमस्ते 🙏",
+    sub: "कुछ भी पूछें — आज/कल का दिन, करियर, रिश्ते, या ऐप कैसे चलता है। मैं आपकी कुंडली पढ़कर सीधा जवाब दूँगा।",
+    starters: ["आज मेरा दिन कैसा रहेगा?", "कल का दिन कैसा है?", "मेरी नौकरी कब सेट होगी?", "यह ऐप कैसे इस्तेमाल करूँ?"],
+  },
+};
 
 export default function ChatPage() {
   const { chartId } = useParams();
@@ -168,14 +181,14 @@ export default function ChatPage() {
 
       {/* messages */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
-        {turns.length === 0 && (
+        {turns.length === 0 && (() => {
+          const g = GREETING[lang] || GREETING.en;
+          return (
           <div className="px-1 pt-3">
-            <p className="text-[15px] font-semibold">Namaste 🙏</p>
-            <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
-              Kuch bhi poochho — aaj/kal ka din, career, rishte, ya app kaise chalta hai. Main aapki kundli padh ke seedha jawab dunga.
-            </p>
+            <p className="text-[15px] font-semibold">{g.hi}</p>
+            <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">{g.sub}</p>
             <div className="mt-4 space-y-2">
-              {STARTERS.map((s) => (
+              {g.starters.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -187,10 +200,12 @@ export default function ChatPage() {
               ))}
             </div>
             <p className="mt-4 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-              <ShieldCheck className="h-3.5 w-3.5" /> AI · aapki asli kundli se, sab calculated
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {{ en: "AI · from your real chart, all calculated", hi: "एआई · आपकी असली कुंडली से, सब calculated", hinglish: "AI · aapki asli kundli se, sab calculated" }[lang] || "AI · from your real chart"}
             </p>
           </div>
-        )}
+          );
+        })()}
 
         {turns.map((t, i) =>
           t.role === "user" ? (

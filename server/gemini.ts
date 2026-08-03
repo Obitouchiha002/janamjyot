@@ -522,6 +522,7 @@ export async function answerUniversal(args: {
   dayContext?: any;   // compact day-signals for a date the question is about
   appGuide?: string;  // APP_GUIDE, included when the question is about the app
   history?: Array<{ role: "user" | "assistant"; text: string }>;
+  userName?: string;  // the person's first name — so the chat never asks who they are
 }): Promise<{ answer: string; reason: string }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
   const convo = (args.history ?? [])
@@ -537,7 +538,7 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}
 The user asks: "${args.question}"
 
 Answer in TWO parts, separated by a line that is EXACTLY "<<REASON>>":

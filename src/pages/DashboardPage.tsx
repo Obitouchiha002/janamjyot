@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useCachedFetch } from '@/lib/useCachedFetch';
 import { ShareCardHost } from '@/components/mobile/ShareCardSheet';
 import { haptic } from '@/lib/native';
 import { useParams } from 'react-router-dom';
@@ -6,6 +7,7 @@ import {
   FileText, LayoutGrid, Clock, CircleDot, Heart, Globe2, Layers, Gem,
   MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2, Compass,} from 'lucide-react';
 import TodayCard from '@/components/TodayCard';
+import YouCard from '@/components/YouCard';
 import { Pressable } from '@/components/mobile/Pressable';
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -22,16 +24,10 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 export default function DashboardPage() {
   const { chartId } = useParams();
-  const [data, setData] = useState<any>(null);
-  const [failed, setFailed] = useState(false);
+  // Cached-first: reopening a kundli you just viewed paints instantly.
+  const { data, error } = useCachedFetch<any>(`/api/chart/${chartId}`);
   const [sharing, setSharing] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/chart/${chartId}`)
-      .then((r) => r.json())
-      .then((d) => (d?.error ? setFailed(true) : setData(d)))
-      .catch(() => setFailed(true));
-  }, [chartId]);
+  const failed = error && !data;
 
   if (failed) {
     return (
@@ -121,6 +117,17 @@ export default function DashboardPage() {
           <Share2 className="h-[16px] w-[16px]" />
           Share my Kundli
         </Pressable>
+      </section>
+
+      {/* Plain-language "who you are" — read BEFORE the jargon stat cards, so a
+          beginner's first impression is about their life, not Sanskrit terms. */}
+      <section className="m-enter" style={{ animationDelay: '0.03s' }}>
+        <YouCard
+          chartId={chartId}
+          name={b.name}
+          moonSign={moon}
+          dashaLord={data.summary?.current_mahadasha || data.dasha?.current?.mahadasha}
+        />
       </section>
 
       {/* Today's snapshot, then the link into the full day. The card answers

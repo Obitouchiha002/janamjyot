@@ -2721,10 +2721,14 @@ app.post("/api/chat/universal", async (req, res) => {
     }));
 
     await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
+    // First name only — enough for the astrologer to address them warmly and to
+    // never ask "who are you?" (it already has their whole chart). Full names are
+    // more personal data than the model needs.
+    const userName = String(chart.birth_details?.name || "").trim().split(/\s+/)[0] || undefined;
     const { answer, reason } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history,
+      history, userName,
     });
 
     // Store answer + reason together behind the same marker, so a reload can

@@ -12,10 +12,11 @@
     "check:accuracy": "tsx server/__checks__/accuracy.ts",
     "check:panchang": "tsx server/__checks__/panchang.ts",
     "check:credits": "tsx server/__checks__/credits.ts",
-    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals",
+    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals && npm run check:hindu-calendar",
     "sync:app": "node scripts/prune-app-dist.mjs && cap sync android",
     "check:failover": "tsx server/__checks__/failover.ts",
-    "check:day-signals": "tsx server/__checks__/day-signals.ts"
+    "check:day-signals": "tsx server/__checks__/day-signals.ts",
+    "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

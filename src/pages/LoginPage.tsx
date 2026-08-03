@@ -1,13 +1,31 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, LogIn, UserPlus, MailCheck } from "lucide-react";
+import { Sparkles, LogIn, UserPlus, MailCheck, Star, Sunrise, MessageCircleHeart } from "lucide-react";
 import { useAuth } from "@/auth";
 import { Pressable } from "@/components/mobile/Pressable";
 import Logo from "@/components/mobile/Logo";
 import { haptic } from "@/lib/native";
 
 const INPUT_CLS =
-  "w-full rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] outline-none transition-colors focus:border-accent";
+  "w-full rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-accent";
+
+// Remember that this device has had an account, so a returning user lands on
+// Sign in while a brand-new user lands on Sign up (and sees what they'll get).
+const RETURNING_KEY = "jj:returning";
+function isReturning(): boolean {
+  try { return !!localStorage.getItem(RETURNING_KEY); } catch { return false; }
+}
+function markReturning() {
+  try { localStorage.setItem(RETURNING_KEY, "1"); } catch { /* ignore */ }
+}
+
+/** What a hopeful newcomer gets — shown above the form so the value is clear
+ *  BEFORE they're asked to commit an account. */
+const PERKS = [
+  { icon: Star, text: "Your free Janam Kundli in minutes" },
+  { icon: Sunrise, text: "Daily guidance made just for you" },
+  { icon: MessageCircleHeart, text: "Ask an astrologer anything, in plain words" },
+];
 
 /**
  * Also renders as the launch gate (see App.tsx). There is no guest path:
@@ -19,7 +37,8 @@ const INPUT_CLS =
 export default function LoginPage() {
   const { login, signup, loginWithOtp } = useAuth();
   const nav = useNavigate();
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  // New user → Sign up (with the perks visible); returning user → Sign in.
+  const [mode, setMode] = useState<"login" | "signup">(isReturning() ? "login" : "signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,6 +81,7 @@ export default function LoginPage() {
     setOtpBusy(true); setError(null);
     try {
       await loginWithOtp(email.trim(), otpCode.trim(), name.trim());
+      markReturning();
       haptic.success();
       nav("/");
     } catch (err: any) {
@@ -96,9 +116,11 @@ export default function LoginPage() {
     try {
       if (mode === "login") {
         await login(email, password);
+        markReturning();
         nav("/");
       } else {
         await signup(name, email, password);
+        markReturning();
         // New account → straight into onboarding: build the first kundli
         // (name / date / time / place), the way astrology apps start.
         haptic.success();
@@ -121,12 +143,27 @@ export default function LoginPage() {
         <h1 className="text-[26px] font-bold leading-tight">
           Janam<span className="font-light text-accent">Jyot</span>
         </h1>
-        <p className="mx-auto mt-1.5 max-w-[280px] text-[13px] leading-relaxed text-muted-foreground">
+        <p className="mx-auto mt-1.5 max-w-[300px] text-[13px] leading-relaxed text-muted-foreground">
           {mode === "login"
             ? "Welcome back — sign in to your account."
-            : "Create your free account to begin."}
+            : "Your birth chart, read in plain words. Free to start."}
         </p>
       </div>
+
+      {/* What a newcomer gets — shown before the form so the value is clear
+          BEFORE we ask for an account. Hidden for returning users signing in. */}
+      {mode === "signup" && !otpMode && !forgot && (
+        <div className="m-enter mb-5 space-y-2.5 px-1">
+          {PERKS.map(({ icon: Icon, text }) => (
+            <div key={text} className="flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">
+                <Icon className="h-[18px] w-[18px]" strokeWidth={2.1} />
+              </span>
+              <span className="text-[13.5px] font-semibold leading-snug">{text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="m-card m-enter p-4">
         {/* One-tap sign-in: a code e-mailed to you. No password to remember,

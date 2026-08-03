@@ -30,11 +30,12 @@ import { buildIsoDatetime } from "./validate";
 const DAY_MS = 86_400_000;
 const norm = (x: number) => ((x % 360) + 360) % 360;
 
-const sunSidereal = (t: Date, ayanamsa: number) => eclipticLongitudes(t, ayanamsa).sunSidereal;
-const elongation = (t: Date, ayanamsa: number) => {
+export const sunSidereal = (t: Date, ayanamsa: number) => eclipticLongitudes(t, ayanamsa).sunSidereal;
+export const elongation = (t: Date, ayanamsa: number) => {
   const { sunSidereal: s, moonSidereal: m } = eclipticLongitudes(t, ayanamsa);
   return norm(m - s);
 };
+export const DAY_MS_ = DAY_MS;
 
 /** Bisect [lo,hi] for the instant a boolean test flips away from `startState`. */
 function bisect(lo: Date, hi: Date, test: (t: Date) => boolean, startState: boolean): Date {
@@ -59,7 +60,7 @@ function sankranti(year: number, deg: number, fromMonth: number, toMonth: number
 }
 
 /** The new moon immediately before `t` — the start of `t`'s lunar month. */
-function newMoonBefore(t: Date, ayanamsa: number): Date | null {
+export function newMoonBefore(t: Date, ayanamsa: number): Date | null {
   const start = new Date(t.getTime() - 31 * DAY_MS);
   let last: Date | null = null;
   let prev = elongation(start, ayanamsa);

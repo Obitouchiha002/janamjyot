@@ -6,7 +6,7 @@ import {
   MessageCircleQuestion, Orbit, ScrollText, Gem, User, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
-import TodayCard from '@/components/TodayCard';
+import { useCachedFetch } from '@/lib/useCachedFetch';
 import DayBanner from '@/components/DayBanner';
 import { useAuth } from '@/auth';
 
@@ -103,21 +103,17 @@ export function invalidateProfiles() {
 
 /** Live "is now a good moment?" strip. Tapping it opens the full checker. */
 function RightNowCard({ chartId }: { chartId: string }) {
-  const [d, setD] = useState<any>(null);
-
-  const run = useCallback(async () => {
-    try {
-      const c = await (await fetch(`/api/chart/${chartId}`)).json();
-      const b = c?.birth_details;
-      const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
-      const tz = b?.timezone || 'Asia/Kolkata';
-      const r = await (await fetch(`/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}`)).json();
-      if (!r.error) setD(r);
-    } catch { /* the card just stays hidden */ }
-  }, [chartId]);
+  // Cached-first for both hops, so the strip is filled instantly on revisit.
+  const { data: c } = useCachedFetch<any>(`/api/chart/${chartId}`);
+  const b = c?.birth_details;
+  const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
+  const tz = b?.timezone || 'Asia/Kolkata';
+  const { data: d, refresh } = useCachedFetch<any>(
+    c ? `/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}` : null,
+  );
 
   // Windows roll over while you sit here — but only poll while on screen.
-  useVisibleInterval(run, 5 * 60_000);
+  useVisibleInterval(refresh, 5 * 60_000);
 
   if (!d) return null;
   const tint = d.verdict === 'go' ? '#22C55E' : d.verdict === 'wait' ? '#E8B44A' : '#F87171';
@@ -165,7 +161,10 @@ export default function HomePage() {
   const primary = profiles?.[0];
 
   return (
-    <div className="space-y-7 pt-2">
+    // pb clears the fixed "Talk to Astrologer" FAB (bottom ≈ sab+76px) so the
+    // last card — and the day's "all calculated" note — never sits trapped
+    // behind it.
+    <div className="space-y-7 pt-2 pb-32">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="m-card m-enter relative px-5 pt-6 pb-5">
         <ZodiacRing />
@@ -226,22 +225,19 @@ export default function HomePage() {
       </section>
 
       {/* ── Today, in one line ───────────────────────────────────────────
-          The reason to open the app daily: a clear read on today with the real
-          astrology one tap away under "Reason". Same message the 8 AM
-          notification carried; deterministic, so it loads instantly. */}
+          The single "Today" on Home: a clear read on today with the real
+          astrology one tap away under "Reason", and the full day (the AI
+          narrative + per-area breakdown) one tap further via the hero's
+          "Today's Guidance" button. The old screen stacked this deterministic
+          glance ABOVE a second AI "Today" card — two boxes both titled Today,
+          which read as duplication to a beginner. The detailed card now lives
+          only where it isn't competing: the full daily page and the dashboard. */}
       {primary && <DayBanner chartId={primary.id} />}
 
       {/* ── Right now ────────────────────────────────────────────────────
           The everyday reason to open the app: a live read on whether this is a
           good moment to do something. Deterministic, so it loads instantly. */}
       {primary && <RightNowCard chartId={primary.id} />}
-
-      {/* ── Today ────────────────────────────────────────────────────────── */}
-      {primary && (
-        <section className="m-enter" style={{ animationDelay: '0.06s' }}>
-          <TodayCard chartId={primary.id} />
-        </section>
-      )}
 
       {/* ── Quick actions ────────────────────────────────────────────────── */}
       <section className="m-enter" style={{ animationDelay: '0.1s' }}>

@@ -86,6 +86,25 @@ export default function CreateChartPage() {
   // moves the Lagna by half a zodiac — so this stays explicit.
   const [time, setTime] = useState({ hour: '', minute: '', ampm: 'AM' });
   const [unknownTime, setUnknownTime] = useState(false);
+  // Date of birth as three independent parts (like `time`). Deriving them from
+  // the combined string doesn't work: the string is only built once all three
+  // are chosen, so picking one alone would reset to the placeholder.
+  const [dob, setDob] = useState({ d: '', m: '', y: '' });
+  // Combine parts → the YYYY-MM-DD the rest of the form expects.
+  useEffect(() => {
+    setFormData((f) => ({
+      ...f,
+      date_of_birth: dob.d && dob.m && dob.y ? `${dob.y}-${dob.m}-${dob.d}` : '',
+    }));
+  }, [dob]);
+  // Edit mode: when a saved chart prefills the date, split it into the parts so
+  // the dropdowns show it. Guarded so it runs once, not in a loop.
+  useEffect(() => {
+    if (formData.date_of_birth && !dob.y) {
+      const [y, m, d] = formData.date_of_birth.split('-');
+      if (y && m && d) setDob({ d, m, y });
+    }
+  }, [formData.date_of_birth]); // eslint-disable-line react-hooks/exhaustive-deps
   const [placeError, setPlaceError] = useState('');
 
   const [placeQuery, setPlaceQuery] = useState('');
@@ -284,9 +303,18 @@ export default function CreateChartPage() {
 
       {/* overflow-visible so the place-search dropdown (absolutely positioned)
           is not clipped by .m-card's overflow:hidden — that was hiding it. */}
-      <div className="m-card m-enter space-y-5 p-5" style={{ overflow: 'visible' }} key={step}>
+      {/* relative z-20 lifts the whole card (and its place-search dropdown) above
+          the Next/Create actions row below — the m-enter transform makes a
+          stacking context, so without this the button painted over the list. */}
+      <div className="m-card m-enter relative z-20 space-y-5 p-5" style={{ overflow: 'visible' }} key={step}>
         {step === 0 && (
           <>
+            {/* A one-line bridge so a newcomer knows what the payoff is before
+                filling a form — "hope → what you'll get". */}
+            <p className="-mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
+              Let&apos;s read your birth chart — I&apos;ll tell you about yourself and
+              your life in plain words. Just three quick steps.
+            </p>
             <Field label="Full name">
               <div className="relative">
                 <UserIcon className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
@@ -329,14 +357,29 @@ export default function CreateChartPage() {
         {step === 1 && (
           <>
             <Field label="Date of birth">
-              <div className="relative">
-                <Calendar className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="date"
-                  className={`${inputCls} pl-11`}
-                  value={formData.date_of_birth}
-                  onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
-                />
+              {/* Day / Month / Year dropdowns instead of a native date picker:
+                  that picker opened on the CURRENT month, so reaching a birth
+                  year 25-30 years back meant tapping the calendar's back-arrow
+                  dozens of times. Dropdowns jump straight to any year. */}
+              <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2">
+                <select className={`${inputCls} appearance-none text-center`} value={dob.d}
+                  onChange={(e) => setDob({ ...dob, d: e.target.value })}>
+                  <option value="" disabled>Day</option>
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((d) =>
+                    <option key={d} value={d}>{Number(d)}</option>)}
+                </select>
+                <select className={`${inputCls} appearance-none text-center`} value={dob.m}
+                  onChange={(e) => setDob({ ...dob, m: e.target.value })}>
+                  <option value="" disabled>Month</option>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label, i) =>
+                    <option key={label} value={String(i + 1).padStart(2, '0')}>{label}</option>)}
+                </select>
+                <select className={`${inputCls} appearance-none text-center`} value={dob.y}
+                  onChange={(e) => setDob({ ...dob, y: e.target.value })}>
+                  <option value="" disabled>Year</option>
+                  {Array.from({ length: 110 }, (_, i) => String(new Date().getFullYear() - i)).map((y) =>
+                    <option key={y} value={y}>{y}</option>)}
+                </select>
               </div>
             </Field>
 

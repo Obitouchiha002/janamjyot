@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { ChevronDown, Sparkles, Sun, TriangleAlert, Info } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, Sun, TriangleAlert, Info } from "lucide-react";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
+import { useCachedFetch } from "@/lib/useCachedFetch";
 
 /**
  * The home-screen daily line — one clear sentence about today, with the real
@@ -40,20 +41,38 @@ const TONE = {
 
 const DOT = { good: "#22C55E", careful: "#F0A93B", neutral: "#8C93A4" } as const;
 
+// The "all calculated, nothing guessed" footer follows the selected language —
+// an English day should not end on a Hinglish disclaimer (that mix read as sloppy).
+const CALC_NOTE: Record<string, string> = {
+  en: "From your birth chart's transits for today — all calculated, nothing guessed.",
+  hi: "आपकी जन्म कुंडली के आज के गोचर से — सब गणना से, कोई तुक्का नहीं।",
+  hinglish: "Aapki janam kundli ke aaj ke gochar se — sab calculated, koi tuki nahi.",
+};
+
 export default function DayBanner({ chartId }: { chartId: string }) {
-  const [d, setD] = useState<Signals | null>(null);
   const [open, setOpen] = useState(false);
+  const lang = getLang();
+  // Stale-while-revalidate: shows the last-known day instantly, refreshes quietly.
+  const { data: d, loading } = useCachedFetch<Signals>(
+    `/api/chart/${chartId}/day-signals?lang=${encodeURIComponent(lang)}`,
+  );
 
-  useEffect(() => {
-    let alive = true;
-    fetch(`/api/chart/${chartId}/day-signals?lang=${encodeURIComponent(getLang())}`)
-      .then((r) => r.json())
-      .then((j) => { if (alive && !j.error) setD(j); })
-      .catch(() => { /* banner just doesn't show */ });
-    return () => { alive = false; };
-  }, [chartId]);
-
-  if (!d) return null;
+  // First-ever load with nothing cached: a shaped skeleton, not a blank gap, so
+  // the home screen never looks half-built.
+  if (!d) {
+    return loading ? (
+      <section className="m-card m-enter p-4">
+        <div className="flex items-start gap-3.5">
+          <div className="skeleton h-11 w-11 rounded-2xl" />
+          <div className="flex-1 space-y-2">
+            <div className="skeleton h-3 w-24" />
+            <div className="skeleton h-4 w-full" />
+            <div className="skeleton h-4 w-3/4" />
+          </div>
+        </div>
+      </section>
+    ) : null;
+  }
   const t = TONE[d.tone];
   const { Icon } = t;
 
@@ -118,7 +137,7 @@ export default function DayBanner({ chartId }: { chartId: string }) {
             </div>
           ))}
           <p className="pt-1 text-[10.5px] leading-relaxed text-muted-foreground/70">
-            Aapki janam kundli ke aaj ke gochar se — sab calculated, koi tuki nahi.
+            {CALC_NOTE[lang] || CALC_NOTE.en}
           </p>
         </div>
       )}

@@ -40,6 +40,7 @@ import { buildTransit, type TransitResult } from "./transit";
 import { buildPanchang } from "./panchang";
 import { buildIsoDatetime } from "./validate";
 import { NAKSHATRAS } from "./normalize";
+import { hinduDay } from "./hindu-calendar";
 
 export type Kind = "good" | "careful" | "neutral";
 export type Lean = "good" | "mixed" | "careful";
@@ -80,6 +81,9 @@ export interface DaySignals {
   factors: DayFactor[];
   best_time: { name: string; start: string; end: string } | null;
   caution_time: { name: string; start: string; end: string } | null;
+  /** Today's Hindu-calendar highlight (festival / vrat / Purnima / sankranti /
+   *  Sawan Somwar), from the real panchang. Null on an ordinary day. */
+  special: { key: string; kind: string; label: string; masa: string; tithi: string } | null;
 }
 
 /* ── language plumbing ─────────────────────────────────────────────────────
@@ -304,6 +308,78 @@ const CAUTION_LINE: Tri = {
 const fillTime = (tpl: string, t: { start: string; end: string; name?: string }) =>
   tpl.replace("{a}", t.start).replace("{b}", t.end).replace("{name}", t.name ?? "");
 
+/* ── HOUSE ACTIVATION — the heart: which part of THIS person's life is lit ──
+   The transiting Moon's house counted from the natal LAGNA says which of the 12
+   life-areas is active today. Combined with the day's lean (good/careful), it
+   becomes a concrete, plain statement about THEIR life — not a generic "shubh
+   din". A sign-based app can't do this: it needs the person's exact ascendant.
+   `good`/`careful`/`neutral` are picked by the day's tone; the astrology stays
+   in the Reason. */
+const HOUSE_AREA: Record<number, { area: Tri; good: Tri; careful: Tri; neutral: Tri }> = {
+  1:  { area: { en: "you and your health", hi: "आप और सेहत", hinglish: "aap aur sehat" },
+        good:    { en: "the spotlight is on you today — your presence lands well, so put yourself forward", hi: "आज ध्यान आप पर है — आपकी मौजूदगी असर करेगी, आगे आएँ", hinglish: "aaj focus aap par hai — aapki maujoodgi asar karegi, aage aayein" },
+        careful: { en: "mind your body and mood today — don't push yourself too hard", hi: "आज सेहत और मूड का ध्यान रखें — ख़ुद पर ज़्यादा ज़ोर न डालें", hinglish: "aaj sehat aur mood ka dhyan rakho — khud par zyada zor mat daalo" },
+        neutral: { en: "a day that's mostly about you — handle your own things first", hi: "आज ज़्यादातर आपकी अपनी बात — पहले अपने काम निपटाएँ", hinglish: "aaj zyadatar aapki apni baat — pehle apne kaam niptao" } },
+  2:  { area: { en: "money and family", hi: "पैसा और परिवार", hinglish: "paisa aur parivaar" },
+        good:    { en: "money and family matters lean your way — a good day to sort out savings or a family thing", hi: "पैसे और परिवार की बात आपके पक्ष में — बचत या घर की बात सुलझाने का दिन", hinglish: "paise aur parivaar ki baat aapke paksh mein — bachat ya ghar ki baat suljhane ka din" },
+        careful: { en: "watch your spending and your words with family today", hi: "आज ख़र्च और परिवार से बातचीत में सँभलें", hinglish: "aaj kharch aur parivaar se baat-cheet mein sambhalo" },
+        neutral: { en: "a steady day for money and family — handle the routine", hi: "पैसे और परिवार के लिए सामान्य दिन — रोज़ के काम करें", hinglish: "paise aur parivaar ke liye samanya din — roz ke kaam karo" } },
+  3:  { area: { en: "courage and communication", hi: "हिम्मत और बातचीत", hinglish: "himmat aur baat-cheet" },
+        good:    { en: "your words and effort carry weight today — push a task, make that call", hi: "आज आपकी बात और मेहनत असर करेगी — कोई काम आगे बढ़ाएँ, वो कॉल करें", hinglish: "aaj aapki baat aur mehnat asar karegi — koi kaam aage badhao, wo call karo" },
+        careful: { en: "hold your tongue in a tense talk today — don't act on impulse", hi: "आज किसी तनाव वाली बात में ज़ुबान सँभालें — जल्दबाज़ी में कुछ न करें", hinglish: "aaj kisi tanaav wali baat mein zubaan sambhalo — jaldbaazi mein kuch mat karo" },
+        neutral: { en: "a fair day to communicate and get small things moving", hi: "बातचीत और छोटे कामों के लिए ठीक दिन", hinglish: "baat-cheet aur chote kaamon ke liye theek din" } },
+  4:  { area: { en: "home and peace of mind", hi: "घर और मन की शांति", hinglish: "ghar aur mann ki shanti" },
+        good:    { en: "home and heart feel settled today — good for family, property or just resting well", hi: "आज घर और मन शांत — परिवार, संपत्ति या आराम के लिए अच्छा", hinglish: "aaj ghar aur mann shaant — parivaar, property ya aaram ke liye accha" },
+        careful: { en: "home matters may unsettle you today — keep the peace, don't force big moves", hi: "आज घर की बातें मन को खींच सकती हैं — शांति रखें, बड़े क़दम न उठाएँ", hinglish: "aaj ghar ki baatein mann ko kheench sakti hain — shanti rakho, bade kadam mat uthao" },
+        neutral: { en: "a quiet, inward day — home and comfort take focus", hi: "शांत, अंदरूनी दिन — घर और आराम पर ध्यान", hinglish: "shaant, andaruni din — ghar aur aaram par dhyan" } },
+  5:  { area: { en: "creativity, children and romance", hi: "रचनात्मकता, बच्चे और प्रेम", hinglish: "creativity, bachche aur pyaar" },
+        good:    { en: "a light, creative day — good with children, romance or anything you enjoy", hi: "हल्का, रचनात्मक दिन — बच्चों, प्रेम या पसंद के काम के लिए अच्छा", hinglish: "halka, creative din — bachchon, pyaar ya pasand ke kaam ke liye accha" },
+        careful: { en: "don't gamble or over-invest emotionally today — think before a risky bet", hi: "आज जुआ या भावनाओं में जल्दबाज़ी न करें — जोखिम से पहले सोचें", hinglish: "aaj juaa ya emotions mein jaldbaazi mat karo — jokhim se pehle socho" },
+        neutral: { en: "a lighter day — make a little room for fun and creativity", hi: "हल्का दिन — थोड़ा मनोरंजन और रचनात्मकता के लिए जगह रखें", hinglish: "halka din — thoda fun aur creativity ke liye jagah rakho" } },
+  6:  { area: { en: "work, health and rivals", hi: "काम, सेहत और विरोधी", hinglish: "kaam, sehat aur virodhi" },
+        good:    { en: "you have the upper hand over problems today — clear a backlog or beat a rival", hi: "आज समस्याओं पर आपका पलड़ा भारी — रुका काम या किसी विरोधी को निपटाएँ", hinglish: "aaj samasyaon par aapka palda bhaari — ruka kaam ya kisi virodhi ko niptao" },
+        careful: { en: "work stress or a small health niggle may show — pace yourself, don't skip rest", hi: "आज काम का तनाव या छोटी तबियत की बात — गति बनाए रखें, आराम न छोड़ें", hinglish: "aaj kaam ka tanaav ya choti tabiyat ki baat — gati banaye rakho, aaram mat chhodo" },
+        neutral: { en: "a work-and-routine day — chip away at the to-do list", hi: "काम और रोज़मर्रा का दिन — सूची के काम निपटाते रहें", hinglish: "kaam aur rozmarra ka din — list ke kaam niptaate raho" } },
+  7:  { area: { en: "partner and dealings with others", hi: "साथी और दूसरों से मेल", hinglish: "partner aur doosron se mel" },
+        good:    { en: "dealings with people go your way today — good for partners, meetings and deals", hi: "आज लोगों के साथ काम बनेगा — साथी, मीटिंग और सौदों के लिए अच्छा", hinglish: "aaj logon ke saath kaam banega — partner, meeting aur saudon ke liye accha" },
+        careful: { en: "a partner or the other side may test your patience — don't sign or argue in haste", hi: "आज साथी या सामने वाला धैर्य परखेगा — जल्दबाज़ी में साइन या बहस न करें", hinglish: "aaj partner ya saamne wala dhairya parkhega — jaldbaazi mein sign ya behes mat karo" },
+        neutral: { en: "a day about others — meetings and one-to-ones take focus", hi: "दूसरों से जुड़ा दिन — मीटिंग और आमने-सामने की बात", hinglish: "doosron se juda din — meeting aur aamne-saamne ki baat" } },
+  8:  { area: { en: "sudden changes and shared money", hi: "अचानक बदलाव और साझा पैसा", hinglish: "achanak badlaav aur saajha paisa" },
+        good:    { en: "a good day to deal with the hidden stuff — loans, insurance, or a deep problem finally moves", hi: "छुपे मामलों के लिए अच्छा दिन — लोन, बीमा या कोई गहरी समस्या सुलझ सकती है", hinglish: "chupe maamlon ke liye accha din — loan, insurance ya koi gehri samasya suljh sakti hai" },
+        careful: { en: "expect the unexpected today — avoid risky money moves and hold steady", hi: "आज अचानक की बात हो सकती है — जोखिम वाले पैसे के फ़ैसले टालें, स्थिर रहें", hinglish: "aaj achanak ki baat ho sakti hai — jokhim wale paise ke faisle taalo, tike raho" },
+        neutral: { en: "an under-the-surface day — don't force things, let them settle", hi: "अंदरूनी दिन — ज़ोर न लगाएँ, चीज़ों को बैठने दें", hinglish: "andaruni din — zor mat lagao, cheezon ko baithne do" } },
+  9:  { area: { en: "luck, learning and travel", hi: "भाग्य, ज्ञान और यात्रा", hinglish: "bhagya, gyaan aur yatra" },
+        good:    { en: "luck leans your way today — good for learning, travel, or asking for a favour", hi: "आज भाग्य साथ है — पढ़ाई, यात्रा या कोई मदद माँगने के लिए अच्छा", hinglish: "aaj bhagya saath hai — padhai, yatra ya koi madad maangne ke liye accha" },
+        careful: { en: "don't over-promise on a belief or a plan today — check before you commit to travel", hi: "आज किसी सोच या योजना पर ज़्यादा वादा न करें — यात्रा से पहले जाँच लें", hinglish: "aaj kisi soch ya plan par zyada vaada mat karo — yatra se pehle jaanch lo" },
+        neutral: { en: "a broadening day — good to plan, read or look ahead", hi: "सोच बढ़ाने का दिन — योजना, पढ़ाई या आगे की सोच के लिए ठीक", hinglish: "soch badhane ka din — plan, padhai ya aage ki soch ke liye theek" } },
+  10: { area: { en: "career and reputation", hi: "करियर और प्रतिष्ठा", hinglish: "career aur naam" },
+        good:    { en: "work and reputation are lit up today — put your name forward, a task can get noticed", hi: "आज काम और प्रतिष्ठा चमकेंगे — आगे आएँ, कोई काम नज़र में आ सकता है", hinglish: "aaj kaam aur naam chamkega — aage aao, koi kaam nazar mein aa sakta hai" },
+        careful: { en: "work is in focus but bumpy today — don't clash with a boss, keep a big decision for later", hi: "आज काम सामने है पर उतार-चढ़ाव वाला — बॉस से टकराव न करें, बड़ा फ़ैसला बाद के लिए रखें", hinglish: "aaj kaam saamne hai par utaar-chadhaav wala — boss se takraav mat karo, bada faisla baad ke liye rakho" },
+        neutral: { en: "a work-forward day — steady effort on your goals counts", hi: "काम वाला दिन — लक्ष्यों पर टिकी मेहनत काम आएगी", hinglish: "kaam wala din — lakshya par tiki mehnat kaam aayegi" } },
+  11: { area: { en: "gains, income and friends", hi: "लाभ, आय और दोस्त", hinglish: "laabh, aay aur dost" },
+        good:    { en: "gains and good news lean your way — a good day to ask, network or chase income", hi: "आज लाभ और अच्छी ख़बर की ओर झुकाव — माँगने, मेल-जोल या आय के लिए अच्छा", hinglish: "aaj laabh aur acchi khabar ki or jhukaav — maangne, networking ya aay ke liye accha" },
+        careful: { en: "a friend or a hoped-for gain may not come through today — don't count on it yet", hi: "आज कोई दोस्त या उम्मीद का लाभ अटक सकता है — अभी उस पर भरोसा न करें", hinglish: "aaj koi dost ya ummeed ka laabh atak sakta hai — abhi us par bharosa mat karo" },
+        neutral: { en: "a social, networking kind of day — small gains add up", hi: "मेल-जोल वाला दिन — छोटे लाभ जुड़ते हैं", hinglish: "mel-jol wala din — chote laabh judte hain" } },
+  12: { area: { en: "rest, expenses and letting go", hi: "आराम, ख़र्च और छोड़ना", hinglish: "aaram, kharch aur chhodna" },
+        good:    { en: "a good day to rest, wind down or spend on something meaningful — step back and recharge", hi: "आराम, शांति या किसी सार्थक ख़र्च के लिए अच्छा दिन — पीछे हटें, ऊर्जा भरें", hinglish: "aaram, shanti ya kisi saarthak kharch ke liye accha din — peeche hato, energy bharo" },
+        careful: { en: "energy and money can leak today — rest, don't overcommit, watch the wallet", hi: "आज ऊर्जा और पैसा बह सकता है — आराम करें, ज़्यादा वादे न लें, ख़र्च पर नज़र", hinglish: "aaj energy aur paisa beh sakta hai — aaram karo, zyada vaade mat lo, kharch par nazar" },
+        neutral: { en: "a low-key day — rest and clear your head more than push", hi: "धीमा दिन — ज़ोर लगाने से ज़्यादा आराम और मन साफ़ करें", hinglish: "dheema din — zor lagane se zyada aaram aur mann saaf karo" } },
+};
+
+/** Everyday significations of a natal planet — used only to add a personal
+ *  "where your X sits" touch in the Reason, never jargon in the headline. */
+const PLANET_LIFE: Record<string, Tri> = {
+  Sun:     { en: "confidence, father and standing", hi: "आत्मविश्वास, पिता और मान", hinglish: "aatmvishwas, pita aur maan" },
+  Moon:    { en: "your mind and emotions", hi: "मन और भावनाएँ", hinglish: "mann aur bhavnaayein" },
+  Mars:    { en: "energy, property and drive", hi: "ऊर्जा, संपत्ति और जोश", hinglish: "energy, property aur josh" },
+  Mercury: { en: "communication, business and study", hi: "बातचीत, व्यापार और पढ़ाई", hinglish: "baat-cheet, vyapar aur padhai" },
+  Jupiter: { en: "wisdom, money and growth", hi: "ज्ञान, धन और वृद्धि", hinglish: "gyaan, dhan aur vriddhi" },
+  Venus:   { en: "love, comfort and money", hi: "प्रेम, सुख और धन", hinglish: "pyaar, sukh aur dhan" },
+  Saturn:  { en: "work, discipline and patience", hi: "काम, अनुशासन और धैर्य", hinglish: "kaam, anushasan aur dhairya" },
+  Rahu:    { en: "ambition and sudden turns", hi: "महत्वाकांक्षा और अचानक बदलाव", hinglish: "ambition aur achanak badlaav" },
+  Ketu:    { en: "detachment and letting go", hi: "विरक्ति और छोड़ना", hinglish: "virakti aur chhodna" },
+};
+
 /* Short eyebrow label for the banner, by lean. NOT the message — just a chip.
    The message itself is built from the day's actual lead factor (below), never
    from a fixed opener, so two different days never read the same. */
@@ -373,6 +449,44 @@ export function buildDaySignals(input: {
       title: pick(m.title, l),
       detail: pick(m.detail, l),
       lead: pick(m.lead, l),
+    });
+  }
+
+  // ── 2b. ACTIVATION (the heart) — which of THIS person's 12 life-houses is
+  //    lit today = the transiting Moon's house from their natal LAGNA, plus the
+  //    natal planets sitting there. This is what makes the line about their
+  //    actual life, not a generic mood. The phrasing (good/careful) is chosen
+  //    from the day's tone AFTER it's computed (see the headline section).
+  const alh = moon?.house_from_lagna ?? null;
+  const natalHere: string[] = alh
+    ? (input.chart?.planet_positions ?? [])
+        .filter((p: any) => p.house === alh && PLANET_LIFE[p.planet])
+        .map((p: any) => p.planet)
+    : [];
+  if (alh && HOUSE_AREA[alh]) {
+    const ha = HOUSE_AREA[alh];
+    const areaName = pick(ha.area, l);
+    const planetClause = natalHere.length
+      ? {
+          en: ` — where your ${natalHere.join(" & ")} sits (${natalHere.map((p) => pick(PLANET_LIFE[p], l)).join("; ")})`,
+          hi: ` — जहाँ आपका ${natalHere.join(" व ")} बैठा है (${natalHere.map((p) => pick(PLANET_LIFE[p], l)).join("; ")})`,
+          hinglish: ` — jahan aapka ${natalHere.join(" & ")} baitha hai (${natalHere.map((p) => pick(PLANET_LIFE[p], l)).join("; ")})`,
+        }[l]
+      : "";
+    factors.push({
+      code: "activation",
+      kind: "neutral",
+      weight: 0, // it's the WHAT-area, not a good/bad weight; tone comes from tara/chandra
+      title: {
+        en: `Today: ${areaName}`,
+        hi: `आज: ${areaName}`,
+        hinglish: `Aaj: ${areaName}`,
+      }[l],
+      detail: {
+        en: `Today the Moon moves through your ${ordinalEn(alh)} house — the area of ${areaName}${planetClause}. That is the part of life most alive for you today.`,
+        hi: `आज चंद्रमा आपके ${alh}वें भाव से गुज़र रहा है — ${areaName} का क्षेत्र${planetClause}। आज यही हिस्सा सबसे सक्रिय है।`,
+        hinglish: `Aaj Chandrama aapke ${alh}ve bhaav se guzar raha hai — ${areaName} ka hissa${planetClause}. Aaj yehi hissa sabse active hai.`,
+      }[l],
     });
   }
 
@@ -490,6 +604,32 @@ export function buildDaySignals(input: {
     } catch { /* polar / no sunrise — skip timing, keep the rest */ }
   }
 
+  // ── 6. Today's Hindu-calendar highlight (festival / vrat / Purnima / Sawan
+  //    Somwar / sankranti) — the real panchang made human. This is the "aaj kya
+  //    khaas hai" the whole country cares about, needs no birth chart, and on a
+  //    festival day it leads the message.
+  let special: DaySignals["special"] = null;
+  if (Number.isFinite(input.latitude) && Number.isFinite(input.longitude)) {
+    try {
+      const hd = hinduDay(input.date, input.latitude!, input.longitude!, input.tz, input.ayanamsa);
+      const top = hd.headline;
+      if (top) {
+        special = { key: top.key, kind: top.kind, label: pick(top.label, l), masa: hd.masa, tithi: hd.tithi };
+        factors.push({
+          code: `special_${top.key}`,
+          kind: "neutral",
+          weight: 0,
+          title: pick(top.label, l),
+          detail: {
+            en: `Today is ${pick(top.label, l)} — ${hd.masa} ${hd.tithi}, ${hd.weekday}.`,
+            hi: `आज ${pick(top.label, l)} है — ${hd.masa} ${hd.tithi}, ${hd.weekday}।`,
+            hinglish: `Aaj ${pick(top.label, l)} hai — ${hd.masa} ${hd.tithi}, ${hd.weekday}.`,
+          }[l],
+        });
+      }
+    } catch { /* calendar unavailable — skip, never block the day */ }
+  }
+
   // ── severity, lean, tone ──────────────────────────────────────────────────
   const carefulWeight = factors.filter((f) => f.kind === "careful").reduce((n, f) => n + f.weight, 0);
   const goodWeight = factors.filter((f) => f.kind === "good").reduce((n, f) => n + f.weight, 0);
@@ -497,33 +637,57 @@ export function buildDaySignals(input: {
   const lean: Lean = severity >= 2 ? "careful" : severity === 1 ? (goodWeight >= 1 ? "mixed" : "mixed") : goodWeight >= 1 ? "good" : "mixed";
   const tone: Tone = severity >= 2 ? "warn" : severity === 1 ? "advice" : goodWeight >= 1 ? "good" : "advice";
 
-  // Order the reason the way a person would want it: what matters most first.
-  // Careful outranks good outranks neutral; heavier weight first within a kind;
-  // the two fixed time windows sink to the bottom (they're reference, not verdict).
+  // Order the reason the way a person would want it: the personal activation
+  // (what part of THEIR life is lit) first, then careful, good, neutral; the
+  // two fixed time windows sink to the bottom (reference, not verdict).
   const rank = (f: DayFactor) =>
+    (f.code.startsWith("special_") ? 300 : 0) +   // today's festival/vrat sits at the very top
+    (f.code === "activation" ? 200 : 0) +
     (f.code === "best_window" || f.code === "rahu_kaal" ? -10 : 0) +
     (f.kind === "careful" ? 100 : f.kind === "good" ? 50 : 10) + f.weight * 5;
   factors.sort((a, b) => rank(b) - rank(a));
 
   // ── the one clear line ────────────────────────────────────────────────────
-  // Built from the day's ACTUAL dominant factor, never a fixed opener — so a
-  // heavy day and a good day read completely differently, and two people with
-  // different charts get different lines. The lead phrase is plain (no jargon);
-  // the technical placement stays in the factor's `detail` under "Reason".
+  // The HEART: lead with the person's activated life-area (which house the Moon
+  // lights up for THEM today), phrased for the day's tone. This is what stops
+  // the line from being a generic "shubh din" — it names their actual life. The
+  // tara/chandra lead is the fallback when we have no lagna/house.
+  const activationLine =
+    alh && HOUSE_AREA[alh]
+      ? pick(HOUSE_AREA[alh][tone === "good" ? "good" : tone === "warn" ? "careful" : "neutral"], l)
+      : "";
   const leadFactor =
     factors.find((f) => f.lead && f.kind === (tone === "good" ? "good" : "careful")) ??
     factors.find((f) => f.lead) ?? null;
-  const leadText = leadFactor?.lead ?? "";
+  const leadText = activationLine || (leadFactor?.lead ?? "");
   const bestClause = best ? " " + fillTime(pick(BEST_LINE, l), best) : "";
 
   // After a "Vansh, " greeting the lead is mid-sentence (lowercase reads right);
   // with no name it starts the sentence (capitalise). Notifications have no
   // greeting, so they always capitalise.
   const greet = GREET(name, l);
-  const headline = leadText
+  const body = leadText
     ? (greet + (greet ? leadText : capFirst(leadText)) + "." + bestClause).trim()
     : (greet + pick(LABEL[tone], l) + "." + bestClause).trim();
-  const short = (capFirst(leadText || pick(LABEL[tone], l)) + "." + bestClause).trim();
+  const shortBody = (capFirst(leadText || pick(LABEL[tone], l)) + "." + bestClause).trim();
+
+  // A BIG special (festival / sankranti / Purnima-Amavasya / Sawan Somwar /
+  // month-start) leads the message — that is what people open the app to see —
+  // followed by their personal line. Everyday vrats (Ekadashi/Pradosh/Chaturthi)
+  // still show as a factor, but they come every few days, so they don't take
+  // over the headline.
+  const isBigSpecial = !!special && special.kind !== "vrat";
+  const specialPrefix = isBigSpecial
+    ? ({ en: "Today is ", hi: "आज ", hinglish: "Aaj " }[l] + special!.label +
+       (special!.kind === "festival" || special!.kind === "sankranti" ? "! " : ". "))
+    : "";
+  const headline = (specialPrefix + body).trim();
+  const short = (specialPrefix + shortBody).trim();
+  const label = isBigSpecial
+    ? (special!.kind === "festival" || special!.kind === "sankranti"
+        ? { en: "Festival", hi: "पर्व", hinglish: "Tyohaar" }[l]
+        : special!.label)
+    : pick(LABEL[tone], l);
 
   return {
     date: input.date,
@@ -532,17 +696,22 @@ export function buildDaySignals(input: {
     lean,
     severity,
     tone,
-    label: pick(LABEL[tone], l),
+    label,
     headline,
     short,
     factors,
     best_time: best,
     caution_time: caution,
+    special,
   };
 }
 
 function capFirst(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+function ordinalEn(n: number): string {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 /**

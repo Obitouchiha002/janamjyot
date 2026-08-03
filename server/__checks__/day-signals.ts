@@ -97,7 +97,9 @@ for (const sig of days) {
   if (sig.tone === "good") sawGoodTone = true;
 
   if (!sig.headline || !sig.headline.trim()) missingHeadline++;
-  if (!sig.headline.startsWith("Vansh")) missingName++;
+  // The name leads the PERSONAL part; a big festival may prefix it ("Today is
+  // Diwali! Vansh, …"), so the invariant is that the name appears in every line.
+  if (!sig.headline.includes("Vansh")) missingName++;
 
   // the REASON must match the real sky: recompute the Moon house independently
   const moonFactor = sig.factors.find((f) => f.code.startsWith("moon_h"));
@@ -152,11 +154,26 @@ const one = buildDaySignals({
 check("a heavy day carries a careful factor with real weight",
   one.factors.some((f) => f.kind === "careful" && f.weight >= 2));
 check("factors are ordered most-important-first (careful before neutral)", (() => {
-  const kinds = one.factors.map((f) => (f.code === "best_window" || f.code === "rahu_kaal") ? "z" : f.kind);
+  // `activation` is deliberately pinned first (it's the personal anchor) and the
+  // two fixed windows sink to the bottom — exclude all three from the ordering.
+  const kinds = one.factors
+    .filter((f) => !["activation", "best_window", "rahu_kaal"].includes(f.code))
+    .map((f) => f.kind);
   const firstNeutral = kinds.indexOf("neutral");
   const lastCareful = kinds.lastIndexOf("careful");
   return firstNeutral === -1 || lastCareful === -1 || lastCareful < firstNeutral;
 })());
+
+// ── the HEART: the daily line is about a specific life-AREA, not a generic mood ─
+const areasSeen = new Set(
+  days.map((d) => d.factors.find((f) => f.code === "activation")?.detail).filter(Boolean),
+);
+check("every day has a personal activation (which life-house is lit)",
+  days.every((d) => d.factors.some((f) => f.code === "activation")));
+check("the activation moves through several life-areas over the sweep", areasSeen.size >= 6,
+  `only ${areasSeen.size} distinct life-areas in 60 days`);
+check("the activation leads the Reason (below only a festival/vrat, if any)",
+  one.factors.filter((f) => !f.code.startsWith("special_"))[0]?.code === "activation");
 
 // ── languages ────────────────────────────────────────────────────────────────
 const en = buildDaySignals({ chart, date: one.date, tz, lang: "en", latitude: 28.61, longitude: 77.20, ayanamsa: AYAN, name: "Vansh Kumar" });
