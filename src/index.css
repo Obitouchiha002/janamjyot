@@ -358,6 +358,48 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
 .tab-item .tab-ico { position: relative; z-index: 1; transition: transform 0.28s var(--spring); }
 .tab-item.active .tab-ico { transform: translateY(-1px) scale(1.1); }
 
+/* ── Desktop / iPad: top navbar + wide, centred content ────────────────────
+   Phones use the mobile top bar + bottom tab bar; >=768px switches to a
+   horizontal navbar and a widened, centred content area so the app fills a
+   Windows / Mac / iPad window like a real desktop app instead of a stretched
+   phone. Same premium cream / gold theme. */
+.app-topnav {
+  display: none;                 /* hidden on phones */
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 64px;
+  z-index: 50;
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--glass-brd);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+}
+
+/* The hero's desktop-only right panel ("chart at a glance") — hidden on phones. */
+.hero-glance { display: none; }
+
+@media (min-width: 768px) {
+  :root { --content-max: 1040px; }
+  .app-topnav { display: block; }
+  .app-desktop .app-topbar { display: none; }   /* navbar replaces the mobile bar */
+  .app-tabbar { display: none !important; }
+  .app-desktop .app-scroll { padding-top: 88px; padding-bottom: 48px; }
+  /* Cap + centre content so it fills a window without stretching edge-to-edge. */
+  .app-content { max-width: var(--content-max); margin-inline: auto; }
+  /* Quick actions widen to four across on a wide screen. */
+  .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+
+  /* Hero becomes two columns: words + actions | chart-at-a-glance panel. */
+  .hero-grid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 30px; align-items: center; }
+  .hero-title { font-size: 33px !important; max-width: none !important; }
+  .hero-glance { display: flex; }
+  .zodiac-ring { display: none; }      /* the glance panel fills the right now */
+  .chip-mobile, .hero-newkundli { display: none; }  /* moved to glance / navbar */
+
+  /* Desktop uses the in-hero "Talk to Astrologer" button, not a floating one. */
+  .home-fab { display: none !important; }
+}
+
 /* ── Surfaces ──────────────────────────────────────────────────────────────*/
 .glass {
   background: var(--glass-bg);

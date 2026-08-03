@@ -23,7 +23,7 @@ import { useAuth } from '@/auth';
 function ZodiacRing() {
   const spokes = Array.from({ length: 12 }, (_, i) => i);
   return (
-    <div className="pointer-events-none absolute -right-14 -top-10 h-56 w-56 opacity-[0.55]">
+    <div className="zodiac-ring pointer-events-none absolute -right-14 -top-10 h-56 w-56 opacity-[0.55]">
       <div className="absolute inset-0 rounded-full bg-accent/20 blur-3xl pulse-glow" />
       <svg viewBox="0 0 200 200" className="spin-slow h-full w-full">
         <circle cx="100" cy="100" r="86" fill="none" stroke="currentColor" strokeWidth="0.6" className="text-accent/40" />
@@ -144,6 +144,55 @@ function RightNowCard({ chartId }: { chartId: string }) {
   );
 }
 
+/**
+ * Desktop-only "chart at a glance" panel that fills the hero's right half (which
+ * was dead space on a wide screen). Reuses the already-cached chart, shows the
+ * four numbers people recognise, the day's calendar chip, and the primary way
+ * into the chat — so the floating button isn't needed on desktop.
+ */
+function HeroGlance({ chartId }: { chartId: string }) {
+  const { data } = useCachedFetch<any>(`/api/chart/${chartId}`);
+  const moon = data?.planets?.find((p: any) => p.planet === 'Moon')?.sign;
+  const stats: Array<[string, string]> = data
+    ? [
+        ['Lagna', data.ascendant?.sign ?? '—'],
+        ['Moon Rashi', moon ?? '—'],
+        ['Nakshatra', data.summary?.nakshatra || data.ascendant?.nakshatra || '—'],
+        ['Dasha', data.dashas?.current_mahadasha ? `${data.dashas.current_mahadasha}–${data.dashas.current_antardasha}` : '—'],
+      ]
+    : [];
+
+  return (
+    <div className="hero-glance flex-col gap-3 rounded-2xl border border-border/70 bg-background/55 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Your chart at a glance</p>
+        <TodayChip chartId={chartId} />
+      </div>
+      {data ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {stats.map(([k, v]) => (
+            <div key={k} className="rounded-xl bg-muted/70 px-3 py-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{k}</p>
+              <p className="mt-0.5 truncate text-[14.5px] font-bold leading-tight">{v}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-[54px]" />)}
+        </div>
+      )}
+      <Pressable
+        to={`/chat/${chartId}`}
+        feedback="medium"
+        className="mt-1 flex items-center justify-center gap-1.5 rounded-full bg-accent py-2.5 text-[13.5px] font-bold text-accent-foreground shadow-md shadow-accent/25"
+      >
+        <MessageCircleQuestion className="h-[17px] w-[17px]" strokeWidth={2.3} /> Talk to Astrologer
+      </Pressable>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<any[] | null>(profilesCache);
@@ -167,51 +216,59 @@ export default function HomePage() {
     // behind it.
     <div className="space-y-7 pt-2 pb-32">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="m-card m-enter relative px-5 pt-6 pb-5">
+      <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
         <ZodiacRing />
-        {/* Greeting on the left, today's calendar glance ("aaj kya khaas hai" —
-            festival / vrat / tithi) pinned to the top-right corner. z-10 keeps
-            it legible above the faint zodiac ring. */}
-        <div className="relative z-10 flex items-start justify-between gap-2">
-          <p className="text-[13px] font-medium text-muted-foreground">
-            {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
-          </p>
-          {primary && <TodayChip chartId={primary.id} />}
-        </div>
         {primary ? (
-          <>
-            <h2 className="mt-1 text-[25px] font-bold leading-[1.2] tracking-tight max-w-[80%]">
-              <span className="text-accent">{primary.name.split(' ')[0]}</span>&apos;s stars,<br />
-              ready for today
-            </h2>
-            <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground max-w-[80%]">
-              Your kundli is saved. Open today&apos;s personalised guidance.
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
+          // Desktop: two columns — words + actions on the left, a "chart at a
+          // glance" panel filling what used to be dead space on the right.
+          <div className="hero-grid">
+            <div className="hero-main relative z-10">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[13px] font-medium text-muted-foreground">
+                  {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+                </p>
+                {/* Calendar chip lives here on a phone; on desktop it moves into
+                    the glance panel, so it's hidden here. */}
+                <span className="chip-mobile"><TodayChip chartId={primary.id} /></span>
+              </div>
+              <h2 className="hero-title mt-1 text-[25px] font-bold leading-[1.2] tracking-tight max-w-[80%]">
+                <span className="text-accent">{primary.name.split(' ')[0]}</span>&apos;s stars,<br />
+                ready for today
+              </h2>
+              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground max-w-[80%]">
+                Your kundli is saved. Open today&apos;s personalised guidance.
+              </p>
+              <div className="mt-5 flex flex-wrap items-center gap-2.5">
+                <Pressable
+                  to={`/daily/${primary.id}`}
+                  feedback="medium"
+                  className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+                >
+                  <Sparkles className="w-[17px] h-[17px]" /> Today&apos;s Guidance
+                </Pressable>
+                <Pressable
+                  to={`/dashboard/${primary.id}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-3 text-[13.5px] font-bold"
+                >
+                  Open Kundli
+                </Pressable>
+              </div>
+              {/* Redundant on desktop (the navbar owns "New Kundli") — phone only. */}
               <Pressable
-                to={`/daily/${primary.id}`}
-                feedback="medium"
-                className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+                to="/create-chart"
+                subtle
+                className="hero-newkundli mt-3.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-muted-foreground"
               >
-                <Sparkles className="w-[17px] h-[17px]" /> Today&apos;s Guidance
-              </Pressable>
-              <Pressable
-                to={`/dashboard/${primary.id}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-3 text-[13.5px] font-bold"
-              >
-                Open Kundli
+                <Plus className="w-[14px] h-[14px]" strokeWidth={2.6} /> New Kundli
               </Pressable>
             </div>
-            <Pressable
-              to="/create-chart"
-              subtle
-              className="mt-3.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-muted-foreground"
-            >
-              <Plus className="w-[14px] h-[14px]" strokeWidth={2.6} /> New Kundli
-            </Pressable>
-          </>
+            <HeroGlance chartId={primary.id} />
+          </div>
         ) : (
-          <>
+          <div className="relative z-10">
+            <p className="text-[13px] font-medium text-muted-foreground">
+              {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+            </p>
             <h2 className="mt-1 text-[26px] font-bold leading-[1.2] tracking-tight max-w-[75%]">
               Your stars,<br />
               <span className="text-accent">precisely read</span>
@@ -227,7 +284,7 @@ export default function HomePage() {
               <Plus className="w-[18px] h-[18px]" strokeWidth={2.6} />
               Create Your First Kundli
             </Pressable>
-          </>
+          </div>
         )}
       </section>
 
@@ -239,11 +296,9 @@ export default function HomePage() {
           glance ABOVE a second AI "Today" card — two boxes both titled Today,
           which read as duplication to a beginner. The detailed card now lives
           only where it isn't competing: the full daily page and the dashboard. */}
+      {/* Today's glance, then the live "good moment?" strip — both full-width.
+          RightNow is a horizontal strip, so it reads well at any width. */}
       {primary && <DayBanner chartId={primary.id} />}
-
-      {/* ── Right now ────────────────────────────────────────────────────
-          The everyday reason to open the app: a live read on whether this is a
-          good moment to do something. Deterministic, so it loads instantly. */}
       {primary && <RightNowCard chartId={primary.id} />}
 
       {/* ── Quick actions ────────────────────────────────────────────────── */}
@@ -251,7 +306,7 @@ export default function HomePage() {
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
           Quick actions
         </h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="qa-grid grid grid-cols-2 gap-3">
           {ACTIONS.map((a) => {
             const Icon = a.icon;
             return (
@@ -338,7 +393,7 @@ export default function HomePage() {
           to={`/chat/${primary.id}`}
           feedback="medium"
           aria-label="Talk to an Astrologer"
-          className="fixed right-4 z-40 flex items-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-xl shadow-accent/35"
+          className="home-fab fixed right-4 z-40 flex items-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-xl shadow-accent/35"
           style={{ bottom: 'calc(var(--sab) + 76px)' }}
         >
           <MessageCircleQuestion className="h-[19px] w-[19px]" strokeWidth={2.3} />

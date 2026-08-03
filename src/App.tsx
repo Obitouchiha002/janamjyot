@@ -21,6 +21,7 @@ import { isLockEnabled } from './lib/biometric';
 
 import TopBar from './components/mobile/TopBar';
 import TabBar from './components/mobile/TabBar';
+import TopNav from './components/desktop/TopNav';
 import QuotaListener from './components/mobile/QuotaSheet';
 import { LoadError } from './components/ErrorState';
 import FeedbackListener from './components/mobile/FeedbackSheet';
@@ -297,7 +298,7 @@ function Shell() {
     return (
       <div className="app-shell bg-background text-foreground">
         <div className="app-scroll no-tabbar" style={{ paddingTop: 'calc(var(--sat) + 12px)' }}>
-          <div className="px-4 pb-6"><ResetPasswordPage /></div>
+          <div className="app-content px-4 pb-6"><ResetPasswordPage /></div>
         </div>
       </div>
     );
@@ -314,7 +315,7 @@ function Shell() {
     return (
       <div className="app-shell bg-background text-foreground">
         <div className="app-scroll no-tabbar" style={{ paddingTop: 'calc(var(--sat) + 12px)' }}>
-          <div className="px-4 pb-6">
+          <div className="app-content px-4 pb-6">
             <LoginPage />
           </div>
         </div>
@@ -323,7 +324,10 @@ function Shell() {
   }
 
   return (
-    <div className="app-shell bg-background text-foreground">
+    <div className="app-shell app-desktop bg-background text-foreground">
+      {/* Desktop / iPad top navbar (>=768px, CSS-gated). Phones keep the mobile
+          top bar + bottom tab bar below. */}
+      <TopNav />
       <TopBar scrolled={scrolled} />
 
       <div
@@ -348,7 +352,7 @@ function Shell() {
                 ? { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
                 : { type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }
             }
-            className="px-4 pb-6"
+            className="app-content px-4 pb-6"
           >
             <AppRoutes location={location} />
           </motion.main>
