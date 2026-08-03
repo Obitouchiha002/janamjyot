@@ -8,6 +8,7 @@ import {
 import { Pressable } from '@/components/mobile/Pressable';
 import { useCachedFetch } from '@/lib/useCachedFetch';
 import DayBanner from '@/components/DayBanner';
+import TodayChip from '@/components/TodayChip';
 import { useAuth } from '@/auth';
 
 /**
@@ -168,9 +169,15 @@ export default function HomePage() {
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="m-card m-enter relative px-5 pt-6 pb-5">
         <ZodiacRing />
-        <p className="text-[13px] font-medium text-muted-foreground">
-          {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
-        </p>
+        {/* Greeting on the left, today's calendar glance ("aaj kya khaas hai" —
+            festival / vrat / tithi) pinned to the top-right corner. z-10 keeps
+            it legible above the faint zodiac ring. */}
+        <div className="relative z-10 flex items-start justify-between gap-2">
+          <p className="text-[13px] font-medium text-muted-foreground">
+            {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+          </p>
+          {primary && <TodayChip chartId={primary.id} />}
+        </div>
         {primary ? (
           <>
             <h2 className="mt-1 text-[25px] font-bold leading-[1.2] tracking-tight max-w-[80%]">

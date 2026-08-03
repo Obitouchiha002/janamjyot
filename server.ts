@@ -144,6 +144,7 @@ import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
 import { buildDaySignals, buildUpcomingDaySignals } from "./server/day-signals";
+import { hinduDay } from "./server/hindu-calendar";
 import { buildMuhurat, scanMonth } from "./server/muhurat";
 import { detectYogas } from "./server/yogas";
 import { computeAshtakavarga } from "./server/ashtakavarga";
@@ -341,6 +342,7 @@ const PUBLIC_API = [
   /^\/config$/,
   /^\/places$/,
   /^\/panchang$/,
+  /^\/panchang-today$/,
   /^\/muhurat$/,
   /^\/muhurat-month$/,
   /^\/right-now$/,
@@ -2156,6 +2158,45 @@ app.get("/api/chart/:chartId/day-signals", async (req, res) => {
     res.json(signals);
   } catch (err: any) {
     console.error("[day-signals] error:", err?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/**
+ * GET /api/panchang-today?lat=&lon=&tz=&lang=
+ *
+ * The tiny "aaj kya khaas hai" glance for the Home top-corner chip: today's
+ * tithi + the single most notable thing (festival / vrat / Purnima / Sankranti /
+ * Sawan Somwar), from the SAME verified hindu-calendar engine the day banner
+ * uses. Needs NO chart — panchang is location+date, not birth-chart — so it is
+ * public and defaults to Delhi when no coordinates are given (tithi/festival is
+ * effectively identical across India for a glance). Deterministic, no AI.
+ */
+app.get("/api/panchang-today", (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const latitude = Number.isFinite(lat) ? lat : 28.6139;   // Delhi fallback
+    const longitude = Number.isFinite(lon) ? lon : 77.209;
+    const tz = (typeof req.query.tz === "string" && req.query.tz) || "Asia/Kolkata";
+    const lang = normalizeLanguage(req.query.lang, "en");
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+
+    const hd = hinduDay(date, latitude, longitude, tz, AYANAMSA);
+    const pickTri = (t: any) => (t && (t[lang] ?? t.en)) || "";
+    const top = hd.headline;
+    res.json({
+      date: hd.date,
+      weekday: hd.weekday,
+      masa: hd.masa,
+      paksha: hd.paksha,
+      tithi: hd.tithi,
+      // the single most notable thing today, already localized — null on an
+      // ordinary day (the chip then just shows the tithi).
+      special: top ? { key: top.key, kind: top.kind, label: pickTri(top.label) } : null,
+    });
+  } catch (err: any) {
+    console.error("[panchang-today] error:", err?.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
