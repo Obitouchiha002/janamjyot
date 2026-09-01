@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>JanamJyot – Personalised Vedic Astrology Mobile App</title>
-<meta name="description" content="Explore your Janam Kundli, Dasha periods, Kundli matching and personalised AI astrology guidance with the JanamJyot mobile app. Free to start. Hindi, Hinglish & English." />
+<meta name="description" content="Free Janam Kundli, Dasha, Kundli matching and AI astrology guidance with the JanamJyot app — in Hindi, Hinglish & English." />
 <meta name="keywords" content="Janam Kundli, Vedic astrology app, Kundli matching, Guna Milan, Dasha, Panchang, AI astrologer, JanamJyot" />
 <meta name="author" content="Vansh Kashyap" />
 <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -677,8 +677,8 @@
   .as-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:13px;padding:14px 0 6px}
   .as-logo-big{width:74px;height:74px;filter:drop-shadow(0 14px 30px rgba(216,171,78,.35))}
   .as-eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-lt);border:1px solid var(--gold-brd);background:rgba(216,171,78,.08);padding:6px 13px;border-radius:999px}
-  .as-hero h1{font-family:var(--serif);font-size:33px;line-height:1.1}
-  .as-hero h1 .g{color:var(--gold-lt)}
+  .as-hero h1,.as-hero h2{font-family:var(--serif);font-size:33px;line-height:1.1;font-weight:700}
+  .as-hero h1 .g,.as-hero h2 .g{color:var(--gold-lt)}
   .as-hero p{color:var(--ink2);font-size:14.5px;max-width:32ch}
   .as-stats{display:flex;gap:22px;margin-top:8px}
   .as-stats b{display:block;font-family:var(--serif);font-size:26px;color:var(--gold-lt)}
@@ -801,6 +801,7 @@
   .as-form input{border:1px solid var(--wht-brd);border-radius:14px;padding:14px;font-size:15px;background:rgba(255,255,255,.04);color:var(--ink);font-family:var(--sans);text-transform:none;letter-spacing:normal;font-weight:500;width:100%}
   .as-form input:focus{outline:none;border-color:var(--gold)}
   .as-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .as-place{position:relative;display:block}
   .as-suggest{position:absolute;top:100%;left:0;right:0;margin-top:6px;background:#0D1B3D;border:1px solid var(--wht-brd);border-radius:14px;overflow:hidden;z-index:5;display:none;max-height:220px;overflow-y:auto}
   .as-suggest.show{display:block}
   .as-suggest button{display:block;width:100%;text-align:left;padding:12px 15px;font-size:14px;background:none;border:none;color:var(--ink);text-transform:none;letter-spacing:normal;font-weight:500}
@@ -952,7 +953,7 @@
       <div class="as-hero">
         <img class="as-logo-big" src="/favicon.svg" alt="JanamJyot" />
         <span class="as-eyebrow">✦ Modern Vedic Astrology</span>
-        <h1>Your Birth Chart.<br><span class="g">Your Life Direction.</span></h1>
+        <h2>Your Birth Chart.<br><span class="g">Your Life Direction.</span></h2>
         <p>Your Kundli, planetary periods, matching and a live AI-astrologer — in one calm, beautiful app.</p>
         <button class="as-btn" data-goto="kundli">✦ Get Your Free Kundli</button>
         <button class="as-btn ghost" data-goto="app">Download the App</button>
@@ -997,9 +998,10 @@
           <label>Date of birth<input id="mkDate" type="date" /></label>
           <label>Time<input id="mkTime" type="time" /></label>
         </div>
-        <label class="as-place">Place of birth<input id="mkPlace" type="text" placeholder="Start typing a city…" />
+        <div class="as-place">
+          <label>Place of birth<input id="mkPlace" type="text" placeholder="Start typing a city…" /></label>
           <div class="as-suggest" id="mkSuggest"></div>
-        </label>
+        </div>
         <p class="as-err" id="mkErr" hidden></p>
         <button class="as-btn" id="mkSubmit" type="submit">✦ Get My Free Kundli</button>
         <p class="as-note">Free · No account · Private</p>
