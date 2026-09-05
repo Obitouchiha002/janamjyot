@@ -77,6 +77,10 @@ export interface DaySignals {
   headline: string;
   /** Notification body: the same message without the greeting. */
   short: string;
+  /** The core life-area line only — no greeting, no best-window clause. */
+  lead: string;
+  /** Clean localized life-area name for today (e.g. "laabh, aay aur dost"), or "". */
+  area: string;
   /** The reason, most important first. */
   factors: DayFactor[];
   best_time: { name: string; start: string; end: string } | null;
@@ -366,6 +370,71 @@ const HOUSE_AREA: Record<number, { area: Tri; good: Tri; careful: Tri; neutral: 
         neutral: { en: "a low-key day — rest and clear your head more than push", hi: "धीमा दिन — ज़ोर लगाने से ज़्यादा आराम और मन साफ़ करें", hinglish: "dheema din — zor lagane se zyada aaram aur mann saaf karo" } },
 };
 
+// Alternate phrasings for the same life-area + tone. The Moon sits in one
+// house-from-lagna for ~2-3 days, so with a single phrase the daily line read
+// identically 2-3 days running (the "it repeats" complaint). These give a
+// second wording; the headline rotates base↔alt by the day number so no two
+// consecutive days say the exact same sentence. Same meaning + tone, different
+// words. (Rolling out area by area — houses without an alt fall back to base.)
+const HOUSE_AREA_ALT: Record<number, Partial<{ good: Tri; careful: Tri; neutral: Tri }>> = {
+  1:  {
+    good:    { en: "today is about you — you show up well, so step forward", hi: "आज दिन आप पर — आपकी मौजूदगी अच्छी, आगे बढ़ें", hinglish: "aaj din aap par — aapki maujoodgi acchi, aage badho" },
+    careful: { en: "go easy on your body and mind today — don't overstretch", hi: "आज तन और मन पर नरमी रखें — ज़्यादा ज़ोर न दें", hinglish: "aaj tan aur mann par narmi rakho — zyada zor mat do" },
+    neutral: { en: "a self-focused day — sort your own things first", hi: "अपने पर केंद्रित दिन — पहले अपने काम", hinglish: "apne par focus wala din — pehle apne kaam" } },
+  2:  {
+    good:    { en: "money and home lean in your favour — good for savings or a family matter", hi: "पैसा और घर आपके पक्ष में — बचत या घर की बात के लिए अच्छा", hinglish: "paisa aur ghar aapke paksh mein — bachat ya ghar ki baat ke liye accha" },
+    careful: { en: "keep an eye on spends and be soft with family today", hi: "आज ख़र्च पर नज़र और परिवार से नरमी", hinglish: "aaj kharch par nazar aur parivaar se narmi" },
+    neutral: { en: "an even day for money and home — just the routine", hi: "पैसे और घर के लिए सामान्य दिन — रोज़ के काम", hinglish: "paise aur ghar ke liye samanya din — roz ke kaam" } },
+  3:  {
+    good:    { en: "your voice and drive land well today — move a task, make the call", hi: "आज आपकी बात और जोश असर करेगा — काम बढ़ाएँ, वो कॉल करें", hinglish: "aaj aapki baat aur josh asar karega — kaam badhao, wo call karo" },
+    careful: { en: "keep calm in a heated talk today — don't rush a reaction", hi: "आज गरम बातचीत में शांत रहें — जल्दबाज़ी में जवाब न दें", hinglish: "aaj garam baat-cheet mein shaant raho — jaldbaazi mein jawab mat do" },
+    neutral: { en: "an okay day to talk things out and nudge small tasks", hi: "बातचीत और छोटे कामों को आगे बढ़ाने का ठीक दिन", hinglish: "baat-cheet aur chote kaam aage badhane ka theek din" } },
+  5:  {
+    good:    { en: "a playful, creative day — enjoy children, love, or what you like", hi: "खिलंदड़ा, रचनात्मक दिन — बच्चे, प्रेम या पसंद की चीज़", hinglish: "khilandra, creative din — bachche, pyaar ya pasand ki cheez" },
+    careful: { en: "hold back on bets and big feelings today — weigh a risk first", hi: "आज दाँव और ज़्यादा भावुकता से बचें — जोखिम तोलें", hinglish: "aaj daanv aur zyada emotion se bacho — jokhim tolo" },
+    neutral: { en: "an easy day — leave a little space for fun and making things", hi: "हल्का दिन — थोड़ा मज़े और रचनात्मकता के लिए जगह", hinglish: "halka din — thoda maze aur creativity ke liye jagah" } },
+  7:  {
+    good:    { en: "people and partners lean your way — good for meetings and deals", hi: "आज लोग और साथी आपके पक्ष में — मीटिंग और सौदों के लिए अच्छा", hinglish: "aaj log aur partner aapke paksh mein — meeting aur saudon ke liye accha" },
+    careful: { en: "the other side may push your patience today — don't rush a signing or a fight", hi: "आज सामने वाला धैर्य परखेगा — जल्दी में साइन या झगड़ा न करें", hinglish: "aaj saamne wala dhairya parkhega — jaldi mein sign ya jhagda mat karo" },
+    neutral: { en: "an others-first day — meetings and one-on-ones matter", hi: "दूसरों वाला दिन — मीटिंग और आमने-सामने अहम", hinglish: "doosron wala din — meeting aur aamne-saamne aham" } },
+  8:  {
+    good:    { en: "good for the behind-the-scenes — loans, insurance, or an old knot loosens", hi: "छुपे कामों के लिए अच्छा — लोन, बीमा या पुरानी गुत्थी सुलझे", hinglish: "chupe kaamon ke liye accha — loan, insurance ya purani guthhi suljhe" },
+    careful: { en: "surprises can come today — skip risky money moves, stay steady", hi: "आज अचानक हो सकता है — जोखिम वाले पैसे टालें, स्थिर रहें", hinglish: "aaj achanak ho sakta hai — jokhim wale paise taalo, tike raho" },
+    neutral: { en: "a beneath-the-surface day — don't push, let it settle", hi: "अंदरूनी दिन — ज़ोर न दें, बैठने दें", hinglish: "andaruni din — zor mat do, baithne do" } },
+  9:  {
+    good:    { en: "fortune's with you today — good for study, a trip, or a favour", hi: "आज क़िस्मत साथ — पढ़ाई, सफ़र या कोई मदद माँगने के लिए अच्छा", hinglish: "aaj kismat saath — padhai, safar ya koi madad maangne ke liye accha" },
+    careful: { en: "don't over-commit to a plan or belief today — verify before you book travel", hi: "आज किसी योजना या सोच पर ज़्यादा वादा न करें — सफ़र से पहले जाँचें", hinglish: "aaj kisi plan ya soch par zyada vaada mat karo — safar se pehle jaanch lo" },
+    neutral: { en: "a wider-view day — plan, read, or think ahead", hi: "सोच खोलने वाला दिन — योजना, पढ़ाई या आगे की सोच", hinglish: "soch kholne wala din — plan, padhai ya aage ki soch" } },
+  10: {
+    good:    { en: "career and name shine today — step up, your work can get seen", hi: "आज करियर और नाम चमकेंगे — आगे आएँ, काम नज़र में आ सकता है", hinglish: "aaj career aur naam chamkenge — aage aao, kaam nazar mein aa sakta hai" },
+    careful: { en: "career's front and centre but rocky — avoid a boss clash, park the big call", hi: "आज काम सामने पर ऊबड़-खाबड़ — बॉस से टकराव नहीं, बड़ा फ़ैसला बाद में", hinglish: "aaj kaam saamne par ubad-khabad — boss se takraav nahi, bada faisla baad mein" },
+    neutral: { en: "a career-leaning day — steady effort on goals pays", hi: "काम की ओर झुका दिन — लक्ष्यों पर टिकी मेहनत काम आएगी", hinglish: "kaam ki or jhuka din — lakshya par tiki mehnat kaam aayegi" } },
+  11: {
+    good:    { en: "gains and good word lean in — good to ask, connect, or chase income", hi: "लाभ और अच्छी ख़बर की ओर — माँगने, जुड़ने या आय के लिए अच्छा", hinglish: "laabh aur acchi khabar ki or — maangne, judne ya aay ke liye accha" },
+    careful: { en: "a friend or an expected gain may slip today — don't bank on it yet", hi: "आज कोई दोस्त या उम्मीद का लाभ फिसल सकता है — अभी भरोसा न करें", hinglish: "aaj koi dost ya ummeed ka laabh fisal sakta hai — abhi bharosa mat karo" },
+    neutral: { en: "a people-and-networking day — small gains stack up", hi: "मेल-जोल वाला दिन — छोटे लाभ जुड़ते हैं", hinglish: "mel-jol wala din — chote laabh judte hain" } },
+  4:  {
+    good:    { en: "a calm, homey day — good time for family, your own space, or simply slowing down", hi: "आज मन और घर सुकून में — परिवार, अपनी जगह या थोड़ा ठहरने के लिए अच्छा", hinglish: "aaj mann aur ghar sukoon mein — parivaar, apni jagah ya thoda thehrne ke liye accha" },
+    careful: { en: "something at home may tug at your mind today — go gentle, put off the big decisions", hi: "आज घर की कोई बात मन खींच सकती है — नरमी रखें, बड़े फ़ैसले टालें", hinglish: "aaj ghar ki koi baat mann kheench sakti hai — narmi rakho, bade faisle taalo" },
+    neutral: { en: "an inward, settle-in kind of day — home and comfort come first", hi: "अंदर की ओर झुका दिन — घर और आराम पहले", hinglish: "andar ki or jhuka din — ghar aur aaram pehle" } },
+  6:  {
+    good:    { en: "a strong day to face problems head-on — settle a pending task or outpace a rival", hi: "समस्याओं से सीधे भिड़ने का मज़बूत दिन — कोई रुका काम निपटाएँ या विरोधी से आगे निकलें", hinglish: "samasyaon se seedhe bhidne ka mazboot din — koi ruka kaam niptao ya virodhi se aage niklo" },
+    careful: { en: "work load or a minor health thing may nag today — go steady, don't cut your rest", hi: "आज काम का बोझ या छोटी तबियत की बात परेशान कर सकती है — संभल कर चलें, आराम न छोड़ें", hinglish: "aaj kaam ka bojh ya choti tabiyat ki baat pareshan kar sakti hai — sambhal ke chalo, aaram mat chhodo" },
+    neutral: { en: "a heads-down routine day — steadily work through your list", hi: "सिर झुका कर काम वाला दिन — सूची को धीरे-धीरे निपटाएँ", hinglish: "sir jhuka ke kaam wala din — list ko dheere-dheere niptao" } },
+  12: {
+    good:    { en: "a restful day that suits winding down or a worthwhile spend — pull back and refill", hi: "आराम के लिए अच्छा दिन — थमने या किसी सार्थक ख़र्च के लिए ठीक, पीछे हटें और ऊर्जा भरें", hinglish: "aaram ke liye accha din — thamne ya kisi saarthak kharch ke liye theek, peeche hato aur energy bharo" },
+    careful: { en: "you may feel drained and money slips easily today — keep it light, mind the spends", hi: "आज थकान लग सकती है और पैसा आसानी से फिसलता है — हल्का लें, ख़र्च पर ध्यान", hinglish: "aaj thakan lag sakti hai aur paisa aasani se fisalta hai — halka lo, kharch par dhyan" },
+    neutral: { en: "a slow, quiet day — favour rest and a clear head over pushing hard", hi: "धीमा, शांत दिन — ज़ोर लगाने से ज़्यादा आराम और साफ़ मन को चुनें", hinglish: "dheema, shaant din — zor lagane se zyada aaram aur saaf mann ko chuno" } },
+};
+
+/** The activated-area line for the day, rotated across its phrasings by the day
+ *  number so a 2-3 day Moon stay never repeats the exact same sentence. */
+function activationVariant(h: number, key: "good" | "careful" | "neutral", l: Lang, dayNum: number): string {
+  const vs = [HOUSE_AREA[h]?.[key], HOUSE_AREA_ALT[h]?.[key]].filter(Boolean) as Tri[];
+  if (!vs.length) return "";
+  return pick(vs[(((dayNum % vs.length) + vs.length) % vs.length)], l);
+}
+
 /** Everyday significations of a natal planet — used only to add a personal
  *  "where your X sits" touch in the Reason, never jargon in the headline. */
 const PLANET_LIFE: Record<string, Tri> = {
@@ -463,9 +532,11 @@ export function buildDaySignals(input: {
         .filter((p: any) => p.house === alh && PLANET_LIFE[p.planet])
         .map((p: any) => p.planet)
     : [];
+  let dayArea = "";
   if (alh && HOUSE_AREA[alh]) {
     const ha = HOUSE_AREA[alh];
     const areaName = pick(ha.area, l);
+    dayArea = areaName;
     const planetClause = natalHere.length
       ? {
           en: ` — where your ${natalHere.join(" & ")} sits (${natalHere.map((p) => pick(PLANET_LIFE[p], l)).join("; ")})`,
@@ -652,10 +723,12 @@ export function buildDaySignals(input: {
   // lights up for THEM today), phrased for the day's tone. This is what stops
   // the line from being a generic "shubh din" — it names their actual life. The
   // tara/chandra lead is the fallback when we have no lagna/house.
+  // Day number (days since epoch) rotates the area's phrasing so a 2-3 day Moon
+  // stay in one house never reads the exact same sentence two days running.
+  const dayNum = Math.floor(Date.parse((input.date || "1970-01-01") + "T00:00:00Z") / 86_400_000) || 0;
+  const toneKey = tone === "good" ? "good" : tone === "warn" ? "careful" : "neutral";
   const activationLine =
-    alh && HOUSE_AREA[alh]
-      ? pick(HOUSE_AREA[alh][tone === "good" ? "good" : tone === "warn" ? "careful" : "neutral"], l)
-      : "";
+    alh && HOUSE_AREA[alh] ? activationVariant(alh, toneKey, l, dayNum) : "";
   const leadFactor =
     factors.find((f) => f.lead && f.kind === (tone === "good" ? "good" : "careful")) ??
     factors.find((f) => f.lead) ?? null;
@@ -699,6 +772,8 @@ export function buildDaySignals(input: {
     label,
     headline,
     short,
+    lead: leadText,
+    area: dayArea,
     factors,
     best_time: best,
     caution_time: caution,
@@ -738,6 +813,137 @@ export function buildUpcomingDaySignals(input: {
     const dt = new Date(Date.UTC(y, m - 1, d + i));
     const date = dt.toISOString().slice(0, 10);
     out.push(buildDaySignals({ ...input, date }));
+  }
+  return out;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   WHOLE-DAY PLAN — the "poora din" the user asked for.
+
+   One deterministic reading of the WHOLE day, built from the same real calc
+   (activated life-area + tone + the day's choghadiya blocks + Rahu Kaal). It
+   feeds four things, all personal and warm, NONE general, ZERO AI:
+     • morning notification  → `summary` (3-4 chat-like lines: how the day goes
+       + the main problem), reasons live in-app;
+     • the home / day page   → `timeline` (the whole day, time-ordered);
+     • real-time alerts       → `badWindows` ("Vansh, ye time theek nahi, ruko");
+     • the night notification → `nightRecap` ("aaj ka din kaisa tha").
+   ────────────────────────────────────────────────────────────────────────── */
+
+// A short, plain note per choghadiya type — so the timeline reads like advice,
+// not a table. Only 7 names exist, so this stays tiny.
+const CHO_NOTE: Record<string, Tri> = {
+  Amrit: { en: "the day's finest — do the important thing here", hi: "दिन का सबसे शुभ — ज़रूरी काम यहीं करें", hinglish: "din ka sabse shubh — zaroori kaam yahin karo" },
+  Shubh: { en: "auspicious — good for starts and good news", hi: "शुभ — नई शुरुआत और अच्छी ख़बर के लिए अच्छा", hinglish: "shubh — nayi shuruaat ke liye accha" },
+  Labh:  { en: "gains — good for money, work and asking", hi: "लाभ — पैसे, काम और माँगने के लिए अच्छा", hinglish: "laabh — paise, kaam aur maangne ke liye accha" },
+  Char:  { en: "moving — fine for travel and small errands", hi: "चंचल — यात्रा और छोटे कामों के लिए ठीक", hinglish: "chanchal — safar aur chote kaamon ke liye theek" },
+  Rog:   { en: "avoid — an illness/conflict window, don't start big", hi: "बचें — रोग/टकराव का समय, बड़ा काम न करें", hinglish: "bacho — rog/takraav ka samay, bada kaam mat karo" },
+  Kaal:  { en: "hold — not for new or important work", hi: "रुकें — नया या ज़रूरी काम न करें", hinglish: "ruko — naya ya zaroori kaam mat karo" },
+  Udveg: { en: "restless — routine only, put off decisions", hi: "उद्वेग — सिर्फ़ रोज़ के काम, फ़ैसले टालें", hinglish: "udveg — sirf routine, faisle taalo" },
+};
+
+const BEST_USE: Tri = {
+  en: "Best time: {a}–{b} — do the important thing then.",
+  hi: "सबसे अच्छा समय: {a}–{b} — ज़रूरी काम इसी में करें।",
+  hinglish: "Sabse accha samay: {a}–{b} — zaroori kaam isi mein karo.",
+};
+const CARE_LINE_DP: Tri = {
+  en: "Careful: {name} {a}–{b} — don't start anything new or big.",
+  hi: "सँभलें: {name} {a}–{b} — कोई नया या बड़ा काम शुरू न करें।",
+  hinglish: "Sambhalna: {name} {a}–{b} — koi naya ya bada kaam shuru mat karo.",
+};
+const CLOSE_LINE: Tri = {
+  en: "The rest of the day is yours — go at your own pace. 🙏",
+  hi: "बाक़ी दिन आपका — अपनी रफ़्तार से चलें। 🙏",
+  hinglish: "Baaki din aapka — apni raftaar se chalo. 🙏",
+};
+const ALERT_LINE: Tri = {
+  en: "{n}this isn't a good window right now ({name}, till {b}) — hold a bit before anything important.",
+  hi: "{n}अभी समय ठीक नहीं ({name}, {b} तक) — कोई ज़रूरी काम से पहले थोड़ा रुकें।",
+  hinglish: "{n}abhi time theek nahi ({name}, {b} tak) — koi zaroori kaam se pehle thoda ruko.",
+};
+const RECAP: Record<"good" | "mixed" | "careful", Tri> = {
+  good:    { en: "{n}today leaned your way in {area}. Hope it went well — rest easy, tomorrow's fresh. 🙏", hi: "{n}आज {area} में दिन आपके पक्ष में रहा। आशा है अच्छा बीता — आराम करें, कल नया दिन। 🙏", hinglish: "{n}aaj {area} mein din aapke paksh mein raha. Umeed hai accha beeta — aaram karo, kal naya din. 🙏" },
+  mixed:   { en: "{n}a mixed day around {area}. Take what worked, let the rest go — tomorrow's a clean start. 🙏", hi: "{n}{area} के इर्द-गिर्द मिला-जुला दिन। जो अच्छा हुआ रखें, बाक़ी छोड़ें — कल नई शुरुआत। 🙏", hinglish: "{n}{area} ke aas-paas mila-jula din. Jo accha hua rakho, baaki chhodo — kal nayi shuruaat. 🙏" },
+  careful: { en: "{n}a day to steady yourself in {area}. If it was heavy, be kind to yourself — rest, tomorrow eases. 🙏", hi: "{n}{area} में सँभलने वाला दिन। भारी रहा हो तो ख़ुद पर नरमी रखें — आराम करें, कल हल्का होगा। 🙏", hinglish: "{n}{area} mein sambhalne wala din. Bhaari raha ho to khud par narmi rakho — aaram karo, kal halka hoga. 🙏" },
+};
+
+export interface DayPlan {
+  date: string;
+  name: string | null;
+  lean: Lean;
+  /** 3-4 warm lines — the morning notification + top of the day page. */
+  summary: string[];
+  /** The whole day, time-ordered — good & careful blocks with a plain note. */
+  timeline: Array<{ name: string; start: string; end: string; kind: "good" | "careful" | "neutral"; note: string }>;
+  /** Windows to warn about in real time. */
+  badWindows: Array<{ name: string; start: string; end: string; alert: string }>;
+  /** A warm night recap of how the day was. */
+  nightRecap: string;
+}
+
+export function buildDayPlan(input: {
+  chart: any; date: string; tz: string; lang?: string;
+  latitude?: number; longitude?: number; ayanamsa: number; name?: string | null;
+  transit?: TransitResult;
+}): DayPlan {
+  const l = asLang(input.lang);
+  const sig = buildDaySignals(input);
+  const first = (sig.name || "").trim().split(/\s+/)[0] || "";
+  const nTag = first ? `${first}, ` : "";
+  const areaName = sig.area || "";
+
+  // ── morning summary (3-4 warm, calculated lines) ──
+  const summary: string[] = [];
+  if (sig.special && sig.special.kind !== "vrat") {
+    summary.push(`${l === "hi" ? "आज" : "Aaj"} ${sig.special.label}${sig.special.kind === "festival" || sig.special.kind === "sankranti" ? "!" : "."}`);
+  }
+  summary.push(capFirst((nTag + sig.lead).trim()) + ".");             // overall + area/tone
+  if (sig.best_time) summary.push(fillTime(pick(BEST_USE, l), sig.best_time));   // best window + use
+  if (sig.caution_time) summary.push(fillTime(pick(CARE_LINE_DP, l), sig.caution_time)); // main problem
+  summary.push(pick(CLOSE_LINE, l));                                   // warm close
+
+  // ── whole-day timeline + bad windows (from the real choghadiya + periods) ──
+  const timeline: DayPlan["timeline"] = [];
+  const badWindows: DayPlan["badWindows"] = [];
+  if (Number.isFinite(input.latitude) && Number.isFinite(input.longitude)) {
+    try {
+      const p = buildPanchang({ date: input.date, latitude: input.latitude!, longitude: input.longitude!, timezone: input.tz, ayanamsa: input.ayanamsa });
+      for (const c of (p.day_choghadiya || [])) {
+        const note = CHO_NOTE[c.name] ? pick(CHO_NOTE[c.name], l) : "";
+        timeline.push({ name: c.name, start: c.start, end: c.end, kind: c.quality === "good" ? "good" : c.quality === "bad" ? "careful" : "neutral", note });
+      }
+      // Rahu Kaal is THE canonical "don't start anything new" window everyone
+      // knows — one clean real-time push, and it never overlaps a good slot the
+      // way Yamaganda/Gulika can (which would contradict the day's best window).
+      const rk = p.periods?.rahu_kaal;
+      if (rk?.start && rk?.end && rk.start !== "—") {
+        badWindows.push({ name: "Rahu Kaal", start: rk.start, end: rk.end, alert: pick(ALERT_LINE, l).replace("{n}", nTag).replace("{name}", "Rahu Kaal").replace("{b}", rk.end) });
+      }
+    } catch { /* polar / no sunrise — skip the clock, keep the words */ }
+  }
+
+  // ── night recap ──
+  const recapKey: "good" | "mixed" | "careful" = sig.lean === "good" ? "good" : sig.lean === "careful" ? "careful" : "mixed";
+  const nightRecap = pick(RECAP[recapKey], l).replace("{n}", nTag).replace(/\{area\}/g, areaName || (l === "hi" ? "आज के काम" : "today"));
+
+  return { date: input.date, name: sig.name, lean: sig.lean, summary, timeline, badWindows, nightRecap };
+}
+
+/** today .. today+days-1 whole-day plans in one call — the app pre-schedules
+ *  the morning summary, the night recap and the Rahu-Kaal alert from this, so
+ *  they fire on time with the app closed and no network. Capped like signals. */
+export function buildUpcomingDayPlans(input: {
+  chart: any; tz: string; lang?: string; latitude?: number; longitude?: number;
+  ayanamsa: number; name?: string | null; days?: number;
+}): DayPlan[] {
+  const days = Math.max(1, Math.min(21, input.days ?? 14));
+  const base = new Intl.DateTimeFormat("en-CA", { timeZone: input.tz }).format(new Date());
+  const [yy, mm, dd] = base.split("-").map(Number);
+  const out: DayPlan[] = [];
+  for (let i = 0; i < days; i++) {
+    const date = new Date(Date.UTC(yy, mm - 1, dd + i)).toISOString().slice(0, 10);
+    out.push(buildDayPlan({ ...input, date }));
   }
   return out;
 }

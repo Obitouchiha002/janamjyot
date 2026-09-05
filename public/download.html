@@ -756,9 +756,9 @@
   .cmp-note{margin-top:12px;text-align:center;font-size:11.5px;color:var(--muted)}
   /* Nav-opened pages. The home scroll is one document; these are separate
      views on top of it, so a nav click lands somewhere rather than scrolling. */
-  /* Pricing held back until payments are live — hides every entry point.
-     Re-enable by removing this rule and restoring 'pricing' in PAGES. */
-  [data-page="pricing"], [data-tab-go="pricing"], [data-tab="pricing"]{display:none !important}
+  /* Pricing is live: credit packs + the ₹1 three-day pass. (This used to carry
+     a display:none rule that hid every pricing entry point while payments were
+     being built.) */
   .page{display:none;min-height:70vh}
   /* The scroll sections live inside .content, not directly under <body> — a
      body-level child selector silently matches nothing here, which is exactly
@@ -1501,7 +1501,8 @@
       <div class="pol">
         <h3>Your data</h3>
         <p>Birth details are used to calculate your chart and nothing else. They are never sold. You can delete your account and everything in it from Settings in the app.</p>
-        <p><a href="/privacy.html">Privacy Policy</a> · <a href="/terms.html">Terms of Use</a></p>
+        <p><a href="/privacy.html">Privacy Policy</a> · <a href="/terms.html">Terms of Use</a> ·
+        <a href="/refund.html">Refunds</a> · <a href="/contact.html">Contact</a></p>
       </div>
       <div class="pol">
         <h3>What this app is not</h3>
@@ -1781,7 +1782,8 @@
       <div>
         <div class="foot-h">Company</div>
         <div class="foot-links">
-          <a href="mailto:vk1234888i@gmail.com">Contact &amp; Support</a>
+          <a href="/contact.html">Contact Us</a>
+          <a href="/refund.html">Refund &amp; Cancellation</a>
           <a href="/privacy.html">Privacy Policy</a>
           <a href="/terms.html">Terms of Use</a>
           <a href="#transparency">Astrology Disclaimer</a>
@@ -1842,9 +1844,8 @@
         <div class="row"><span>Your credits</span><span id="buyBal">0</span></div>
       </div>
       <p class="buy-test">⚠ Test mode — no real money moves. These buttons simulate how a payment can actually end.</p>
-      <button class="btn btn-gold buy-go" id="buyPaySuccess">Pay — simulate success</button>
-      <button class="btn btn-ghost buy-go2" id="buyPayFail">Simulate a failed payment</button>
-      <button class="btn btn-ghost buy-go2" id="buyPayTwice">Simulate the same payment arriving twice</button>
+      <button class="btn btn-gold buy-go" id="buyPayNow">Pay securely</button>
+      <p class="buy-go2" style="margin:10px 0 0;font-size:12.5px;opacity:.75">UPI · cards · netbanking · wallets — secured by Razorpay. Credits are added the moment the payment is confirmed.</p>
     </div>
 
     <!-- done -->
@@ -1911,7 +1912,7 @@
      their own views: a nav click should arrive somewhere, not fling you down
      a page. Hash-driven, so Back works and links are shareable. */
   (function(){
-    var PAGES = ['account','support']; // 'pricing' held back — see CSS note
+    var PAGES = ['pricing','account','support'];
     function show(name, push){
       var isPage = PAGES.indexOf(name) >= 0;
       document.querySelectorAll('[data-pageview]').forEach(function(el){
@@ -2255,38 +2256,77 @@
       }).catch(function(){});
     }
 
-    /* 'twice' settles the SAME order again — a provider retrying its webhook.
-       The balance must not move the second time. */
-    function pay(outcome, btn){
-      banner(''); busy(btn,true,'Processing…');
-      var orderId;
-      api('/api/billing/mock/order',{method:'POST',body:JSON.stringify({pack:plan.id})})
-        .then(function(o){ orderId=o.order_id;
-          return api('/api/billing/mock/pay',{method:'POST',
-            body:JSON.stringify({order_id:orderId,outcome:outcome==='fail'?'fail':'success'})}); })
-        .then(function(r){
-          if(outcome!=='twice') return r;
-          return api('/api/billing/mock/pay',{method:'POST',
-            body:JSON.stringify({order_id:orderId,outcome:'success'})})
-            .then(function(x){ x.__twice=true; x.__first=r.balance; return x; });
-        })
-        .then(function(r){
-          if(r.status==='failed'){ banner('Payment failed — nothing was charged and no credits were added.'); return; }
-          var msg = plan.id==='trial'
-            ? 'Your 3-day full access is on. It ends ' +
-              (r.trial_ends_at ? new Date(r.trial_ends_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : 'in 3 days') +
-              '. Nothing will renew.'
-            : 'Done — your balance is now ' + r.balance + ' credits. They never expire.';
-          if(r.__twice){
-            msg += '\n\nThe duplicate was ignored: the balance stayed at ' + r.balance +
-                   ' (it was ' + r.__first + ' after the first). A retried webhook can never credit twice.';
+    /* Real payment. Credits are NEVER granted by this browser saying "done" —
+       the server grants them only from Razorpay's signed webhook. So after
+       checkout closes we poll our own balance until the webhook lands (a second
+       or two), which is also the honest thing to show the user. */
+    function loadRzp(){
+      return new Promise(function(res, rej){
+        if(window.Razorpay) return res();
+        var s = document.createElement('script');
+        s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        s.onload = function(){ res(); };
+        s.onerror = function(){ rej(new Error('Could not load the payment window. Check your connection.')); };
+        document.head.appendChild(s);
+      });
+    }
+
+    /* Wait for the webhook to credit the account, then show the real balance. */
+    function awaitCredits(before){
+      step('buyStepDone');
+      $('buyDoneMsg').textContent = 'Payment received — adding your credits…';
+      var tries = 0;
+      (function poll(){
+        tries++;
+        api('/api/credits').then(function(c){
+          var landed = plan.id === 'trial'
+            ? (c && c.trial && c.trial.active)
+            : (c && typeof c.balance === 'number' && c.balance > before);
+          if(landed){
+            $('buyDoneMsg').textContent = plan.id === 'trial'
+              ? 'Your 3-day full access is on. It ends ' +
+                (c.trial.ends_at ? new Date(c.trial.ends_at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : 'in 3 days') +
+                '. Nothing will renew.'
+              : 'Done — your balance is now ' + c.balance + ' credits. They never expire.';
+            receipts(); refreshChip(); renderAccount();
+          } else if(tries < 12){
+            setTimeout(poll, 1500);
+          } else {
+            $('buyDoneMsg').textContent =
+              'Payment received. Your credits are taking a moment to appear — they will land shortly, ' +
+              'and nothing is lost. Refresh this page, or write to us if they are not there in a few minutes.';
+            receipts(); refreshChip(); renderAccount();
           }
-          $('buyDoneMsg').textContent = msg;
-          step('buyStepDone');
-          receipts(); refreshChip(); renderAccount();
+        }).catch(function(){ if(tries < 12) setTimeout(poll, 1500); });
+      })();
+    }
+
+    function payNow(btn){
+      banner(''); busy(btn, true, 'Starting…');
+      var before = 0, order;
+      api('/api/credits').catch(function(){ return { balance: 0 }; })
+        .then(function(c){ before = (c && c.balance) || 0;
+          return api('/api/billing/order', { method:'POST', body: JSON.stringify({ pack: plan.id }) }); })
+        .then(function(o){ order = o; return loadRzp(); })
+        .then(function(){
+          busy(btn, false);
+          var rzp = new window.Razorpay({
+            key: order.key_id,
+            amount: order.amount,
+            currency: order.currency || 'INR',
+            order_id: order.order_id,
+            name: 'JanamJyot',
+            description: plan.name,
+            theme: { color: '#D8AB4E' },
+            handler: function(){ awaitCredits(before); },
+            modal: { ondismiss: function(){ banner('Payment cancelled — nothing was charged.'); } }
+          });
+          rzp.on('payment.failed', function(){
+            banner('Payment failed — nothing was charged and no credits were added.');
+          });
+          rzp.open();
         })
-        .catch(function(e){ banner(e.message); })
-        .finally(function(){ busy(btn,false); });
+        .catch(function(e){ busy(btn, false); banner(e.message || 'Could not start the payment.'); });
     }
     /* ── Account page ──────────────────────────────────────────────────── */
     function money(p){ return '₹' + (p/100).toLocaleString('en-IN'); }
@@ -2342,9 +2382,7 @@
     var outBtn = $('acSignOut');
     if(outBtn) outBtn.onclick = function(){ setToken(''); me=null; refreshChip(); renderAccount(); };
 
-    $('buyPaySuccess').onclick=function(){ pay('success',this); };
-    $('buyPayFail').onclick   =function(){ pay('fail',this); };
-    $('buyPayTwice').onclick  =function(){ pay('twice',this); };
+    $('buyPayNow').onclick = function(){ payNow(this); };
   })();
 
   function triggerDownload(){
@@ -2733,7 +2771,6 @@
     function fromHash(){
       var h=(location.hash||'').slice(1);
       var hk=h.replace(/[^a-z]/g,'');
-      if(hk==='pricing') return; // held back
       if(h && shell.querySelector('[data-screen="'+hk+'"]')) go(hk);
     }
     window.addEventListener('hashchange', fromHash);

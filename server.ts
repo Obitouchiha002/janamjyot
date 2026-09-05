@@ -37,6 +37,8 @@ import {
   startTrial,
   TRIAL,
   deliveryCountSince,
+  createProviderOrder,
+  settleOrder,
   createMockOrder,
   settleMockOrder,
   paymentHistory,
@@ -143,7 +145,7 @@ import { personMoon, matchKundli } from "./server/matching";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
-import { buildDaySignals, buildUpcomingDaySignals } from "./server/day-signals";
+import { buildDaySignals, buildUpcomingDaySignals, buildDayPlan, buildUpcomingDayPlans } from "./server/day-signals";
 import { hinduDay } from "./server/hindu-calendar";
 import { buildMuhurat, scanMonth } from "./server/muhurat";
 import { detectYogas } from "./server/yogas";
@@ -275,6 +277,7 @@ const ALLOWED_ORIGINS = new Set(
     "http://localhost:3000",
     "http://localhost:5173",
     "http://localhost:4001",
+    "http://localhost:7890",   // local preview of a built dist against live API
     ...(process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()),
   ].filter(Boolean) as string[],
 );
@@ -292,7 +295,13 @@ app.use(cors({
   credentials: false, // we use Bearer tokens, never cookies
 }));
 
-app.use(express.json({ limit: "1mb" })); // cap the body so a huge POST can't hog memory
+// Cap the body so a huge POST can't hog memory. `verify` keeps the RAW bytes
+// on the request: a provider webhook signature is computed over the exact body
+// that was sent, so re-serialising the parsed JSON would not match.
+app.use(express.json({
+  limit: "1mb",
+  verify: (req: any, _res, buf) => { req.rawBody = buf; },
+}));
 
 // ── Rate limiting on the auth surface ──────────────────────────────────────
 // In-memory store: on serverless each instance keeps its own counters, so this
@@ -343,6 +352,9 @@ const PUBLIC_API = [
   /^\/places$/,
   /^\/panchang$/,
   /^\/panchang-today$/,
+  // Razorpay calls this server-to-server with no session. It is not "open":
+  // the HMAC signature check inside the route is its authentication.
+  /^\/billing\/webhook$/,
   /^\/muhurat$/,
   /^\/muhurat-month$/,
   /^\/right-now$/,
@@ -1082,6 +1094,126 @@ app.get("/api/admin/payments", requireAdmin, async (_req, res) => {
  * live site, because one misconfigured env var would otherwise hand out free
  * credits to anyone who found the URL.
  */
+/* ── Razorpay (the live payment path) ──────────────────────────────────────
+   Two routes and one rule: money is only ever granted by the WEBHOOK, after a
+   signature check. The browser saying "payment done" is never trusted — anyone
+   can send that. Granting is keyed on Razorpay's payment id and the ledger has
+   a unique index on it, so Razorpay's retries (it retries on any non-2xx) can
+   never credit an account twice. */
+const RZP_KEY_ID = (process.env.RAZORPAY_KEY_ID || "").trim();
+const RZP_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+const RZP_WEBHOOK_SECRET = (process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
+const RZP_READY = !!(RZP_KEY_ID && RZP_KEY_SECRET);
+
+/** POST /api/billing/order { pack } — create a Razorpay order for this user. */
+app.post("/api/billing/order", async (req: any, res) => {
+  if (!RZP_READY) return res.status(503).json({ error: "Payments are not enabled yet." });
+  try {
+    const packId = String(req.body?.pack ?? "");
+    const isTrial = packId === "trial";
+    const pack = isTrial
+      ? { paise: TRIAL.paise, credits: 0, label: "3-day trial" }
+      : CREDIT_PACKS[packId];
+    if (!pack) return res.status(400).json({ error: "Unknown pack." });
+
+    if (isTrial) {
+      const t = await trialState(req.user.id);
+      if (t.used) return res.status(409).json({ error: "This account has already used its trial." });
+    }
+
+    const r = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + Buffer.from(`${RZP_KEY_ID}:${RZP_KEY_SECRET}`).toString("base64"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        amount: pack.paise,
+        currency: "INR",
+        // The user id lives in the order NOTES only for support/tracing. The
+        // account that gets credited is read from OUR payments row, which was
+        // written from the session — never from anything the client can set.
+        notes: { user_id: req.user.id, pack: packId },
+        receipt: `jj_${Date.now()}_${String(req.user.id).slice(0, 8)}`,
+      }),
+    });
+    const order: any = await r.json().catch(() => ({}));
+    if (!r.ok || !order?.id) {
+      console.error("[rzp-order] provider rejected:", r.status, order?.error?.description);
+      return res.status(502).json({ error: "Could not start this purchase. Please try again." });
+    }
+
+    await createProviderOrder({
+      userId: req.user.id, packId, paise: pack.paise, credits: pack.credits, orderId: order.id,
+    });
+    res.json({
+      order_id: order.id, amount: pack.paise, currency: "INR",
+      pack: packId, key_id: RZP_KEY_ID,
+    });
+  } catch (err: any) {
+    fail(res, 500, "Could not start this purchase.", err, "rzp-order");
+  }
+});
+
+/**
+ * POST /api/billing/webhook — Razorpay calls this. PUBLIC (no session), so the
+ * SIGNATURE is the only thing standing between a stranger and free credits.
+ * Always answer 2xx once the event is understood, or Razorpay keeps retrying.
+ */
+app.post("/api/billing/webhook", async (req: any, res) => {
+  try {
+    if (!RZP_WEBHOOK_SECRET) return res.status(503).json({ error: "Webhook not configured." });
+
+    const sent = String(req.get("x-razorpay-signature") || "");
+    const raw: Buffer = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const expected = crypto.createHmac("sha256", RZP_WEBHOOK_SECRET).update(raw).digest("hex");
+    const a = Buffer.from(expected, "utf8");
+    const b = Buffer.from(sent, "utf8");
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      console.warn("[rzp-webhook] bad signature — ignored");
+      return res.status(400).json({ error: "Bad signature." });
+    }
+
+    const event = String(req.body?.event || "");
+    const entity = req.body?.payload?.payment?.entity ?? {};
+    const orderId = String(entity.order_id || "");
+    const paymentId = String(entity.id || "");
+
+    if (!orderId) return res.json({ ok: true, ignored: "no order id" });
+
+    if (event === "payment.captured") {
+      const result = await settleOrder(orderId, "paid", paymentId);
+      if (!result.ok) {
+        // Unknown order: nothing we can credit. 200 so Razorpay stops retrying.
+        console.warn("[rzp-webhook] unknown order", orderId);
+        return res.json({ ok: true, ignored: "unknown order" });
+      }
+      if (!result.alreadySettled) {
+        if (result.packId === "trial") {
+          await startTrial(result.userId!);
+        } else if (result.credits) {
+          await grantCredits({
+            userId: result.userId!, credits: result.credits, reason: "purchase",
+            refType: "payment", refId: result.paymentId || paymentId, note: result.packId,
+          });
+        }
+      }
+      return res.json({ ok: true, settled: true, already: result.alreadySettled ?? false });
+    }
+
+    if (event === "payment.failed") {
+      await settleOrder(orderId, "failed", null, String(entity.error_description || "failed"));
+      return res.json({ ok: true, settled: "failed" });
+    }
+
+    return res.json({ ok: true, ignored: event });
+  } catch (err: any) {
+    console.error("[rzp-webhook] error:", err?.message);
+    // 500 makes Razorpay retry, which is what we want for a transient failure.
+    res.status(500).json({ error: "Webhook processing failed." });
+  }
+});
+
 const MOCK_BILLING = !IS_PROD;
 
 function requireMockBilling(res: any): boolean {
@@ -2158,6 +2290,62 @@ app.get("/api/chart/:chartId/day-signals", async (req, res) => {
     res.json(signals);
   } catch (err: any) {
     console.error("[day-signals] error:", err?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/**
+ * GET /api/chart/:chartId/day-plan?lang=&lat=&lon=&tz=&date=
+ *
+ * The whole-day reading (deterministic, no AI): a 3-4 line morning summary, the
+ * full time-ordered timeline, the Rahu-Kaal real-time alert text, and a night
+ * recap. Powers the morning/night notifications and the home day-timeline.
+ */
+app.get("/api/chart/:chartId/day-plan", async (req, res) => {
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    const b = chart.birth_details || {};
+    const tz = (typeof req.query.tz === "string" && req.query.tz) || b.timezone || "Asia/Kolkata";
+    const lang = normalizeLanguage(req.query.lang, b.language || "en");
+    const date =
+      typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+        ? req.query.date
+        : new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+    const lat = Number(req.query.lat ?? b.latitude);
+    const lon = Number(req.query.lon ?? b.longitude);
+    const plan = buildDayPlan({
+      chart, date, tz, lang, ayanamsa: AYANAMSA, name: b.name,
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lon) ? lon : undefined,
+    });
+    res.json(plan);
+  } catch (err: any) {
+    console.error("[day-plan] error:", err?.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+/** GET /api/chart/:chartId/day-plan/upcoming?days=14&lang= — the app pre-schedules
+ *  the morning / night / Rahu-Kaal notifications from this one batch. */
+app.get("/api/chart/:chartId/day-plan/upcoming", async (req, res) => {
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    const b = chart.birth_details || {};
+    const tz = (typeof req.query.tz === "string" && req.query.tz) || b.timezone || "Asia/Kolkata";
+    const lang = normalizeLanguage(req.query.lang, b.language || "en");
+    const days = Math.max(1, Math.min(21, Number(req.query.days) || 14));
+    const lat = Number(req.query.lat ?? b.latitude);
+    const lon = Number(req.query.lon ?? b.longitude);
+    const plans = buildUpcomingDayPlans({
+      chart, tz, lang, ayanamsa: AYANAMSA, name: b.name, days,
+      latitude: Number.isFinite(lat) ? lat : undefined,
+      longitude: Number.isFinite(lon) ? lon : undefined,
+    });
+    res.json(plans);
+  } catch (err: any) {
+    console.error("[day-plan/upcoming] error:", err?.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });

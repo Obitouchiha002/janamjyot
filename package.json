@@ -16,7 +16,8 @@
     "sync:app": "node scripts/prune-app-dist.mjs && cap sync android",
     "check:failover": "tsx server/__checks__/failover.ts",
     "check:day-signals": "tsx server/__checks__/day-signals.ts",
-    "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts"
+    "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts",
+    "check:credits-race": "tsx server/__checks__/credits-race.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

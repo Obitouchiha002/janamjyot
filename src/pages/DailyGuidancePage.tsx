@@ -6,6 +6,7 @@ import {
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
 import DayBanner from "@/components/DayBanner";
+import DayTimeline from "@/components/DayTimeline";
 import { LoadError } from "@/components/ErrorState";
 import { getLang } from "@/lib/prefs";
 
@@ -93,47 +94,13 @@ export default function DailyGuidancePage() {
         </div>
       </section>
 
-      {/* The REAL, deterministic day (Tarabala-led) — the same clear line as the
-          home banner, with its Reason. This is the "aaj ka din" core; the AI
-          area-cards below only elaborate on it. */}
-      {chartId && <DayBanner chartId={chartId} />}
+      {/* The whole day in ONE place: the warm summary, every time-block with the
+          one you're in right now marked, the real Reason, and the night recap —
+          the same calculated reading the morning / night / Rahu-Kaal
+          notifications carry. This replaced a stacked banner + a separate
+          best/caution grid that said the same windows three times on one screen. */}
+      {chartId && <DayTimeline chartId={chartId} />}
 
-      {/* best time + caution */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="m-card m-enter p-3.5" style={{ borderColor: "#34D39955" }}>
-          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "#34D399" }}>
-            <Clock className="h-3.5 w-3.5" /> Best Time
-          </p>
-          {best.length ? (
-            <div className="mt-1.5 space-y-1">
-              {best.slice(0, 3).map((b, i) => (
-                <p key={i} className="text-[12.5px] font-bold leading-snug">
-                  {b.start}–{b.end} <span className="font-medium text-muted-foreground">· {b.name}</span>
-                </p>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-1.5 text-[12.5px] text-muted-foreground">No clear window today.</p>
-          )}
-        </div>
-
-        <div className="m-card m-enter p-3.5" style={{ borderColor: "#F8717155" }}>
-          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: "#F87171" }}>
-            <AlertTriangle className="h-3.5 w-3.5" /> Caution
-          </p>
-          {caution.length ? (
-            <div className="mt-1.5 space-y-1">
-              {caution.map((c, i) => (
-                <p key={i} className="text-[12.5px] font-bold leading-snug">
-                  {c.start}–{c.end} <span className="font-medium text-muted-foreground">· {c.name}</span>
-                </p>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-1.5 text-[12.5px] text-muted-foreground">Nothing to avoid today.</p>
-          )}
-        </div>
-      </div>
 
       {/* life areas */}
       <section className="m-enter">

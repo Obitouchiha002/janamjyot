@@ -18,26 +18,33 @@ import { getLang } from "./prefs";
 const PREF_KEY = "jj:notif";
 
 export interface NotifPrefs {
-  daily: boolean;
+  daily: boolean;      // morning whole-day summary
   dailyHour: number;   // 0–23
   dailyMin: number;    // 0–59
+  night: boolean;      // night "how was today" recap
+  alert: boolean;      // real-time "this time isn't good" (Rahu Kaal) alert
   remedy: boolean;
   monthly: boolean;
   dasha: boolean;
 }
 
-const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, remedy: false, monthly: true, dasha: true };
+const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, night: true, alert: true, remedy: false, monthly: true, dasha: true };
 
 // Stable ids so re-scheduling replaces (never duplicates) each reminder.
 const ID = { daily: 1001, remedy: 1002, monthly: 1003, dasha: 1004, window: 1005 };
 
-// The daily message is not one repeating reminder any more — it is a queue of
-// real, day-specific predictions. Each day gets its own one-off notification in
-// this reserved id block, pre-filled with that day's computed line so it fires
-// with the app closed and no network. The app re-tops-up the queue every launch.
-const DAILY_BASE = 1100;
-const DAILY_SPAN = 14; // days pre-scheduled; the server caps the batch at 14 too
-const DAILY_IDS = Array.from({ length: DAILY_SPAN }, (_, i) => DAILY_BASE + i);
+// The daily experience is a queue of real, day-specific notifications, pre-filled
+// with each day's computed content so they fire with the app closed and no
+// network. Three reserved id blocks — the morning whole-day summary, the night
+// "how was today" recap, and the Rahu-Kaal "this time isn't good" alert — one
+// slot per day, 14 days out. The app re-tops-up the queue every launch.
+const SPAN = 14;
+const MORNING_BASE = 1100;
+const NIGHT_BASE = 1120;
+const RAHU_BASE = 1140;
+const PLAN_IDS = [MORNING_BASE, NIGHT_BASE, RAHU_BASE].flatMap((base) =>
+  Array.from({ length: SPAN }, (_, i) => base + i),
+);
 
 /**
  * One-off "ping me when the good window opens", used by Right Now.
@@ -116,10 +123,10 @@ export async function applyNotifications(opts: {
   } catch { /* nothing scheduled yet */ }
 
   if (prefs.daily && opts.chartId) {
-    await scheduleDailyQueue(opts.chartId, prefs, route);
+    await scheduleDayPlanQueue(opts.chartId, prefs, route);
   } else {
     // Daily turned off — tear the whole queue down.
-    try { await LocalNotifications.cancel({ notifications: DAILY_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
+    try { await LocalNotifications.cancel({ notifications: PLAN_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
   }
 
   const notifications: any[] = [];
@@ -159,69 +166,113 @@ export async function applyNotifications(opts: {
   }
 }
 
-type DaySig = { date: string; short: string; tone: "good" | "advice" | "warn"; name?: string | null };
+type PlanDay = {
+  date: string;
+  name?: string | null;
+  summary: string[];
+  nightRecap: string;
+  badWindows: Array<{ name: string; start: string; end: string; alert: string }>;
+};
+
+/** Parse "H:MM AM/PM" (the server's clock format) on a calendar date into a
+ *  Date in the device's local zone — used to fire the Rahu-Kaal alert on time. */
+function atOnDate(dateStr: string, hhmm: string): Date | null {
+  const [y, m, dd] = dateStr.split("-").map(Number);
+  const mt = /^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(hhmm.trim());
+  if (!mt || !y) return null;
+  let h = Number(mt[1]);
+  const min = Number(mt[2]);
+  const ap = (mt[3] || "").toUpperCase();
+  if (ap === "PM" && h < 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  const d = new Date(y, m - 1, dd, h, min, 0, 0);
+  return isNaN(d.getTime()) ? null : d;
+}
 
 /**
- * Fill the daily queue with real, day-specific lines.
+ * Fill the daily queue with the real whole-day plan — THREE personal, calculated
+ * (no-AI) notifications per day, pre-scheduled 14 days out:
+ *   • morning (chosen time) → the 3-4 line whole-day summary;
+ *   • night (9:30 PM)       → "how was today" recap;
+ *   • at Rahu Kaal start     → "this time isn't good, hold a bit".
+ * Fetched in one batch from /day-plan/upcoming (deterministic server-side).
  *
- * Fetches the coming ~2 weeks of computed day-signals in one call (deterministic
- * server-side, no AI), then schedules one notification per day AT the user's
- * chosen hour with that day's actual message as the body. The whole point is
- * that the 8 AM buzz already contains the prediction — the user gets value
- * without opening the app, which a generic "your guidance is ready" never did.
- *
- * Failure-safe: if the fetch fails (offline), we return WITHOUT touching the
- * existing queue, so yesterday's fetched week keeps firing rather than going
- * dark. The queue is only cancelled-and-replaced once fresh content is in hand.
+ * Failure-safe: on a fetch failure (offline) we return WITHOUT touching the
+ * existing queue, so a whole week of good notifications keeps firing rather than
+ * going dark. The queue is only cancelled-and-replaced once fresh content is in.
  */
-async function scheduleDailyQueue(
+async function scheduleDayPlanQueue(
   chartId: string,
   prefs: NotifPrefs,
   route: (r: string) => string,
 ): Promise<void> {
-  let days: DaySig[] = [];
+  let plans: PlanDay[] = [];
   try {
     const r = await fetch(
-      `/api/chart/${chartId}/day-signals/upcoming?days=${DAILY_SPAN}&lang=${encodeURIComponent(getLang())}`,
+      `/api/chart/${chartId}/day-plan/upcoming?days=${SPAN}&lang=${encodeURIComponent(getLang())}`,
     );
     const j = await r.json();
-    if (j?.error || !Array.isArray(j?.days)) return; // leave the existing queue intact
-    days = j.days;
+    if (j?.error || !Array.isArray(j)) return; // leave the existing queue intact
+    plans = j;
   } catch {
     return; // offline — do not wipe what's already scheduled
   }
-  if (!days.length) return;
+  if (!plans.length) return;
 
-  const icon = (t: DaySig["tone"]) => (t === "warn" ? "⚠️" : t === "good" ? "☀️" : "🕉️");
   const first = (name?: string | null) => (name ? name.trim().split(/\s+/)[0] : "");
-
   const now = Date.now();
-  const notifications = days.slice(0, DAILY_SPAN).map((d, i) => {
-    // Fire at the chosen time on that calendar date, in the DEVICE's local zone
-    // (which is the user's zone in practice). Date-only string → no tz parsing.
-    const [y, m, dd] = d.date.split("-").map(Number);
-    const at = new Date(y, m - 1, dd, prefs.dailyHour, prefs.dailyMin, 0, 0);
-    return {
-      id: DAILY_BASE + i,
-      at,
-      title: `${icon(d.tone)} ${first(d.name) ? first(d.name) + ", " : ""}aaj ka din`.trim(),
-      body: d.short,
-      route: route(`/daily/${chartId}`),
-    };
-  }).filter((n) => n.at.getTime() > now); // today's slot may already be past
+  const notifications: any[] = [];
 
-  // Swap atomically-ish: clear the block, then schedule the fresh set.
-  try { await LocalNotifications.cancel({ notifications: DAILY_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
+  plans.slice(0, SPAN).forEach((p, i) => {
+    if (!p?.date) return;
+    const [y, m, dd] = p.date.split("-").map(Number);
+    const fn = first(p.name);
+    const greet = fn ? fn + ", " : "";
+
+    // 🌅 morning whole-day summary, at the user's chosen time
+    const morning = new Date(y, m - 1, dd, prefs.dailyHour, prefs.dailyMin, 0, 0);
+    if (morning.getTime() > now && p.summary?.length) {
+      notifications.push({
+        id: MORNING_BASE + i,
+        title: `☀️ ${greet}aaj ka din`.trim(),
+        body: p.summary.join("\n"),
+        schedule: { at: morning, allowWhileIdle: true },
+        extra: { route: route(`/daily/${chartId}`) },
+      });
+    }
+    // 🌙 night recap
+    if (prefs.night && p.nightRecap) {
+      const night = new Date(y, m - 1, dd, 21, 30, 0, 0);
+      if (night.getTime() > now) {
+        notifications.push({
+          id: NIGHT_BASE + i,
+          title: `🌙 ${greet}aaj ka din kaisa tha`.trim(),
+          body: p.nightRecap,
+          schedule: { at: night, allowWhileIdle: true },
+          extra: { route: route(`/daily/${chartId}`) },
+        });
+      }
+    }
+    // ⏰ real-time "this time isn't good" alert, at Rahu Kaal start
+    if (prefs.alert && p.badWindows?.length) {
+      const bw = p.badWindows[0];
+      const at = atOnDate(p.date, bw.start);
+      if (at && at.getTime() > now) {
+        notifications.push({
+          id: RAHU_BASE + i,
+          title: `⏰ ${greet}dhyan`.trim(),
+          body: bw.alert,
+          schedule: { at, allowWhileIdle: true },
+          extra: { route: route(`/right-now/${chartId}`) },
+        });
+      }
+    }
+  });
+
+  // Swap: clear the three blocks, then schedule the fresh set.
+  try { await LocalNotifications.cancel({ notifications: PLAN_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
   if (!notifications.length) return;
   try {
-    await LocalNotifications.schedule({
-      notifications: notifications.map((n) => ({
-        id: n.id,
-        title: n.title,
-        body: n.body,
-        schedule: { at: n.at, allowWhileIdle: true },
-        extra: { route: n.route },
-      })),
-    });
+    await LocalNotifications.schedule({ notifications });
   } catch { /* ignore */ }
 }

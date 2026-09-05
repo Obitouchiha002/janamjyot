@@ -1,30 +1,65 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build && node scripts/web-root.mjs",
   "outputDirectory": "dist",
-  "functions": { "api/index.ts": { "maxDuration": 60 } },
-  "redirects": [
-    { "source": "/", "destination": "/download.html", "permanent": false }
-  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
       ]
     },
     {
-      "source": "/(download|privacy|terms).html",
+      "source": "/(download|privacy|terms|refund|contact).html",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://janamjyot.lzworth.in https://janamjyot.vercel.app; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://janamjyot.lzworth.in https://janamjyot.vercel.app https://api.razorpay.com https://lumberjack.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://api.razorpay.com"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https:; connect-src 'self' https://janamjyot.lzworth.in https://janamjyot.vercel.app https://api.razorpay.com https://lumberjack.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self' https://api.razorpay.com"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index?__p=$1" },
-    { "source": "/((?!api/)[^.]*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index?__p=$1"
+    },
+    {
+      "source": "/((?!api/)[^.]*)",
+      "destination": "/app.html"
+    }
   ]
 }

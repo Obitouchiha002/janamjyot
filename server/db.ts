@@ -818,7 +818,11 @@ export async function listUsers(search = ""): Promise<any[]> {
               (SELECT count(*) FROM chart_calculations c WHERE c.owner_id = u.id)::int AS charts,
               (SELECT count(*) FROM usage_events e
                 WHERE e.user_id = u.id AND e.action = 'ask'
-                  AND e.created_at > now() - interval '30 days')::int AS asks_30d
+                  AND e.created_at > now() - interval '30 days')::int AS asks_30d,
+              -- Balance is always derived from the ledger, never a stored column,
+              -- so the number the admin sees can never drift from the truth.
+              (SELECT COALESCE(SUM(l.delta), 0) FROM credit_ledger l
+                WHERE l.user_id = u.id)::int AS credits
          FROM app_users u
         WHERE ($1 = '%%' OR lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
         ORDER BY u.created_at DESC
@@ -960,6 +964,36 @@ export async function deleteUserAndData(id: string) {
     // leave their words and name on the public site.
     await pool!.query(`DELETE FROM feedback WHERE user_id = $1`, [id]);
     if (email) await pool!.query(`DELETE FROM login_codes WHERE email = $1`, [email]);
+
+    // Money rows (payments, credit_ledger, deliveries) are FK'd ON DELETE
+    // RESTRICT and must be KEPT: they are the tax/audit trail and the only way
+    // to answer "where did my credits go?" in a dispute. So if this account ever
+    // touched money we ANONYMISE it instead of deleting it — every personal
+    // field is scrubbed, so the person is gone, while the financial history
+    // stays attached to an id that no longer identifies anybody.
+    //
+    // Without this, "delete my account" fails with a foreign-key error for
+    // every customer who has ever paid — i.e. exactly the promise the app and
+    // the privacy policy make would break the moment payments went live.
+    const { rows: fin } = await pool!.query(
+      `SELECT (SELECT count(*) FROM payments      WHERE user_id = $1)
+            + (SELECT count(*) FROM credit_ledger WHERE user_id = $1)
+            + (SELECT count(*) FROM deliveries    WHERE user_id = $1) AS n`,
+      [id],
+    );
+    if (Number(fin[0]?.n ?? 0) > 0) {
+      await pool!.query(
+        `UPDATE app_users
+            SET email = 'deleted+' || id::text || '@deleted.invalid',
+                name = 'Deleted user',
+                password_hash = NULL, google_sub = NULL, avatar_url = NULL,
+                limits_json = NULL, status = 'deleted',
+                status_reason = 'deleted by user'
+          WHERE id = $1`,
+        [id],
+      );
+      return;
+    }
     await pool!.query(`DELETE FROM app_users WHERE id = $1`, [id]);
     return;
   }
@@ -968,7 +1002,19 @@ export async function deleteUserAndData(id: string) {
   if (gone?.email) {
     fileData.login_codes = (fileData.login_codes ?? []).filter((c: any) => c.email !== gone.email);
   }
-  fileData.users = fileData.users.filter((u) => u.id !== id);
+  // Same rule as Postgres: keep the money trail, remove the person.
+  const hasMoney =
+    (fileData.payments ?? []).some((r: any) => r.user_id === id) ||
+    (fileData.credit_ledger ?? []).some((r: any) => r.user_id === id) ||
+    (fileData.deliveries ?? []).some((r: any) => r.user_id === id);
+  if (hasMoney && gone) {
+    gone.email = `deleted+${id}@deleted.invalid`;
+    gone.name = "Deleted user";
+    gone.password_hash = null; gone.google_sub = null; gone.avatar_url = null;
+    gone.limits_json = null; gone.status = "deleted"; gone.status_reason = "deleted by user";
+  } else {
+    fileData.users = fileData.users.filter((u) => u.id !== id);
+  }
   const chartIds = Object.values(fileData.chart_calculations).filter((c: any) => c.owner_id === id).map((c: any) => c.id);
   const profileIds = new Set<string>();
   for (const cid of chartIds) {
@@ -1305,6 +1351,60 @@ export async function grantCredits(args: {
     );
     await client.query("COMMIT");
     return after;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Admin adjustment — add or take back credits by hand (support, goodwill, a
+ * correction). Goes through the SAME ledger as everything else, so the balance
+ * still reconciles and "where did my credits go?" still answers exactly. A
+ * negative adjustment is refused if it would take the balance below zero, and
+ * it is row-locked like every other write so it cannot race a spend.
+ */
+export async function adminAdjustCredits(args: {
+  userId: string;
+  delta: number;              // + to give, − to take back
+  note?: string | null;
+}): Promise<{ balance: number } | { error: string }> {
+  const delta = Math.trunc(args.delta);
+  if (!Number.isFinite(delta) || delta === 0) return { error: "Adjustment must be a non-zero whole number." };
+
+  if (!USE_PG) {
+    const after = (await creditBalance(args.userId)) + delta;
+    if (after < 0) return { error: "That would take the balance below zero." };
+    fileData.credit_ledger.push({
+      user_id: args.userId, delta, reason: "admin", ref_type: null, ref_id: null,
+      note: args.note ?? null, balance_after: after, created_at: nowIso(),
+    });
+    saveFile();
+    return { balance: after };
+  }
+
+  const client = await pool!.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT id FROM app_users WHERE id = $1 FOR UPDATE`, [args.userId]);
+    const { rows: b } = await client.query(
+      `SELECT COALESCE(SUM(delta), 0)::int AS n FROM credit_ledger WHERE user_id = $1`,
+      [args.userId],
+    );
+    const after = (b[0]?.n ?? 0) + delta;
+    if (after < 0) {
+      await client.query("ROLLBACK");
+      return { error: "That would take the balance below zero." };
+    }
+    await client.query(
+      `INSERT INTO credit_ledger (user_id, delta, reason, ref_type, ref_id, note, balance_after)
+       VALUES ($1,$2,'admin',NULL,NULL,$3,$4)`,
+      [args.userId, delta, args.note ?? null, after],
+    );
+    await client.query("COMMIT");
+    return { balance: after };
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     throw e;
@@ -2121,4 +2221,85 @@ export async function deleteFeedback(id: string): Promise<boolean> {
 // new Date() is fine here (server runtime, not a workflow script).
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/* ── Real payment provider (Razorpay) ──────────────────────────────────────
+   The mock functions above stand in during development. These two are the
+   live path; everything else — the ledger, the unique indexes, the idempotent
+   grant — is shared, so going live changes only where the ids come from. */
+
+/** Record an order we just created at the provider. The user id comes from the
+ *  SESSION at the call site, never from the client, so a payment can never be
+ *  credited to someone else's account. */
+export async function createProviderOrder(args: {
+  userId: string; packId: string; paise: number; credits: number;
+  orderId: string; provider?: string;
+}): Promise<{ orderId: string }> {
+  const provider = args.provider ?? "razorpay";
+  if (!USE_PG) {
+    fileData.payments.push({
+      id: randomUUID(), user_id: args.userId, provider,
+      provider_order_id: args.orderId, provider_payment_id: null,
+      amount_paise: args.paise, currency: "INR", pack_id: args.packId,
+      credits: args.credits, status: "created", created_at: nowIso(),
+    });
+    saveFile();
+    return { orderId: args.orderId };
+  }
+  await pool!.query(
+    `INSERT INTO payments (user_id, provider, provider_order_id, amount_paise, pack_id, credits, status)
+     VALUES ($1,$2,$3,$4,$5,$6,'created')`,
+    [args.userId, provider, args.orderId, args.paise, args.packId, args.credits],
+  );
+  return { orderId: args.orderId };
+}
+
+/** Settle an order from a provider webhook, using the provider's REAL payment
+ *  id. Returns `alreadySettled` when the webhook is a retry — Razorpay retries
+ *  on any non-2xx, so this path is walked often and must be a no-op. */
+export async function settleOrder(
+  orderId: string,
+  status: "paid" | "failed",
+  providerPaymentId?: string | null,
+  failureReason?: string | null,
+): Promise<{
+  ok: boolean; error?: string; status?: string;
+  userId?: string; credits?: number; packId?: string; paymentId?: string;
+  alreadySettled?: boolean;
+}> {
+  if (!USE_PG) {
+    const row = fileData.payments.find((p) => p.provider_order_id === orderId);
+    if (!row) return { ok: false, error: "Unknown order." };
+    if (row.status === "paid") {
+      return { ok: true, status: "paid", userId: row.user_id, credits: row.credits,
+               packId: row.pack_id, paymentId: row.provider_payment_id, alreadySettled: true };
+    }
+    row.status = status;
+    row.provider_payment_id = status === "paid" ? (providerPaymentId ?? null) : null;
+    row.failure_reason = failureReason ?? null;
+    saveFile();
+    return { ok: true, status, userId: row.user_id, credits: row.credits,
+             packId: row.pack_id, paymentId: providerPaymentId ?? undefined };
+  }
+
+  const { rows } = await pool!.query(
+    `SELECT user_id, credits, pack_id, status, provider_payment_id
+       FROM payments WHERE provider_order_id = $1`,
+    [orderId],
+  );
+  const row = rows[0];
+  if (!row) return { ok: false, error: "Unknown order." };
+  if (row.status === "paid") {
+    return { ok: true, status: "paid", userId: row.user_id, credits: row.credits,
+             packId: row.pack_id, paymentId: row.provider_payment_id, alreadySettled: true };
+  }
+
+  await pool!.query(
+    `UPDATE payments
+        SET status = $2, provider_payment_id = $3, failure_reason = $4, updated_at = now()
+      WHERE provider_order_id = $1`,
+    [orderId, status, status === "paid" ? (providerPaymentId ?? null) : null, failureReason ?? null],
+  );
+  return { ok: true, status, userId: row.user_id, credits: row.credits,
+           packId: row.pack_id, paymentId: providerPaymentId ?? undefined };
 }
