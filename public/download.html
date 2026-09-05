@@ -1843,7 +1843,7 @@
         <div class="row"><span>Account</span><span id="buyWho"></span></div>
         <div class="row"><span>Your credits</span><span id="buyBal">0</span></div>
       </div>
-      <p class="buy-test">⚠ Test mode — no real money moves. These buttons simulate how a payment can actually end.</p>
+      <p class="buy-test" id="buyTestNote" hidden></p>
       <button class="btn btn-gold buy-go" id="buyPayNow">Pay securely</button>
       <p class="buy-go2" style="margin:10px 0 0;font-size:12.5px;opacity:.75">UPI · cards · netbanking · wallets — secured by Razorpay. Credits are added the moment the payment is confirmed.</p>
     </div>
@@ -2382,7 +2382,22 @@
     var outBtn = $('acSignOut');
     if(outBtn) outBtn.onclick = function(){ setToken(''); me=null; refreshChip(); renderAccount(); };
 
-    $('buyPayNow').onclick = function(){ payNow(this); };
+    /* The in-modal pay step was a dark, cramped surface that read as "fake" to a
+       first-time buyer. Buying now moves to a dedicated light checkout page that
+       shows the amount, exactly what the credits buy, the payment methods and a
+       countdown — the things that make a stranger trust a new app with money. */
+    $('buyPayNow').onclick = function(){ location.href = '/checkout.html?pack=' + encodeURIComponent(plan.id); };
+
+    /* Test-mode notice, driven by the server's key — so it shows the test card
+       while we are on test keys and vanishes on its own the moment live keys go
+       in. A hard-coded banner is exactly the kind of thing that gets left on. */
+    fetch('/api/config').then(function(r){ return r.json(); }).then(function(c){
+      var n = $('buyTestNote');
+      if(n && c && c.payments && c.payments.test_mode){
+        n.textContent = '⚠ Test mode — no real money is charged. Use card 4111 1111 1111 1111, any future expiry, any CVV.';
+        n.hidden = false;
+      }
+    }).catch(function(){});
   })();
 
   function triggerDownload(){

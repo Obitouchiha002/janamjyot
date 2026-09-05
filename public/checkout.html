@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Secure Checkout — JanamJyot</title>
+<meta name="robots" content="noindex,nofollow" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+<meta name="theme-color" content="#FFFFFF" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#16181D; --ink2:#5A6070; --line:#E6E3DC; --bg:#F7F5F0; --card:#FFFFFF;
+    --gold:#C07A1E; --gold-soft:#FBF3E6; --ok:#137A4C; --ok-soft:#E9F6EF;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    line-height:1.5;-webkit-font-smoothing:antialiased}
+  .top{background:var(--card);border-bottom:1px solid var(--line)}
+  .top .in{max-width:560px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:800;font-size:17px;letter-spacing:-.01em;text-decoration:none;color:var(--ink)}
+  .brand span{color:var(--gold);font-weight:500}
+  .lock{font-size:12px;color:var(--ok);font-weight:700;display:flex;align-items:center;gap:5px}
+  .wrap{max-width:560px;margin:0 auto;padding:22px 20px 60px}
+  h1{font-size:21px;letter-spacing:-.02em;margin:0 0 4px}
+  .sub{color:var(--ink2);font-size:14px;margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0}
+  .row+.row{border-top:1px solid var(--line)}
+  .row .k{color:var(--ink2);font-size:14px}
+  .row .v{font-weight:700;font-size:15px}
+  .total{border-top:2px solid var(--ink);margin-top:6px;padding-top:14px;display:flex;align-items:baseline;justify-content:space-between}
+  .total .k{font-size:15px;font-weight:700}
+  .total .v{font-size:30px;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);margin:0 0 10px}
+  ul.get{list-style:none;margin:0;padding:0}
+  ul.get li{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:14px;border-bottom:1px dashed var(--line)}
+  ul.get li:last-child{border-bottom:0}
+  ul.get b{font-weight:800}
+  ul.get s{text-decoration:none;color:var(--ink2);font-size:12.5px}
+  .pill{display:inline-block;background:var(--ok-soft);color:var(--ok);font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px}
+  .timer{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gold-soft);
+    border:1px solid #EBD9BC;border-radius:12px;padding:11px 14px;font-size:13.5px;margin-bottom:14px}
+  .timer b{font-variant-numeric:tabular-nums;font-size:16px}
+  .timer.out{background:#FDECEC;border-color:#F3C9C9;color:#A32424}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:15px;font:inherit;font-weight:800;
+    font-size:16px;cursor:pointer;background:var(--gold);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sec{background:var(--card);color:var(--ink);border:1px solid var(--line);font-size:14.5px;padding:12px}
+  input{width:100%;border:1px solid var(--line);border-radius:11px;padding:13px 14px;font:inherit;font-size:15px;background:var(--card);color:var(--ink)}
+  input:focus{outline:2px solid var(--gold);outline-offset:-1px;border-color:var(--gold)}
+  label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+  .methods{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .methods span{border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12.5px;color:var(--ink2);background:var(--card)}
+  .note{font-size:12.5px;color:var(--ink2);margin:12px 0 0;text-align:center}
+  .note a{color:var(--gold)}
+  .warn{background:#FFF8E6;border:1px solid #F0DFAE;border-radius:11px;padding:11px 13px;font-size:13px;margin-bottom:14px}
+  .err{background:#FDECEC;border:1px solid #F3C9C9;color:#A32424;border-radius:11px;padding:11px 13px;font-size:13.5px;margin-bottom:14px}
+  .done{text-align:center;padding:26px 6px}
+  .done .big{font-size:38px}
+  .done h3{margin:10px 0 6px;font-size:19px}
+  .done p{color:var(--ink2);margin:0;font-size:14.5px}
+  .muted{color:var(--ink2);font-size:13px}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="top"><div class="in">
+  <a class="brand" href="/">Janam<span>Jyot</span></a>
+  <span class="lock">🔒 Secure checkout</span>
+</div></div>
+
+<div class="wrap">
+  <div id="err" class="err" hidden></div>
+  <div id="testNote" class="warn" hidden></div>
+
+  <!-- ORDER SUMMARY -->
+  <div id="stage">
+    <h1 id="hTitle">Loading…</h1>
+    <p class="sub" id="hSub"></p>
+
+    <div class="timer" id="timerBox" hidden>
+      <span>Complete your payment in</span><b id="timer">05:00</b>
+    </div>
+
+    <div class="card">
+      <h2>You are paying for</h2>
+      <div class="row"><span class="k" id="packName">—</span><span class="v" id="packCredits">—</span></div>
+      <div class="row"><span class="k">Validity</span><span class="v">Never expires</span></div>
+      <div class="row"><span class="k">Renewal</span><span class="v">None — one-time</span></div>
+      <div class="total"><span class="k">Total payable</span><span class="v" id="amount">—</span></div>
+    </div>
+
+    <div class="card" id="getsCard">
+      <h2>What these credits get you</h2>
+      <ul class="get" id="gets"></ul>
+      <p class="muted" style="margin:10px 0 0">Spend them on whatever you like — nothing is locked to a plan.</p>
+    </div>
+
+    <!-- SIGN IN (only if needed) -->
+    <div class="card" id="authCard" hidden>
+      <h2>Sign in to continue</h2>
+      <p class="muted" style="margin:0 0 12px">Credits are added to your account, so we need to know whose account it is. Same email you use in the app.</p>
+      <div id="emailStep">
+        <label for="em">Email address</label>
+        <input id="em" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" />
+        <button class="btn" id="sendCode" style="margin-top:12px">Send me a code</button>
+      </div>
+      <div id="codeStep" hidden>
+        <label for="cd">6-digit code sent to <span id="emShow"></span></label>
+        <input id="cd" type="text" inputmode="numeric" maxlength="6" placeholder="••••••" />
+        <button class="btn" id="verify" style="margin-top:12px">Verify &amp; continue</button>
+        <button class="btn sec" id="backEmail" style="margin-top:8px">Use a different email</button>
+      </div>
+    </div>
+
+    <!-- PAY -->
+    <div id="payCard" hidden>
+      <button class="btn" id="pay">Pay <span id="payAmt"></span></button>
+      <div class="methods">
+        <span>UPI</span><span>Cards</span><span>Net banking</span><span>Wallets</span>
+      </div>
+      <p class="note">
+        Payment handled by <b>Razorpay</b>. We never see your card details.<br>
+        <a href="/refund.html">Refund policy</a> · <a href="/contact.html">Need help?</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div id="doneStage" hidden>
+    <div class="done">
+      <div class="big" id="doneIcon">✅</div>
+      <h3 id="doneTitle">Payment received</h3>
+      <p id="doneMsg">Adding your credits…</p>
+      <button class="btn sec" id="backApp" style="margin-top:20px;max-width:280px;margin-left:auto;margin-right:auto">Back to JanamJyot</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var TOKEN_KEY = 'va_token';
+  function token(){ try { return localStorage.getItem(TOKEN_KEY) || ''; } catch(e){ return ''; } }
+  function setToken(t){ try { t ? localStorage.setItem(TOKEN_KEY,t) : localStorage.removeItem(TOKEN_KEY); } catch(e){} }
+  function showErr(m){ var e=$('err'); if(!m){ e.hidden=true; return; } e.textContent=m; e.hidden=false; window.scrollTo(0,0); }
+
+  function api(path, opts){
+    opts = opts || {};
+    var h = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+    if(token()) h.Authorization = 'Bearer ' + token();
+    return fetch(path, Object.assign({}, opts, {headers:h})).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if(!r.ok) throw new Error(j.error || 'Something went wrong. Please try again.');
+        return j;
+      });
+    });
+  }
+
+  var packId = new URLSearchParams(location.search).get('pack') || 'starter';
+  var cfg = null, pack = null, timerId = null, expired = false;
+
+  /* ── 5-minute window. A checkout that sits open for an hour is how stale
+       orders and "I paid but nothing happened" confusion happen; a visible
+       countdown also tells the person this is a real, time-bound transaction. */
+  function startTimer(){
+    var left = 5*60;
+    $('timerBox').hidden = false;
+    timerId = setInterval(function(){
+      left--;
+      var m = Math.floor(left/60), s = left%60;
+      $('timer').textContent = m + ':' + (s<10?'0':'') + s;
+      if(left <= 0){
+        clearInterval(timerId); expired = true;
+        $('timerBox').className = 'timer out';
+        $('timerBox').innerHTML = '<span>This checkout expired — nothing was charged.</span>';
+        $('pay').disabled = true;
+        $('pay').textContent = 'Expired — start again';
+        $('pay').onclick = function(){ location.reload(); };
+        $('pay').disabled = false;
+      }
+    }, 1000);
+  }
+
+  function render(){
+    var isTrial = packId === 'trial';
+    pack = isTrial
+      ? { id:'trial', rupees: cfg.trial.rupees, credits: 0, label: cfg.trial.days + '-day full access' }
+      : (cfg.packs.filter(function(p){ return p.id===packId; })[0]);
+
+    if(!pack){ showErr('That pack was not found. Please pick one from the pricing page.'); $('stage').hidden = true; return; }
+
+    $('hTitle').textContent = isTrial ? 'Start your ' + cfg.trial.days + '-day access' : 'Buy credits';
+    $('hSub').textContent = isTrial
+      ? 'Everything unlocked for ' + cfg.trial.days + ' days. It ends on its own — nothing renews.'
+      : 'One-time purchase. Credits never expire and nothing renews.';
+    var nice = { starter:'Starter pack', popular:'Popular pack', value:'Value pack' };
+    $('packName').textContent = isTrial ? cfg.trial.days + '-day full access' : (nice[pack.id] || 'Credit pack');
+    $('packCredits').textContent = isTrial ? 'One time per account' : pack.credits + ' credits';
+    $('amount').textContent = '₹' + pack.rupees;
+    $('payAmt').textContent = '₹' + pack.rupees + ' securely';
+
+    if(isTrial || !pack.credits){ $('getsCard').hidden = true; }
+    else {
+      var P = cfg.prices, rows = [
+        ['Astrologer questions', P.chat, 'ask anything about your chart'],
+        ['Focused reports', P.report, 'career, wealth or marriage'],
+        ['Kundli matchings', P.matching, 'all 36 gunas, with PDF'],
+        ['Full life reports', P.life_report, 'your whole chart, with PDF']
+      ];
+      $('gets').innerHTML = rows.map(function(r){
+        var n = Math.floor(pack.credits / r[1]);
+        if(n < 1) return '';
+        return '<li><span><b>' + n + '</b> ' + r[0] + '</span><s>' + r[2] + '</s></li>';
+      }).join('');
+    }
+
+    if(cfg.test_mode){
+      $('testNote').innerHTML = '<b>Test mode</b> — no real money is charged. Use card <b>4111 1111 1111 1111</b>, any future expiry, any CVV.';
+      $('testNote').hidden = false;
+    }
+
+    if(token()){ showPay(); } else { $('authCard').hidden = false; }
+  }
+
+  function showPay(){
+    $('authCard').hidden = true;
+    $('payCard').hidden = false;
+    if(!timerId) startTimer();
+  }
+
+  /* ── sign in (email OTP) ── */
+  $('sendCode').onclick = function(){
+    var email = ($('em').value||'').trim();
+    if(!email || email.indexOf('@') < 0){ showErr('Please enter a valid email address.'); return; }
+    showErr(''); this.disabled = true; this.textContent = 'Sending…';
+    var btn = this;
+    api('/api/auth/otp/request',{method:'POST',body:JSON.stringify({email:email})})
+      .then(function(){
+        $('emShow').textContent = email;
+        $('emailStep').hidden = true; $('codeStep').hidden = false;
+      })
+      .catch(function(e){ showErr(e.message); })
+      .finally(function(){ btn.disabled=false; btn.textContent='Send me a code'; });
+  };
+  $('backEmail').onclick = function(){ $('codeStep').hidden = true; $('emailStep').hidden = false; showErr(''); };
+  $('verify').onclick = function(){
+    var code = ($('cd').value||'').trim(), email = ($('em').value||'').trim();
+    if(code.length < 4){ showErr('Enter the 6-digit code from your email.'); return; }
+    showErr(''); this.disabled = true; this.textContent = 'Checking…';
+    var btn = this;
+    api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({email:email,code:code})})
+      .then(function(d){ if(!d.token) throw new Error('That code did not work.'); setToken(d.token); showPay(); })
+      .catch(function(e){ showErr(e.message); })
+      .finally(function(){ btn.disabled=false; btn.textContent='Verify & continue'; });
+  };
+
+  /* ── pay ── */
+  function loadRzp(){
+    return new Promise(function(res, rej){
+      if(window.Razorpay) return res();
+      var s = document.createElement('script');
+      s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      s.onload = function(){ res(); };
+      s.onerror = function(){ rej(new Error('Could not open the payment window. Check your connection.')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function waitForCredits(before){
+    $('stage').hidden = true; $('doneStage').hidden = false;
+    var tries = 0;
+    (function poll(){
+      tries++;
+      api('/api/credits').then(function(c){
+        var landed = packId === 'trial'
+          ? (c.trial && c.trial.active)
+          : (typeof c.balance === 'number' && c.balance > before);
+        if(landed){
+          $('doneTitle').textContent = 'All done 🎉';
+          $('doneMsg').textContent = packId === 'trial'
+            ? 'Your full access is on. It ends on its own — nothing will renew.'
+            : 'Your balance is now ' + c.balance + ' credits. They never expire.';
+        } else if(tries < 12){ setTimeout(poll, 1500); }
+        else {
+          $('doneTitle').textContent = 'Payment received';
+          $('doneMsg').textContent = 'Your credits are taking a moment to appear. Nothing is lost — they will land shortly. Refresh, or contact us if they are not there in a few minutes.';
+        }
+      }).catch(function(){ if(tries < 12) setTimeout(poll, 1500); });
+    })();
+  }
+
+  $('pay').onclick = function(){
+    if(expired) return;
+    showErr(''); var btn = this; btn.disabled = true; btn.textContent = 'Starting…';
+    var before = 0;
+    api('/api/credits').catch(function(){ return {balance:0}; })
+      .then(function(c){ before = c.balance || 0;
+        return api('/api/billing/order',{method:'POST',body:JSON.stringify({pack:packId})}); })
+      .then(function(order){
+        return loadRzp().then(function(){
+          btn.disabled = false; btn.textContent = 'Pay ₹' + pack.rupees + ' securely';
+          var rzp = new window.Razorpay({
+            key: order.key_id, amount: order.amount, currency: order.currency || 'INR',
+            order_id: order.order_id, name: 'JanamJyot', description: pack.label,
+            theme: { color: '#C07A1E' },
+            handler: function(){ if(timerId) clearInterval(timerId); waitForCredits(before); },
+            modal: { ondismiss: function(){ showErr('Payment cancelled — nothing was charged.'); } }
+          });
+          rzp.on('payment.failed', function(){ showErr('Payment failed — nothing was charged and no credits were added.'); });
+          rzp.open();
+        });
+      })
+      .catch(function(e){ btn.disabled=false; btn.textContent='Pay ₹'+(pack?pack.rupees:'')+' securely'; showErr(e.message); });
+  };
+
+  $('backApp').onclick = function(){ location.href = '/'; };
+
+  fetch('/api/billing/packs').then(function(r){ return r.json(); })
+    .then(function(c){
+      cfg = c;
+      if(!c.enabled){ showErr('Payments are not switched on yet. Please try again shortly.'); $('stage').hidden = true; return; }
+      render();
+    })
+    .catch(function(){ showErr('Could not load the price list. Please refresh.'); });
+})();
+</script>
+</body>
+</html>

@@ -352,6 +352,7 @@ const PUBLIC_API = [
   /^\/places$/,
   /^\/panchang$/,
   /^\/panchang-today$/,
+  /^\/billing\/packs$/,
   // Razorpay calls this server-to-server with no session. It is not "open":
   // the HMAC signature check inside the route is its authentication.
   /^\/billing\/webhook$/,
@@ -962,6 +963,13 @@ app.get("/api/config", (_req, res) => {
       // When true the prompt reappears every launch instead of once per version.
       mandatory: !!getSetting("app_update_mandatory"),
     },
+    // Lets the checkout say "test mode, use this card" while we are on test
+    // keys, and say nothing at all once live keys are in — so the banner can
+    // never be left on by accident in front of paying customers.
+    payments: {
+      enabled: RZP_READY,
+      test_mode: RZP_KEY_ID.startsWith("rzp_test_"),
+    },
   });
 });
 
@@ -1104,6 +1112,21 @@ const RZP_KEY_ID = (process.env.RAZORPAY_KEY_ID || "").trim();
 const RZP_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || "").trim();
 const RZP_WEBHOOK_SECRET = (process.env.RAZORPAY_WEBHOOK_SECRET || "").trim();
 const RZP_READY = !!(RZP_KEY_ID && RZP_KEY_SECRET);
+
+/** GET /api/billing/packs — the price list, PUBLIC so the checkout page can show
+ *  exactly what is being bought before the person signs in. Nothing private
+ *  here; it is the same list printed on the pricing page. */
+app.get("/api/billing/packs", (_req, res) => {
+  res.json({
+    packs: Object.entries(CREDIT_PACKS).map(([id, p]) => ({
+      id, rupees: p.paise / 100, credits: p.credits, label: p.label,
+    })),
+    trial: { rupees: TRIAL.paise / 100, days: TRIAL.days },
+    prices: CREDIT_PRICES,
+    test_mode: RZP_KEY_ID.startsWith("rzp_test_"),
+    enabled: RZP_READY,
+  });
+});
 
 /** POST /api/billing/order { pack } — create a Razorpay order for this user. */
 app.post("/api/billing/order", async (req: any, res) => {
