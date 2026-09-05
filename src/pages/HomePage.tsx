@@ -117,29 +117,38 @@ function RightNowCard({ chartId }: { chartId: string }) {
   useVisibleInterval(refresh, 5 * 60_000);
 
   if (!d) return null;
+  // `tint` marks; `ink` is for text on the card. The tint that works as a rail
+  // is too pale to read at 15px, so they are deliberately different values.
   const tint = d.verdict === 'go' ? '#22C55E' : d.verdict === 'wait' ? '#E8B44A' : '#F87171';
+  const ink  = d.verdict === 'go' ? '#15803D' : d.verdict === 'wait' ? '#A16207' : '#B91C1C';
   const Icon = d.verdict === 'go' ? CheckCircle2 : d.verdict === 'wait' ? PauseCircle : XCircle;
 
+  // Matches the day card above it: one clean surface, a tone rail down the
+  // left, and colour only where it means something. The two used to sit
+  // together looking like they came from different apps — one washed amber
+  // with a big alarm icon, the other white.
   return (
     <Pressable
       to={`/right-now/${chartId}`}
       feedback="select"
-      className="m-card m-enter flex items-center gap-3.5 p-4"
-      style={{ borderColor: `${tint}55`, background: `linear-gradient(180deg, ${tint}18, transparent)` }}
+      className="m-card m-enter relative flex items-center gap-3 overflow-hidden py-3.5 pl-[19px] pr-4"
     >
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: `${tint}22`, color: tint }}>
-        <Icon className="h-[22px] w-[22px]" strokeWidth={2.2} />
-      </span>
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ background: `linear-gradient(180deg, ${tint}, ${tint}22)` }}
+      />
       <span className="min-w-0 flex-1">
-        <span className="block text-[11px] font-bold uppercase tracking-wider" style={{ color: tint }}>
+        <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.11em]" style={{ color: ink }}>
+          <Icon className="h-[13px] w-[13px]" strokeWidth={2.4} />
           Right now · {d.now}
         </span>
-        <span className="mt-0.5 block text-[15px] font-bold leading-tight">{d.headline}</span>
-        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+        <span className="mt-1.5 block text-[15px] font-semibold leading-tight text-foreground">{d.headline}</span>
+        <span className="mt-1 block truncate text-[12px] text-muted-foreground">
           {d.next_good ? `Next good window ${d.next_good.start}` : d.current?.name}
         </span>
       </span>
-      <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+      <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground/70" />
     </Pressable>
   );
 }

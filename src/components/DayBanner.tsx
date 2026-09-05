@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, Sun, TriangleAlert, Info } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { ChevronDown, Sun, TriangleAlert, Info, Clock } from "lucide-react";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
 import { useCachedFetch } from "@/lib/useCachedFetch";
@@ -33,10 +34,21 @@ type Signals = {
 
 // Colour + icon only — the LABEL text now comes from the engine (localized),
 // so a Hindi user never sees a Hinglish eyebrow over an English line again.
+/**
+ * Two colours per tone: `tint` for the small marks, `ink` for anything sitting
+ * on the card. The old card tinted its whole body amber and then dropped a pure
+ * white strip into the middle of it — two different surfaces fighting inside
+ * one card, which is what made it feel cheap. The card is one surface now and
+ * colour is used sparingly, on the things that carry meaning.
+ *
+ * `ink` values are the darker cousins of the tints, chosen so text on white
+ * clears WCAG AA. The amber that reads fine as a 2px rail is unreadable as
+ * 13px type, which is why they are not the same value.
+ */
 const TONE = {
-  warn:   { tint: "#F0A93B", Icon: TriangleAlert },
-  advice: { tint: "#C9A24B", Icon: Info },
-  good:   { tint: "#22C55E", Icon: Sun },
+  warn:   { tint: "#F0A93B", ink: "#A16207", Icon: TriangleAlert },
+  advice: { tint: "#C9A24B", ink: "#8A6D1F", Icon: Info },
+  good:   { tint: "#22C55E", ink: "#15803D", Icon: Sun },
 } as const;
 
 const BEST_LABEL: Record<string, string> = {
@@ -68,14 +80,12 @@ export default function DayBanner({ chartId }: { chartId: string }) {
   // the home screen never looks half-built.
   if (!d) {
     return loading ? (
-      <section className="m-card m-enter p-4">
-        <div className="flex items-start gap-3.5">
-          <div className="skeleton h-11 w-11 rounded-2xl" />
-          <div className="flex-1 space-y-2">
-            <div className="skeleton h-3 w-24" />
-            <div className="skeleton h-4 w-full" />
-            <div className="skeleton h-4 w-3/4" />
-          </div>
+      <section className="m-card p-4">
+        <div className="space-y-2.5">
+          <div className="skeleton h-3 w-24" />
+          <div className="skeleton h-4 w-full" />
+          <div className="skeleton h-4 w-2/3" />
+          <div className="skeleton mt-1 h-12 w-full rounded-xl" />
         </div>
       </section>
     ) : null;
@@ -84,47 +94,52 @@ export default function DayBanner({ chartId }: { chartId: string }) {
   const { Icon } = t;
 
   return (
-    <section
-      className="m-card m-enter overflow-hidden"
-      style={{ borderColor: `${t.tint}55`, background: `linear-gradient(180deg, ${t.tint}14, transparent 70%)` }}
+    <motion.section
+      className="m-card relative overflow-hidden"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="flex items-start gap-3.5 p-4">
-        <span
-          className="mt-0.5 grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
-          style={{ background: `${t.tint}22`, color: t.tint }}
-        >
-          <Icon className="h-[22px] w-[22px]" strokeWidth={2.1} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: t.tint }}>
-            {d.label}
-          </p>
-          <p className="mt-1 text-[15px] font-semibold leading-[1.45]">{d.headline}</p>
+      {/* The tone, as a hairline rail rather than a wash over everything. A
+          whole card shaded amber reads as an error state; a rail says "this is
+          the careful kind of day" without shouting it. */}
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ background: `linear-gradient(180deg, ${t.tint}, ${t.tint}22)` }}
+      />
 
-        </div>
+      <div className="px-4 pb-3.5 pt-3.5 pl-[19px]">
+        <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.11em]" style={{ color: t.ink }}>
+          <Icon className="h-[13px] w-[13px]" strokeWidth={2.4} />
+          {d.label}
+        </p>
+        {/* Full-strength foreground: the sentence is the point of the card, and
+            it was previously competing with an amber wash behind it. */}
+        <p className="mt-1.5 text-[15.5px] font-semibold leading-[1.5] text-foreground">{d.headline}</p>
       </div>
 
-      {/* The two windows people actually act on. Loose pills said a time without
-          saying what it was for, and one of them repeated the sentence above;
-          a labelled pair reads at a glance and survives long Hindi labels. */}
+      {/* The two windows people act on. One soft surface, hairline between, and
+          colour only on the numbers — so the row belongs to the card instead of
+          punching a white hole through it. */}
       {(d.best_time || d.caution_time) && (
-        <div className="grid grid-cols-2 gap-px border-t border-border/70 bg-border/70">
+        <div className="mx-4 mb-3.5 ml-[19px] grid grid-cols-2 overflow-hidden rounded-xl bg-muted/70">
           {d.best_time && (
-            <div className="bg-card px-4 py-2.5">
-              <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                {BEST_LABEL[lang] || BEST_LABEL.en}
+            <div className="px-3.5 py-2.5">
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <Clock className="h-[11px] w-[11px]" /> {BEST_LABEL[lang] || BEST_LABEL.en}
               </p>
-              <p className="mt-0.5 text-[13px] font-bold tabular-nums" style={{ color: "#1f9d52" }}>
+              <p className="mt-1 text-[13.5px] font-bold tabular-nums" style={{ color: "#15803D" }}>
                 {d.best_time.start}–{d.best_time.end}
               </p>
             </div>
           )}
           {d.caution_time && (
-            <div className="bg-card px-4 py-2.5">
-              <p className="truncate text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className={`px-3.5 py-2.5 ${d.best_time ? "border-l border-border/60" : ""}`}>
+              <p className="truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 {d.caution_time.name}
               </p>
-              <p className="mt-0.5 text-[13px] font-bold tabular-nums" style={{ color: "#b9791a" }}>
+              <p className="mt-1 text-[13.5px] font-bold tabular-nums" style={{ color: "#A16207" }}>
                 {d.caution_time.start}–{d.caution_time.end}
               </p>
             </div>
@@ -132,35 +147,46 @@ export default function DayBanner({ chartId }: { chartId: string }) {
         </div>
       )}
 
-      {/* Reason — collapsed by default. Technical astrology lives here, not up top. */}
+      {/* A quiet inline link, not the full-width bar that looked like the card's
+          main action when it is really a footnote. */}
       <button
         type="button"
         onClick={() => { haptic.tap(); setOpen((o) => !o); }}
-        className="flex w-full items-center justify-center gap-1 border-t border-border/70 py-2 text-[11.5px] font-semibold text-muted-foreground/80"
+        className="mb-3 ml-[19px] flex items-center gap-1 rounded-full px-1 py-0.5 text-[11.5px] font-semibold text-muted-foreground"
       >
         {WHY_LABEL[lang] || WHY_LABEL.en}
-        <ChevronDown className={`h-[15px] w-[15px] transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-[13px] w-[13px] transition-transform duration-300 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
-        <div className="space-y-2.5 border-t border-border/70 px-4 py-3.5">
-          {d.factors.map((f) => (
-            <div key={f.code} className="flex gap-2.5">
-              <span
-                className="mt-[6px] h-2 w-2 shrink-0 rounded-full"
-                style={{ background: DOT[f.kind] }}
-              />
-              <div className="min-w-0">
-                <p className="text-[12.5px] font-bold leading-tight">{f.title}</p>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{f.detail}</p>
-              </div>
+      {/* Height is animated so the card grows instead of jumping — the same
+          spring the rest of the app uses. */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="why"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2.5 border-t border-border/70 px-4 py-3.5 pl-[19px]">
+              {d.factors.map((f) => (
+                <div key={f.code} className="flex gap-2.5">
+                  <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: DOT[f.kind] }} />
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-bold leading-tight">{f.title}</p>
+                    <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{f.detail}</p>
+                  </div>
+                </div>
+              ))}
+              <p className="pt-1 text-[10.5px] leading-relaxed text-muted-foreground/70">
+                {CALC_NOTE[lang] || CALC_NOTE.en}
+              </p>
             </div>
-          ))}
-          <p className="pt-1 text-[10.5px] leading-relaxed text-muted-foreground/70">
-            {CALC_NOTE[lang] || CALC_NOTE.en}
-          </p>
-        </div>
-      )}
-    </section>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 }
