@@ -584,36 +584,85 @@ function Controls() {
           <>
             <div className="grid grid-cols-4 gap-2">
               {([
-                ["Earned", "\u20b9" + (pay.totals.paid_paise / 100).toLocaleString("en-IN")],
-                ["Paid", pay.totals.paid_count],
-                ["Trials", pay.totals.trials],
-                ["Failed", pay.totals.failed],
-              ] as const).map(([l, v]) => (
-                <div key={l} className="rounded-2xl bg-muted px-2 py-2.5 text-center">
+                ["Earned", "\u20b9" + (pay.totals.paid_paise / 100).toLocaleString("en-IN"), ""],
+                ["Paid", pay.totals.paid_count, ""],
+                ["Trials", pay.totals.trials, ""],
+                ["Failed", pay.totals.failed, ""],
+                ["Pending", pay.totals.pending ?? 0, (pay.totals.pending ?? 0) > 0 ? "#E8B44A" : ""],
+                // These two must read zero. Anything else is money taken and
+                // nothing delivered, so they are coloured to be impossible to
+                // scroll past rather than buried in the list below.
+                ["Not credited", pay.totals.unhonoured ?? 0, (pay.totals.unhonoured ?? 0) > 0 ? "#F87171" : ""],
+                ["Refund due", pay.totals.needs_refund ?? 0, (pay.totals.needs_refund ?? 0) > 0 ? "#F87171" : ""],
+                ["Avg", "\u20b9" + (pay.totals.paid_count ? Math.round(pay.totals.paid_paise / 100 / pay.totals.paid_count) : 0), ""],
+              ] as const).map(([l, v, tint]) => (
+                <div
+                  key={l}
+                  className={`rounded-2xl px-2 py-2.5 text-center ${tint ? "" : "bg-muted"}`}
+                  style={tint ? { background: `${tint}22`, color: tint } : undefined}
+                >
                   <p className="text-[16px] font-bold leading-none">{v}</p>
-                  <p className="mt-1 text-[10.5px] text-muted-foreground">{l}</p>
+                  <p className={`mt-1 text-[10.5px] ${tint ? "opacity-80" : "text-muted-foreground"}`}>{l}</p>
                 </div>
               ))}
             </div>
             {/* Every row names the account, because a dispute is answered with
                 "this email, this order, this amount, this time" — not an id. */}
             <div className="mt-3 divide-y divide-border">
-              {pay.payments.slice(0, 12).map((p: any) => (
-                <div key={p.order_id} className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold">{p.email}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {p.pack_id} · {String(p.created_at).slice(0, 16).replace("T", " ")}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block text-[13px] font-bold">₹{p.amount_paise / 100}</span>
-                    <span className={`block text-[10.5px] font-bold ${p.status === "paid" ? "text-emerald-500" : "text-destructive"}`}>
-                      {p.status}
-                    </span>
-                  </span>
-                </div>
-              ))}
+              {pay.payments.slice(0, 25).map((p: any) => {
+                const owed = p.status === "paid" && !p.credited && p.pack_id !== "trial";
+                return (
+                  <details key={p.order_id} className="py-2.5">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-semibold">{p.email}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {p.pack_id} · {String(p.created_at).slice(0, 16).replace("T", " ")}
+                          {p.credits ? ` · ${p.credits} cr` : ""}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[13px] font-bold">₹{p.amount_paise / 100}</span>
+                        <span
+                          className="block text-[10.5px] font-bold"
+                          style={{
+                            color: owed || p.needs_refund ? "#F87171"
+                                 : p.status === "paid" ? "#34D399"
+                                 : p.status === "created" ? "#E8B44A" : "#F87171",
+                          }}
+                        >
+                          {p.needs_refund ? "refund due" : owed ? "NOT CREDITED" : p.status}
+                        </span>
+                      </span>
+                    </summary>
+                    {/* A dispute is answered with facts, so every one of them is
+                        here: who, which order, which payment id, what was
+                        promised, whether it was actually delivered, and when. */}
+                    <dl className="mt-2 space-y-1 rounded-xl bg-muted/60 px-3 py-2.5 text-[11.5px]">
+                      {([
+                        ["Name", p.name],
+                        ["User id", p.user_id],
+                        ["Order id", p.order_id],
+                        ["Payment id", p.payment_id || "—"],
+                        ["Amount", `₹${p.amount_paise / 100} ${p.currency || "INR"} · ${p.provider || "razorpay"}`],
+                        ["Buys", p.pack_id === "trial" ? `${p.pack_id} (access, 0 credits)` : `${p.credits} credits`],
+                        ["Delivered", p.pack_id === "trial"
+                          ? (p.trial_used ? `trial active till ${String(p.trial_ends_at || "").slice(0, 16).replace("T", " ")}` : "NOT started")
+                          : (p.credited ? "credits in ledger" : "NOT in ledger")],
+                        ["Balance now", `${p.user_balance ?? 0} credits`],
+                        ["Created", String(p.created_at).replace("T", " ").slice(0, 19)],
+                        ["Updated", String(p.updated_at || p.created_at).replace("T", " ").slice(0, 19)],
+                        ["Note", p.failure_reason || "—"],
+                      ] as const).map(([k, v]) => (
+                        <div key={k} className="flex justify-between gap-3">
+                          <dt className="shrink-0 text-muted-foreground">{k}</dt>
+                          <dd className="min-w-0 break-all text-right font-medium">{String(v)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                );
+              })}
               {!pay.payments.length && (
                 <p className="py-2 text-[13px] text-muted-foreground">No payments yet.</p>
               )}

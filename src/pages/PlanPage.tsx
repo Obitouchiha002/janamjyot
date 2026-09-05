@@ -92,6 +92,14 @@ const L = {
   lifetime: { en: "in total", hi: "कुल", hinglish: "total" },
   unlimitedWord: { en: "Unlimited", hi: "अनलिमिटेड", hinglish: "Unlimited" },
   failed: { en: "Could not load your plan. Pull to refresh.", hi: "प्लान लोड नहीं हो सका।", hinglish: "Plan load nahi ho paya." },
+  missing: { en: "Paid but nothing showed up?", hi: "पैसे कट गए पर कुछ नहीं मिला?", hinglish: "Paise kat gaye par kuch nahi mila?" },
+  checking: { en: "Checking with the bank…", hi: "बैंक से जाँच रहे हैं…", hinglish: "Bank se check kar rahe hain…" },
+  foundIt: { en: "Found it — your account is updated.", hi: "मिल गया — आपका अकाउंट अपडेट हो गया।", hinglish: "Mil gaya — aapka account update ho gaya." },
+  nothingPending: {
+    en: "No unfinished payment found. If money left your account, write to support with the time you paid.",
+    hi: "कोई अधूरा पेमेंट नहीं मिला। अगर पैसे कटे हैं तो सपोर्ट को समय बताकर लिखें।",
+    hinglish: "Koi adhura payment nahi mila. Agar paise kate hain to support ko time bataakar likhiye.",
+  },
 } satisfies Record<string, Tri>;
 
 const ACTION_LABEL: Record<string, Tri> = {
@@ -163,6 +171,7 @@ export default function PlanPage() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [payments, setPayments] = useState<Payment[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [verify, setVerify] = useState<"idle" | "busy" | "found" | "none">("idle");
   const [failed, setFailed] = useState(false);
   // Re-renders once a minute so the trial countdown is honest while the screen
   // is open, instead of freezing at whatever it said when the page loaded.
@@ -183,6 +192,23 @@ export default function PlanPage() {
       })
       .catch(() => setFailed(true))
       .finally(() => setLoading(false));
+  };
+
+  /* A webhook can be delayed or dropped, and then someone is left holding a
+     debit with nothing to show for it. This asks the server to check the
+     payment with Razorpay directly and settle it — the same path the checkout
+     page takes when its own polling runs out. */
+  const checkMissing = () => {
+    setVerify("busy");
+    fetch("/api/billing/verify", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v) => {
+        if (v && (v.recovered > 0 || v.trial_active || (v.balance ?? 0) > (credits?.balance ?? 0))) {
+          setVerify("found");
+          load();
+        } else setVerify("none");
+      })
+      .catch(() => setVerify("none"));
   };
 
   useEffect(() => {
@@ -375,6 +401,26 @@ export default function PlanPage() {
           </ul>
         ) : (
           <p className="text-[13px] text-muted-foreground">{t(L.noHistory, lang)}</p>
+        )}
+      </Card>
+
+      {/* Recovery, kept quiet and last: most people never need it, and the
+          person who does needs it to be obviously there. */}
+      <Card>
+        <p className="text-[13.5px] font-bold">{t(L.missing, lang)}</p>
+        {verify === "found" ? (
+          <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "#34D399" }}>{t(L.foundIt, lang)}</p>
+        ) : verify === "none" ? (
+          <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">{t(L.nothingPending, lang)}</p>
+        ) : (
+          <Pressable
+            onClick={checkMissing}
+            disabled={verify === "busy"}
+            className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-[13.5px] font-bold"
+          >
+            <RefreshCw className={`h-4 w-4 ${verify === "busy" ? "animate-spin" : ""}`} />
+            {verify === "busy" ? t(L.checking, lang) : t(L.missing, lang)}
+          </Pressable>
         )}
       </Card>
 

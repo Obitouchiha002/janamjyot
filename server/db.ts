@@ -378,6 +378,11 @@ CREATE TABLE IF NOT EXISTS payments (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
+-- Set when money was taken but nothing could be given (e.g. a second trial
+-- payment for an account that already used its trial). Surfaced in admin so
+-- a person refunds it, rather than it being quietly kept.
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS needs_refund BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS settled_at   TIMESTAMPTZ;
 -- The ₹1 trial is a real payment that buys ACCESS for three days, not credits,
 -- so its row is worth 0 credits. The original CHECK (credits > 0) rejected it
 -- and the order failed with a 500 before Razorpay was ever opened.
@@ -1372,8 +1377,13 @@ export async function grantCredits(args: {
     );
     await client.query("COMMIT");
     return after;
-  } catch (e) {
+  } catch (e: any) {
     await client.query("ROLLBACK").catch(() => {});
+    // 23505 = the one-grant-per-payment unique index fired, i.e. this payment
+    // has already been credited. That is the index doing its job, not a
+    // failure: report the balance so a retried webhook settles quietly rather
+    // than erroring and being retried forever.
+    if (e?.code === "23505") return creditBalance(args.userId);
     throw e;
   } finally {
     client.release();
@@ -1558,7 +1568,17 @@ export async function allPayments(limit = 200) {
   const { rows } = await pool!.query(
     `SELECT p.provider_order_id AS order_id, p.provider_payment_id AS payment_id,
             p.pack_id, p.amount_paise, p.credits, p.status, p.created_at,
-            u.email, u.name, p.user_id
+            p.updated_at, p.failure_reason, p.needs_refund, p.currency, p.provider,
+            u.email, u.name, p.user_id,
+            -- Was the money actually honoured? Read from the ledger rather than
+            -- assumed from the status, so a paid row that never granted shows up.
+            EXISTS (SELECT 1 FROM credit_ledger l
+                     WHERE l.ref_type = 'payment'
+                       AND l.ref_id IN (p.provider_payment_id, p.provider_order_id)) AS credited,
+            (u.trial_started_at IS NOT NULL)                                          AS trial_used,
+            u.trial_ends_at,
+            (SELECT COALESCE(SUM(l2.delta),0) FROM credit_ledger l2
+              WHERE l2.user_id = p.user_id)::int                                      AS user_balance
        FROM payments p JOIN app_users u ON u.id = p.user_id
       ORDER BY p.created_at DESC LIMIT $1`,
     [limit],
@@ -1575,13 +1595,29 @@ export async function paymentTotals() {
       paid_paise: paid.reduce((n, p) => n + p.amount_paise, 0),
       trials: paid.filter((p) => p.pack_id === "trial").length,
       failed: fileData.payments.filter((p) => p.status === "failed").length,
+      pending: fileData.payments.filter((p) => p.status === "created").length,
+      needs_refund: fileData.payments.filter((p: any) => p.needs_refund).length,
+      unhonoured: paid.filter((p) =>
+        p.pack_id !== "trial" && p.credits > 0 &&
+        !fileData.credit_ledger.some((l) => l.ref_type === "payment" &&
+          (l.ref_id === p.provider_payment_id || l.ref_id === p.provider_order_id))).length,
     };
   }
   const { rows } = await pool!.query(
     `SELECT count(*) FILTER (WHERE status='paid')::int                       AS paid_count,
             COALESCE(SUM(amount_paise) FILTER (WHERE status='paid'),0)::int  AS paid_paise,
             count(*) FILTER (WHERE status='paid' AND pack_id='trial')::int   AS trials,
-            count(*) FILTER (WHERE status='failed')::int                     AS failed
+            count(*) FILTER (WHERE status='failed')::int                     AS failed,
+            count(*) FILTER (WHERE status='created')::int                    AS pending,
+            count(*) FILTER (WHERE needs_refund)::int                        AS needs_refund,
+            -- Paid, but no ledger row: money taken and nothing delivered. This
+            -- is the number that must always be zero.
+            count(*) FILTER (
+              WHERE status='paid' AND pack_id <> 'trial' AND credits > 0
+                AND NOT EXISTS (SELECT 1 FROM credit_ledger l
+                                 WHERE l.ref_type='payment'
+                                   AND l.ref_id IN (payments.provider_payment_id, payments.provider_order_id))
+            )::int                                                            AS unhonoured
        FROM payments`,
   );
   return rows[0];
@@ -2273,6 +2309,74 @@ export async function createProviderOrder(args: {
     [args.userId, provider, args.orderId, args.paise, args.packId, args.credits],
   );
   return { orderId: args.orderId };
+}
+
+/**
+ * An unpaid order this person can be sent back to, instead of a fresh one.
+ *
+ * Two taps on Pay, or two open tabs, used to create two real Razorpay orders
+ * for the same thing — and both could be paid, taking the money twice. Handing
+ * back the existing order makes that impossible: Razorpay itself refuses a
+ * second payment against an order that is already paid.
+ *
+ * Matched on the amount as well as the pack, so a price change never resurrects
+ * an order at the old price.
+ */
+export async function findReusableOrder(
+  userId: string, packId: string, paise: number, maxAgeMinutes = 10,
+): Promise<{ orderId: string; credits: number } | null> {
+  if (!USE_PG) {
+    const cutoff = Date.now() - maxAgeMinutes * 60_000;
+    const row = [...fileData.payments].reverse().find(
+      (p) => p.user_id === userId && p.pack_id === packId && p.status === "created" &&
+             p.amount_paise === paise && Date.parse(p.created_at) > cutoff);
+    return row ? { orderId: row.provider_order_id, credits: row.credits } : null;
+  }
+  const { rows } = await pool!.query(
+    `SELECT provider_order_id AS order_id, credits
+       FROM payments
+      WHERE user_id = $1 AND pack_id = $2 AND status = 'created' AND amount_paise = $3
+        AND created_at > now() - ($4 || ' minutes')::interval
+      ORDER BY created_at DESC LIMIT 1`,
+    [userId, packId, paise, maxAgeMinutes],
+  );
+  return rows[0] ? { orderId: rows[0].order_id, credits: rows[0].credits } : null;
+}
+
+/** Flag a paid row that could not be honoured, so admin can refund it. */
+export async function markNeedsRefund(orderId: string, why: string): Promise<void> {
+  if (!USE_PG) {
+    const row = fileData.payments.find((p) => p.provider_order_id === orderId);
+    if (row) { (row as any).needs_refund = true; row.failure_reason = why; saveFile(); }
+    return;
+  }
+  await pool!.query(
+    `UPDATE payments SET needs_refund = true, failure_reason = $2, updated_at = now()
+      WHERE provider_order_id = $1`,
+    [orderId, why],
+  );
+}
+
+/** Orders that were created but never reached a final state. Used by the
+ *  reconciler and shown in admin: each one is someone who may have paid. */
+export async function pendingOrders(userId?: string, maxAgeMinutes = 60 * 24 * 3) {
+  if (!USE_PG) {
+    return fileData.payments
+      .filter((p) => p.status === "created" && (!userId || p.user_id === userId))
+      .map((p) => ({ order_id: p.provider_order_id, user_id: p.user_id, pack_id: p.pack_id,
+                     amount_paise: p.amount_paise, credits: p.credits, created_at: p.created_at }));
+  }
+  const { rows } = await pool!.query(
+    `SELECT provider_order_id AS order_id, user_id, pack_id, amount_paise, credits, created_at
+       FROM payments
+      WHERE status = 'created'
+        AND created_at > now() - ($1 || ' minutes')::interval
+        AND ($2::uuid IS NULL OR user_id = $2)
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    [maxAgeMinutes, userId ?? null],
+  );
+  return rows;
 }
 
 /** Settle an order from a provider webhook, using the provider's REAL payment

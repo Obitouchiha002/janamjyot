@@ -39,6 +39,9 @@ import {
   deliveryCountSince,
   createProviderOrder,
   settleOrder,
+  markNeedsRefund,
+  pendingOrders,
+  findReusableOrder,
   createMockOrder,
   settleMockOrder,
   paymentHistory,
@@ -330,6 +333,10 @@ const previewLimiter = rateLimit({
 });
 
 app.use("/api/chart-preview", previewLimiter);
+app.use("/api/billing/verify", rateLimit({
+  windowMs: 60_000, limit: 6, standardHeaders: "draft-7", legacyHeaders: false,
+  message: { error: "Please wait a moment before checking again." },
+}));
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/google", authLimiter);
@@ -1156,6 +1163,18 @@ app.post("/api/billing/order", async (req: any, res) => {
       if (t.used) return res.status(409).json({ error: "This account has already used its trial." });
     }
 
+    // Two taps, or two open tabs, must not become two payable orders — send
+    // them back to the one they already have. Razorpay refuses a second payment
+    // against an order it has already collected, so this is what makes a double
+    // charge impossible rather than merely unlikely.
+    const existing = await findReusableOrder(req.user.id, packId, pack.paise);
+    if (existing) {
+      return res.json({
+        order_id: existing.orderId, amount: pack.paise, currency: "INR",
+        pack: packId, key_id: RZP_KEY_ID, reused: true,
+      });
+    }
+
     const r = await fetch("https://api.razorpay.com/v1/orders", {
       method: "POST",
       headers: {
@@ -1195,6 +1214,95 @@ app.post("/api/billing/order", async (req: any, res) => {
  * SIGNATURE is the only thing standing between a stranger and free credits.
  * Always answer 2xx once the event is understood, or Razorpay keeps retrying.
  */
+/**
+ * POST /api/billing/verify — "I paid but nothing happened."
+ *
+ * The webhook is the normal path and it is the only thing that may grant
+ * credits from Razorpay's own word. But a webhook can be delayed, misrouted, or
+ * dropped, and when that happens the buyer is left with a debit and nothing to
+ * show for it — the single worst thing a payment system can do.
+ *
+ * So this asks Razorpay directly about THIS account's unfinished orders and, if
+ * the provider says a payment was captured, settles it here. It never trusts
+ * the client: the caller cannot name an order, the list comes from our own
+ * table filtered to their user id, and the amount and pack come from the row we
+ * wrote when the order was created.
+ */
+app.post("/api/billing/verify", async (req: any, res) => {
+  if (!RZP_READY) return res.status(503).json({ error: "Payments are not enabled yet." });
+  try {
+    const pending = await pendingOrders(req.user.id);
+    if (!pending.length) {
+      const [balance, trial] = await Promise.all([creditBalance(req.user.id), trialState(req.user.id)]);
+      return res.json({ checked: 0, recovered: 0, balance, trial_active: trial.active });
+    }
+
+    const auth = "Basic " + Buffer.from(`${RZP_KEY_ID}:${RZP_KEY_SECRET}`).toString("base64");
+    let recovered = 0;
+    const notes: string[] = [];
+
+    // Only the few most recent: this runs while someone is waiting on a screen.
+    for (const o of pending.slice(0, 5)) {
+      const r = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(o.order_id)}/payments`, {
+        headers: { Authorization: auth },
+      });
+      if (!r.ok) { notes.push(`${o.order_id}: provider ${r.status}`); continue; }
+      const body: any = await r.json().catch(() => ({}));
+      const captured = (body?.items ?? []).find((p: any) => p?.status === "captured");
+      if (!captured) continue;
+
+      const settled = await settleOrder(o.order_id, "paid", String(captured.id || ""));
+      if (!settled.ok) continue;
+      notes.push(await honourPayment(settled, String(captured.id || ""), o.order_id));
+      recovered++;
+    }
+
+    const [balance, trial] = await Promise.all([creditBalance(req.user.id), trialState(req.user.id)]);
+    res.json({ checked: pending.length, recovered, balance, trial_active: trial.active, notes });
+  } catch (err: any) {
+    fail(res, 500, "Could not check your payment. Please try again in a moment.", err, "billing-verify");
+  }
+});
+
+/**
+ * Give the buyer what they paid for. Safe to call again for the same payment.
+ *
+ * This deliberately does NOT skip when the row was already marked paid. It used
+ * to: `settleOrder` flipped the row to `paid` first, and only a first-time
+ * settlement ran the grant. So if the grant then threw — a dropped connection
+ * to the database, say — the webhook 500'd, Razorpay retried, the retry saw an
+ * already-settled row, and the credits were never given. Money taken, nothing
+ * delivered, permanently, with no error anywhere afterwards.
+ *
+ * Running it every time is safe because the database, not this code, enforces
+ * once-only: `idx_ledger_payment_once` allows a single ledger row per payment,
+ * and `startTrial` only fires while `trial_started_at IS NULL`.
+ */
+async function honourPayment(
+  result: { userId?: string; credits?: number; packId?: string; paymentId?: string },
+  paymentId: string,
+  orderId: string,
+): Promise<string> {
+  if (!result.userId) return "no user";
+  if (result.packId === "trial") {
+    const started = await startTrial(result.userId);
+    if (started) return "trial started";
+    // Paid for a trial this account had already used. The money is real, so it
+    // is flagged for a person to refund rather than quietly kept.
+    await markNeedsRefund(orderId, "Trial already used by this account — refund due.");
+    console.warn("[billing] trial paid twice, refund due:", orderId);
+    return "trial already used — refund due";
+  }
+  if (result.credits) {
+    await grantCredits({
+      userId: result.userId, credits: result.credits, reason: "purchase",
+      refType: "payment", refId: result.paymentId || paymentId || orderId, note: result.packId,
+    });
+    return "credits granted";
+  }
+  return "nothing to grant";
+}
+
 app.post("/api/billing/webhook", async (req: any, res) => {
   try {
     if (!RZP_WEBHOOK_SECRET) return res.status(503).json({ error: "Webhook not configured." });
@@ -1211,29 +1319,23 @@ app.post("/api/billing/webhook", async (req: any, res) => {
 
     const event = String(req.body?.event || "");
     const entity = req.body?.payload?.payment?.entity ?? {};
-    const orderId = String(entity.order_id || "");
+    // `order.paid` carries the order rather than the payment. Accepting both
+    // means the account's event selection cannot silently break settlement.
+    const orderEntity = req.body?.payload?.order?.entity ?? {};
+    const orderId = String(entity.order_id || orderEntity.id || "");
     const paymentId = String(entity.id || "");
 
     if (!orderId) return res.json({ ok: true, ignored: "no order id" });
 
-    if (event === "payment.captured") {
-      const result = await settleOrder(orderId, "paid", paymentId);
+    if (event === "payment.captured" || event === "order.paid") {
+      const result = await settleOrder(orderId, "paid", paymentId || null);
       if (!result.ok) {
         // Unknown order: nothing we can credit. 200 so Razorpay stops retrying.
         console.warn("[rzp-webhook] unknown order", orderId);
         return res.json({ ok: true, ignored: "unknown order" });
       }
-      if (!result.alreadySettled) {
-        if (result.packId === "trial") {
-          await startTrial(result.userId!);
-        } else if (result.credits) {
-          await grantCredits({
-            userId: result.userId!, credits: result.credits, reason: "purchase",
-            refType: "payment", refId: result.paymentId || paymentId, note: result.packId,
-          });
-        }
-      }
-      return res.json({ ok: true, settled: true, already: result.alreadySettled ?? false });
+      const granted = await honourPayment(result, paymentId, orderId);
+      return res.json({ ok: true, settled: true, already: result.alreadySettled ?? false, granted });
     }
 
     if (event === "payment.failed") {

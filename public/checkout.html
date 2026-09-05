@@ -326,7 +326,13 @@
 
   function waitForCredits(before){
     $('stage').hidden = true; $('doneStage').hidden = false;
-    var tries = 0;
+    var tries = 0, recovering = false;
+    function stuck(){
+      $('doneTitle').textContent = 'We are still confirming this';
+      $('doneMsg').innerHTML = 'Your payment went through and nothing is lost. It can take a few '
+        + 'minutes to reach us. Open the app and it will appear — or write to '
+        + '<a href="/contact.html">support</a> with the time you paid and we will sort it out the same day.';
+    }
     (function poll(){
       tries++;
       api('/api/credits').then(function(c){
@@ -339,9 +345,24 @@
             ? 'Your full access is on. It ends on its own — nothing will renew.'
             : 'Your balance is now ' + c.balance + ' credits. They never expire.';
         } else if(tries < 12){ setTimeout(poll, 1500); }
-        else {
-          $('doneTitle').textContent = 'Payment received';
-          $('doneMsg').textContent = 'Your credits are taking a moment to appear. Nothing is lost — they will land shortly. Refresh, or contact us if they are not there in a few minutes.';
+        else if(!recovering){
+          /* The webhook has not landed. Rather than leaving someone staring at
+             a debit with nothing to show for it, ask the server to check with
+             Razorpay directly and settle it. */
+          recovering = true;
+          $('doneMsg').textContent = 'Confirming your payment with the bank…';
+          api('/api/billing/verify', { method:'POST' })
+            .then(function(v){
+              if(v.recovered > 0 || (packId === 'trial' ? v.trial_active : v.balance > before)){
+                $('doneTitle').textContent = 'All done 🎉';
+                $('doneMsg').textContent = packId === 'trial'
+                  ? 'Your full access is on. It ends on its own — nothing will renew.'
+                  : 'Your balance is now ' + v.balance + ' credits. They never expire.';
+              } else {
+                stuck();
+              }
+            })
+            .catch(stuck);
         }
       }).catch(function(){ if(tries < 12) setTimeout(poll, 1500); });
     })();
