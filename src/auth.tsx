@@ -16,6 +16,26 @@ interface AuthState {
 }
 
 const TOKEN_KEY = "va_token";
+const REF_KEY = "jj:ref";
+
+/**
+ * A referral code arrives in the URL (janamjyot.lzworth.in/?ref=JJABC123) long
+ * before there is an account to attach it to, so it is parked here and sent
+ * with whichever sign-up the person eventually completes.
+ */
+function captureRef(): void {
+  try {
+    const c = new URLSearchParams(window.location.search).get("ref");
+    if (c && /^[A-Za-z0-9]{4,16}$/.test(c)) localStorage.setItem(REF_KEY, c.toUpperCase());
+  } catch { /* storage unavailable */ }
+}
+function pendingRef(): string {
+  try { return localStorage.getItem(REF_KEY) || ""; } catch { return ""; }
+}
+function clearRef(): void {
+  try { localStorage.removeItem(REF_KEY); } catch { /* ignore */ }
+}
+if (typeof window !== "undefined") captureRef();
 const DEVICE_KEY = "va_device";
 const AuthCtx = createContext<AuthState>(null as any);
 export const useAuth = () => useContext(AuthCtx);
@@ -101,10 +121,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handle = async (path: string, body: any) => {
-    const res = await fetch(`/api/auth/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const ref = pendingRef();
+    const res = await fetch(`/api/auth/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ref ? { ...body, referral_code: ref } : body) });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || "Something went wrong.");
     localStorage.setItem(TOKEN_KEY, d.token);
+    clearRef();
     setUser(d.user);
   };
 
@@ -117,20 +139,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch("/api/auth/otp/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code, name }),
+      body: JSON.stringify({ email, code, name, referral_code: pendingRef() || undefined }),
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || "Could not verify that code.");
     localStorage.setItem(TOKEN_KEY, d.token);
+    clearRef();
     setUser(d.user);
   };
 
   const loginWithGoogle = async () => {
     const idToken = await getGoogleIdToken();
-    const res = await fetch("/api/auth/google", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id_token: idToken }) });
+    const res = await fetch("/api/auth/google", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id_token: idToken, referral_code: pendingRef() || undefined }) });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error || "Google sign-in failed.");
     localStorage.setItem(TOKEN_KEY, d.token);
+    clearRef();
     setUser(d.user);
   };
 

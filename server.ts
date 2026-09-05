@@ -41,6 +41,11 @@ import {
   settleOrder,
   markNeedsRefund,
   adminAdjustCredits,
+  referralCode,
+  attachReferral,
+  settleReferral,
+  referralStats,
+  REFERRAL,
   pendingOrders,
   findReusableOrder,
   createMockOrder,
@@ -451,6 +456,9 @@ app.post("/api/auth/signup", async (req, res) => {
   // the emailed sign-in code, or Google Sign-In.
   const user = await createUser({ name, email, passwordHash: hashPassword(password), role: "user" });
   await adoptGuestCharts(req, user.id);
+  // A password signup proves nothing about the address, so the invitee's own
+  // bonus lands now and the referrer's waits for settleReferral.
+  await useReferral(req, user.id);
   res.json({ token: signToken({ sub: user.id }), user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
@@ -559,6 +567,7 @@ app.post("/api/auth/otp/verify", async (req, res) => {
         passwordHash: null,
         role: email === ADMIN_EMAIL ? "admin" : "user",
       });
+      await useReferral(req, user.id);
     }
     if (user.status && user.status !== "active") {
       return res.status(403).json({ error: (user as any).status_reason || "This account has been suspended." });
@@ -590,12 +599,60 @@ app.post("/api/auth/otp/verify", async (req, res) => {
  * that inbox: an emailed six-digit code, or a Google ID token Google verified.
  */
 async function grantAdminIfOwner(user: any): Promise<any> {
+  // Both callers have just proved this person holds the inbox, which is exactly
+  // the bar the referrer's reward waits for.
+  settleReferral(user.id).catch((e) => console.warn("[referral] settle failed:", e?.message));
   if (user.role === "admin") return user;
   if (String(user.email ?? "").toLowerCase() !== ADMIN_EMAIL) return user;
   await setUserRole(user.id, "admin");
   console.log("[auth] admin granted to the configured admin address");
   return { ...user, role: "admin" };
 }
+
+/** Apply a referral code supplied at signup, if any. Never fatal. */
+async function useReferral(req: any, newUserId: string): Promise<void> {
+  const code = String(req.body?.referral_code ?? req.body?.ref ?? "").trim();
+  if (!code) return;
+  try {
+    const out = await attachReferral(newUserId, code);
+    if ("error" in out) console.log("[referral] rejected at signup:", out.error);
+  } catch (e: any) {
+    // A bad code must never block someone from creating their account.
+    console.warn("[referral] attach failed:", e?.message);
+  }
+}
+
+/** GET /api/referral — my code, how it is going, and what each side gets. */
+app.get("/api/referral", async (req: any, res) => {
+  try {
+    const [code, stats] = await Promise.all([referralCode(req.user.id), referralStats(req.user.id)]);
+    res.json({
+      code,
+      link: `${(process.env.PUBLIC_APP_URL || "https://janamjyot.lzworth.in").replace(/\/$/, "")}/?ref=${code}`,
+      joined: stats.joined,
+      pending: stats.pending,
+      earned: stats.earned,
+      reward: REFERRAL.referrer,
+      invitee_reward: REFERRAL.invitee,
+    });
+  } catch (err: any) {
+    fail(res, 500, "Could not load your referral code.", err, "referral");
+  }
+});
+
+/** POST /api/referral/apply { code } — for someone who signed up without one. */
+app.post("/api/referral/apply", async (req: any, res) => {
+  try {
+    const out = await attachReferral(req.user.id, String(req.body?.code ?? ""));
+    if ("error" in out) return res.status(400).json(out);
+    // The caller is signed in but may never have proved their inbox, so the
+    // referrer is paid on the same terms as at signup — not merely on a claim.
+    await settleReferral(req.user.id).catch(() => 0);
+    res.json({ ok: true, credited: REFERRAL.invitee, balance: await creditBalance(req.user.id) });
+  } catch (err: any) {
+    fail(res, 500, "Could not apply that code.", err, "referral-apply");
+  }
+});
 
 /* ── Password: forgot → email link → reset, and change-while-signed-in ─────── */
 
@@ -754,6 +811,7 @@ app.post("/api/auth/google", async (req, res) => {
         avatarUrl: picture,
         role: email === ADMIN_EMAIL ? "admin" : "user",
       });
+      await useReferral(req, user.id);
     }
   }
 
@@ -3087,11 +3145,16 @@ app.get("/api/chart/:chartId/timeline", async (req, res) => {
     // only real AI work counts — but OUTSIDE the regenerate branch, because
     // ?regenerate=1 skips the cache entirely and is exactly the path that
     // needs a ceiling.
+    // A five-year forecast is a deep reading, not a daily glance: the trial caps
+    // it separately and CREDIT_PRICES has always carried a price for it. It sat
+    // in the everyday bucket, so that price was never charged — the same
+    // dead code the rest of the credit system was in. It shares the deep-reading
+    // allowance with the reports, and costs credits after that.
+    const auth = await charge(req, res, "report", "timeline");
+    if (!auth) return;
     {
-      const over = await checkQuota(req as any, "daily");
-      if (over) return res.status(429).json(over);
       const q = identityOf(req as any);
-      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "daily", meta: { surface: "timeline" } }).catch(() => {});
+      recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "report", meta: { surface: "timeline" } }).catch(() => {});
     }
 
     let transit: any = null;
@@ -3103,6 +3166,8 @@ app.get("/api/chart/:chartId/timeline", async (req, res) => {
 
     const payload = { ...timeline, birth_details: chart.birth_details, generated_at: new Date().toISOString() };
     try { await insertReport({ chartId, report: payload, language: cacheKey }); } catch {}
+    // Charged only now, with the forecast written.
+    await settleCharge(req, auth.charge, "timeline", chartId);
     res.json(payload);
   } catch (err: any) {
     console.error("[timeline] error:", err?.message);

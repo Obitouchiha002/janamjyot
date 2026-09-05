@@ -267,6 +267,16 @@ CREATE TABLE IF NOT EXISTS app_users (
 -- with a date the user can see, and it keeps "credits never expire" literally
 -- true. trial_started_at is set once and never cleared, so the trial cannot
 -- be taken twice on one account.
+-- Refer & earn. The code is this account's own; referred_by records who sent
+-- them. referral_settled exists because the referrer's reward is NOT paid the
+-- moment a row appears: anyone can type an email address, and paying on signup
+-- alone would let one person mint credits from accounts they invented. It is
+-- paid when the referred account proves it holds its inbox — an emailed code or
+-- a Google sign-in — which is the same standard admin uses.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS referral_code    TEXT;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS referred_by      UUID REFERENCES app_users(id) ON DELETE SET NULL;
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS referral_settled BOOLEAN NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_referral_code ON app_users(referral_code) WHERE referral_code IS NOT NULL;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS trial_started_at TIMESTAMPTZ;
 ALTER TABLE app_users ADD COLUMN IF NOT EXISTS trial_ends_at    TIMESTAMPTZ;
 
@@ -1206,6 +1216,17 @@ export async function recordUsage(args: {
  * is also the better product: the free tier is genuinely useful every day,
  * which is what brings people back, and the paid tier is the deep reading.
  */
+/**
+ * Refer & earn. Both sides are paid in credits, never cash, so the whole thing
+ * settles inside our own ledger and can be audited row by row.
+ */
+export const REFERRAL = {
+  /** Paid to the person who shared the code, once their invitee is verified. */
+  referrer: 30,
+  /** Paid to the new account immediately for using a code. */
+  invitee: 10,
+} as const;
+
 export const CREDIT_PRICES: Record<string, number> = {
   chat: 1,          // one question and its answer
   life_report: 29,  // the long report + PDF
@@ -1237,6 +1258,130 @@ export interface TrialState {
   active: boolean;
   used: boolean;
   endsAt: string | null;
+}
+
+/** Unambiguous alphabet: no O/0, I/1/L — codes get read aloud and retyped. */
+const CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXYZ2346789";
+
+/** This account's code, created on first use and stable afterwards. */
+export async function referralCode(userId: string): Promise<string> {
+  if (!USE_PG) {
+    const u: any = fileData.users.find((x: any) => x.id === userId);
+    if (!u) return "";
+    if (!u.referral_code) { u.referral_code = "JJ" + randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase(); saveFile(); }
+    return u.referral_code;
+  }
+  const { rows } = await pool!.query(`SELECT referral_code FROM app_users WHERE id = $1`, [userId]);
+  if (rows[0]?.referral_code) return rows[0].referral_code;
+
+  // Retry on collision rather than trusting one draw — the index is the real
+  // guarantee, this loop just makes hitting it survivable.
+  for (let i = 0; i < 8; i++) {
+    let code = "JJ";
+    for (let n = 0; n < 6; n++) code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+    try {
+      const { rows: done } = await pool!.query(
+        `UPDATE app_users SET referral_code = $2
+          WHERE id = $1 AND referral_code IS NULL
+          RETURNING referral_code`,
+        [userId, code],
+      );
+      if (done[0]?.referral_code) return done[0].referral_code;
+      // Someone set it between our read and write — take theirs.
+      const { rows: again } = await pool!.query(`SELECT referral_code FROM app_users WHERE id = $1`, [userId]);
+      if (again[0]?.referral_code) return again[0].referral_code;
+    } catch (e: any) {
+      if (e?.code !== "23505") throw e;   // not a collision — a real failure
+    }
+  }
+  throw new Error("Could not allocate a referral code.");
+}
+
+export async function userByReferralCode(code: string): Promise<{ id: string } | null> {
+  const c = code.trim().toUpperCase();
+  if (!c) return null;
+  if (!USE_PG) {
+    const u: any = fileData.users.find((x: any) => (x.referral_code ?? "").toUpperCase() === c);
+    return u ? { id: u.id } : null;
+  }
+  const { rows } = await pool!.query(`SELECT id FROM app_users WHERE upper(referral_code) = $1`, [c]);
+  return rows[0] ?? null;
+}
+
+/**
+ * Record who referred this account. Refuses a second use, a self-referral, and
+ * an unknown code. Pays the invitee immediately; the referrer is paid only once
+ * the invitee is verified (see settleReferral).
+ */
+export async function attachReferral(
+  newUserId: string, code: string,
+): Promise<{ ok: true; referrerId: string } | { error: string }> {
+  const ref = await userByReferralCode(code);
+  if (!ref) return { error: "That referral code was not recognised." };
+  if (ref.id === newUserId) return { error: "You cannot use your own referral code." };
+
+  if (!USE_PG) {
+    const u: any = fileData.users.find((x: any) => x.id === newUserId);
+    if (!u) return { error: "Account not found." };
+    if (u.referred_by) return { error: "A referral code has already been used on this account." };
+    u.referred_by = ref.id; saveFile();
+  } else {
+    const { rowCount } = await pool!.query(
+      `UPDATE app_users SET referred_by = $2 WHERE id = $1 AND referred_by IS NULL`,
+      [newUserId, ref.id],
+    );
+    if (!rowCount) return { error: "A referral code has already been used on this account." };
+  }
+  await grantCredits({
+    userId: newUserId, credits: REFERRAL.invitee, reason: "bonus",
+    refType: "referral", refId: `joined:${newUserId}`, note: "Joined with a referral code",
+  });
+  return { ok: true, referrerId: ref.id };
+}
+
+/**
+ * Pay the referrer, once. Called when the referred account proves it holds its
+ * inbox, which is what stops one person minting credits from invented accounts.
+ * The unique ledger ref makes a second call a no-op even if this races.
+ */
+export async function settleReferral(userId: string): Promise<number> {
+  let referrerId: string | null = null;
+  if (!USE_PG) {
+    const u: any = fileData.users.find((x: any) => x.id === userId);
+    if (!u?.referred_by || u.referral_settled) return 0;
+    u.referral_settled = true; referrerId = u.referred_by; saveFile();
+  } else {
+    const { rows } = await pool!.query(
+      `UPDATE app_users SET referral_settled = true
+        WHERE id = $1 AND referred_by IS NOT NULL AND referral_settled = false
+        RETURNING referred_by`,
+      [userId],
+    );
+    referrerId = rows[0]?.referred_by ?? null;
+  }
+  if (!referrerId) return 0;
+  await grantCredits({
+    userId: referrerId, credits: REFERRAL.referrer, reason: "bonus",
+    refType: "referral", refId: `referred:${userId}`, note: "Someone joined with your code",
+  });
+  return REFERRAL.referrer;
+}
+
+/** How this account's referrals are going, for the Refer & Earn card. */
+export async function referralStats(userId: string): Promise<{ joined: number; earned: number; pending: number }> {
+  if (!USE_PG) {
+    const rows = fileData.users.filter((x: any) => x.referred_by === userId);
+    const settled = rows.filter((x: any) => x.referral_settled).length;
+    return { joined: settled, earned: settled * REFERRAL.referrer, pending: rows.length - settled };
+  }
+  const { rows } = await pool!.query(
+    `SELECT count(*) FILTER (WHERE referral_settled)::int      AS joined,
+            count(*) FILTER (WHERE NOT referral_settled)::int  AS pending
+       FROM app_users WHERE referred_by = $1`,
+    [userId],
+  );
+  const joined = rows[0]?.joined ?? 0;
+  return { joined, earned: joined * REFERRAL.referrer, pending: rows[0]?.pending ?? 0 };
 }
 
 export async function trialState(userId: string): Promise<TrialState> {

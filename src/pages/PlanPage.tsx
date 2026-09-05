@@ -19,6 +19,7 @@ import {
   Sparkles, Clock, Coins, ReceiptText, RefreshCw, ChevronRight, ShieldCheck,
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
+import ReferCard from "@/components/ReferCard";
 import { useAuth } from "@/auth";
 import { getLang } from "@/lib/prefs";
 import { API_BASE } from "@/lib/api";
@@ -369,6 +370,9 @@ export default function PlanPage() {
 
         <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">{t(L.safe, lang)}</p>
       </Card>
+
+      {/* Free credits, before asking anyone to pay for them. */}
+      <ReferCard canApply onChanged={load} />
 
       {/* ── Receipts ───────────────────────────────────────────────── */}
       <Card>
