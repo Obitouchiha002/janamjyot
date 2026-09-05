@@ -628,7 +628,15 @@ export async function answerUniversal(args: {
       `question does not fit a known fact, ask what they mean rather than choosing an ` +
       `interpretation that ignores it. Asked "meri shaadi kab hogi?" by someone whose ` +
       `marital status here is married, the right reply is to ask whether they mean the ` +
-      `road ahead in that marriage, or something else — not a wedding date.\n`
+      `road ahead in that marriage, or something else — not a wedding date.\n` +
+      `AND WHEN A FACT CARRIES A YEAR, THAT IS THE EVENT'S YEAR. If they married in ` +
+      `2021, their marriage was in 2021 — never say the yoga was strong in 2024-25 as ` +
+      `though that is when it happened. A chart window that does not match a stated ` +
+      `year is a DIFFERENT period meaning something else, and must be named as one: ` +
+      `"aapki shaadi 2021 mein hui; chart mein 2024-25 ka daur rishton ke liye alag se ` +
+      `strong dikhta hai, jo us rishte ke andar ek badlav ka samay ho sakta hai." Their ` +
+      `year is the fact, the window is your reading — never present the two as the same ` +
+      `thing.\n`
     : "";
   const convo = (args.history ?? [])
     .slice(-8)
