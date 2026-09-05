@@ -307,7 +307,10 @@ function lifeStageNote(age: number | null): string {
       `Do not discuss marriage timing, romance or anything sexual for a minor. Keep to ` +
       `studies, temperament, family and health, and say plainly why.\n`;
   }
-  return head;
+  // Nothing for an ordinary adult age. It used to announce the age on every
+  // single message — a line of noise for no gain, since the number is already
+  // in the packet for the cases that actually need it.
+  return "";
 }
 
 export function buildChartPacket(chart: any, category: Category, transit?: any) {
@@ -653,24 +656,16 @@ export async function answerUniversal(args: {
    * answer MEANS. "Kal ka din kaisa hai" needs nothing. "Shaadi kab hogi" is a
    * different sentence depending on the answer.
    */
-  const STATUS_KEYS = ["marital_status", "employment", "children"] as const;
-  const unknown = STATUS_KEYS.filter((k) => !(k in (args.facts ?? {})));
-  const unknownBlock = unknown.length
-    ? `\nNOT KNOWN — never assume any of these, and never state one as if it were true:\n` +
-      unknown.map((k) => `- ${k.replace(/_/g, " ")}`).join("\n") + `\n` +
-      `If the answer depends on one of them, do ONE of two things:\n` +
-      `  (a) ask a single short question and stop — "aap abhi unmarried hain, married, ` +
-      `ya divorced?" — and put the choices in PART 3 so they can tap one; or\n` +
-      `  (b) answer conditionally, covering the cases: "agar aap abhi unmarried hain to ` +
-      `2027-28 ka daur shaadi ke liye strong dikhta hai; agar shaadi ho chuki hai to ` +
-      `yahi daur us rishte mein ek bade badlav ka ho sakta hai."\n` +
-      `Prefer (a) when the whole answer turns on it — marriage timing, a first child, ` +
-      `when a job will come. Prefer (b) when it only colours the answer — how the next ` +
-      `six months look. Ask about nothing when it does not matter at all: "kal ka din ` +
-      `kaisa rahega" needs no status from anyone.\n` +
-      `Never ask twice for something already listed under KNOWN FACTS, and never ask ` +
-      `more than one thing in a reply.\n`
-    : "";
+  /*
+   * Removed: a NOT-KNOWN block listing every missing fact.
+   *
+   * It fired on nearly every message, because most facts are unknown most of
+   * the time — and a standing instruction to hedge or ask turned ordinary
+   * answers into vague, repetitive ones. The cases where a missing fact really
+   * changes the answer are caught in server/clarify.ts before the model is
+   * called at all, which is both reliable and free. Two mechanisms for one job
+   * was one too many, and the prompt was the half that made the replies worse.
+   */
   const convo = (args.history ?? [])
     .slice(-8)
     .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`)
@@ -684,7 +679,7 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${unknownBlock}${stage}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
 The user asks: "${args.question}"
 
 ${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now
@@ -714,73 +709,20 @@ PART 1 — the answer (before the marker):
         they name. Decline that warmly and move to what is useful.
     None of this makes you vague — be direct about what the chart shows. It
     stops you being the reason someone quit a job or skipped a doctor.
-  • WHOSE life is this question about? Decide that FIRST, every time.
-    This chart belongs to ONE person. Other people appear in it only as areas
-    of THEIR life — the 5th tells you about children as a theme in this
-    person's life, the 7th about partnership, the 9th about the father. It
-    does NOT contain another human being's timeline.
-    So if they ask about an EVENT or TIMING for someone else — when their child
-    will marry, when their brother will get a job, whether their friend will
-    recover — say plainly that this needs that person's OWN kundli, because
-    from here you would be guessing. Then say what THIS chart does show about
-    that part of their life, and offer to make the other person's kundli.
-    Never take a yoga or a dasha that belongs to THEM and hand it to somebody
-    else. Asked when a not-yet-born child will marry, the honest answer is that
-    no chart can say that — not a date two to four years away pulled from their
-    own marriage yoga. An answer like that destroys every true thing you said
-    before it.
-  • Hold on to what they have already told you. If they said they are not
-    married, do not answer as though they are; if they named a person earlier,
-    "unki" means that person, not a fresh guess. Read the conversation above
-    before deciding who "they" refers to.
-  • CHECK THE DATE BEFORE YOU CHOOSE A TENSE. The packet gives you "today" and
-    "age_years". Every period in the chart is either before that date or after
-    it, and saying "hoga" about a window that closed in 1998 is not a small
-    slip — it tells them the reading is not really about them.
-      – A window that has passed is described in the PAST: "aapki shaadi ka
-        prabal yog 1997–2000 ke beech tha."
-      – And when a life event's window has already gone by, ASK rather than
-        predict: "aapki shaadi ho chuki hai?" If they say yes, read what that
-        period DID bring and move to what is ahead. Never hand someone who has
-        been married twenty years a future wedding date.
-  • MIND THE AGE. Someone of 68 is not asking when they will start their career,
-    and a chart made for a parent or a grandparent is often not the person
-    typing. If the age makes a question read oddly, say so gently and check —
-    "yeh kundli aapki hai ya kisi aur ki?" — before answering.
-    If a chart belongs to someone who has died, nothing about their future
-    exists to read. Speak of their life in the past tense, with respect, and
-    never offer them coming years, a marriage yoga, or good times ahead. If you
-    are unsure, ask before assuming they are here.
-  • A chart shows LEANINGS AND PERIODS. It does not know FACTS about right now.
-    "Main abhi kya kar raha hoon?", "main kis field mein kaam karta hoon?",
-    "mere paas kitna paisa hai?", "kya main mar gaya hoon?" — these are things
-    only they can tell you, and half of them are a test to see whether you will
-    bluff. Do not. Guessing and being wrong ends the conversation; guessing and
-    being right teaches them you are a fortune cookie.
-    Say cleanly that a kundli shows the shape of a life, not a live feed — then
-    give the real thing it DOES show (the kind of work this chart leans toward,
-    the phase they are in) and invite the fact from them: "aap batayein aap kya
-    karte hain, phir main usi ke hisaab se dekhta hoon." That turns a trap into
-    the most useful exchange in the conversation.
-    "Kya main mar gaya hoon" gets warmth and lightness — they are clearly alive
-    and testing you — never a prediction, never a reading about death.
+  • This chart is ONE person's. Another person's own events are not in it — say
+    that needs their kundli, and never hand them a yoga that belongs to this
+    chart.
+  • "today" and "age_years" are in the packet. A window before that date is
+    PAST — say "tha", not "hoga".
+  • A chart shows leanings and periods, not facts about right now. What they do,
+    what they have, whether they are alive: only they can tell you. Say so
+    lightly and ask, rather than guessing.
   • Plain language ONLY. NO astrology jargon here — no planet names, house
     numbers, dasha or Sanskrit terms in this part. Just what it means for them
     and, where it helps, one concrete thing to do or a time window.
   • Keep it short: 2-5 short lines. If it's a yes/no, lead with the yes/no.
-  • MATCH THEM. Someone who writes four words gets a short reply; someone who
-    writes a paragraph about what is going on at home has earned more room and
-    a gentler start. Someone who opens with a plain "kab hoga?" wants the
-    answer first, not a preamble. Someone who is clearly upset gets
-    acknowledged in one line before anything else — never a lecture, never a
-    list. Read their length, their tone and their language and answer in the
-    same register; a reply that always looks the same is a form letter, and
-    people can tell.
-  • If ONE piece of information would genuinely change your answer — whether
-    they are already working or looking, whether a relationship is new or long —
-    ask for it, in one short line at the end. Ask only when it really matters;
-    a question at the end of every reply is as mechanical as a menu, and never
-    ask for anything already in their chart or said earlier.
+    Match their length and tone — four words get a short reply, a paragraph
+    about their home life earns more room and a gentler start.
   • For a feature/how-to question, answer from the app guide plainly.
   • Bold the single most important phrase with **double asterisks**. No other
     markdown, no bullets in this part.
