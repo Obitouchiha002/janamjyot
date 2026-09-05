@@ -542,10 +542,37 @@ export interface Quotas {
 
 /** -1 means unlimited. Tuned for free AI provider quotas — accuracy over volume. */
 export const PLANS: Record<PlanId, Quotas> = {
+  // Free: counted per month (see PLAN_WINDOW) — enough to judge the app, not
+  // enough to live in it. Daily readings stay per-day and generous, because
+  // they are the habit worth building and they cost us almost nothing.
   free: { chart: 3, report: 2, ask: 15, match: 3, daily: 40 },
   pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
   unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
 };
+
+/**
+ * How long a plan's allowance is counted over — which is a product decision,
+ * not a technical one, and differs by plan.
+ *
+ * Free counts questions and matches per MONTH. Fifteen questions a DAY is more
+ * than almost anyone asks, so the free plan answered every real need and no one
+ * ever had a reason to pay; it was generous in a way that made the paid tiers
+ * pointless. Fifteen a month is enough to see whether the answers are any good,
+ * which is what a free tier is for.
+ *
+ * A paid plan is the opposite: it should feel unmetered day to day, so its
+ * allowances stay per-day.
+ */
+export const PLAN_WINDOW: Record<PlanId, Partial<Record<QuotaAction, "day" | "month" | "total">>> = {
+  free: { ask: "month", match: "month" },
+  pro: {},
+  unlimited: {},
+};
+
+/** Window for an action on a given plan; the table below is the default. */
+export function windowFor(action: QuotaAction, plan: PlanId = "free"): "day" | "month" | "total" {
+  return PLAN_WINDOW[plan]?.[action] ?? QUOTA_WINDOW[action];
+}
 
 /** The window each quota is counted over. `chart` is a lifetime cap, not a rate. */
 export const QUOTA_WINDOW: Record<QuotaAction, "day" | "month" | "total"> = {
@@ -1716,11 +1743,11 @@ export async function downloadStats(): Promise<{ total: number; today: number; w
  * creations, not on what they actually hold.
  */
 export async function usageCount(
-  who: { userId?: string | null; deviceId?: string | null },
+  who: { userId?: string | null; deviceId?: string | null; plan?: PlanId },
   action: QuotaAction,
 ): Promise<number> {
   if (!USE_PG) return 0;
-  const window = QUOTA_WINDOW[action];
+  const window = windowFor(action, who.plan ?? "free");
 
   if (action === "chart") {
     const { rows } = await pool!.query(

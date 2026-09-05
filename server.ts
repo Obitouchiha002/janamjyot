@@ -97,6 +97,7 @@ import {
   deleteApiKey,
   PLANS,
   QUOTA_WINDOW,
+  windowFor,
   insertFeedback,
   getTestimonials,
   getAllFeedback,
@@ -833,7 +834,11 @@ app.get("/api/admin/user/:id", requireAdmin, async (req, res) => {
   const limits = quotasFor(user);
   const usage: Record<string, { used: number; limit: number; window: string }> = {};
   for (const a of ["chart", "report", "ask", "match"] as QuotaAction[]) {
-    usage[a] = { used: await usageCount({ userId: user.id }, a), limit: limits[a], window: QUOTA_WINDOW[a] };
+    usage[a] = {
+      used: await usageCount({ userId: user.id, plan: user.plan }, a),
+      limit: limits[a],
+      window: windowFor(a, user.plan),
+    };
   }
   const [balance, trial, payments, ledger] = await Promise.all([
     creditBalance(user.id),
@@ -961,11 +966,12 @@ app.get("/api/me/usage", async (req: any, res) => {
   const me = identityOf(req);
   const limits = quotasFor(req.user ?? null);
   const out: Record<string, { used: number; limit: number; window: string }> = {};
+  const myPlan = (req.user?.plan ?? "free") as PlanId;
   for (const a of ["chart", "report", "ask", "match"] as QuotaAction[]) {
     out[a] = {
-      used: await usageCount({ userId: me.userId, deviceId: me.deviceId }, a),
+      used: await usageCount({ userId: me.userId, deviceId: me.deviceId, plan: myPlan }, a),
       limit: limits[a],
-      window: QUOTA_WINDOW[a],
+      window: windowFor(a, myPlan),
     };
   }
   res.json({ plan: req.user?.role === "admin" ? "unlimited" : req.user?.plan ?? "free", usage: out });
@@ -1664,11 +1670,13 @@ async function checkQuota(
   const limit = limits[action];
   if (limit < 0) return null; // -1 = unlimited
 
+  const plan = (user?.plan ?? "free") as PlanId;
   const me = identityOf(req);
-  const used = await usageCount({ userId: me.userId, deviceId: me.deviceId }, action);
+  const used = await usageCount({ userId: me.userId, deviceId: me.deviceId, plan }, action);
   if (used < limit) return null;
 
-  const window = QUOTA_WINDOW[action];
+  const window = windowFor(action, plan);
+  const per = window === "month" ? "per month" : window === "day" ? "per day" : "";
   const when =
     window === "day" ? "Your limit resets tomorrow."
     : window === "month" ? "Your limit resets 30 days after each use."
@@ -1676,9 +1684,9 @@ async function checkQuota(
 
   const what: Record<QuotaAction, string> = {
     chart: `You can keep ${limit} saved kundli${limit === 1 ? "" : "s"} on this plan.`,
-    report: `You can generate ${limit} life report${limit === 1 ? "" : "s"} per month on this plan.`,
-    ask: `You can ask ${limit} question${limit === 1 ? "" : "s"} per day on this plan.`,
-    match: `You can run ${limit} kundli match${limit === 1 ? "" : "es"} per day on this plan.`,
+    report: `You can generate ${limit} report${limit === 1 ? "" : "s"} per month on this plan.`,
+    ask: `You can ask ${limit} question${limit === 1 ? "" : "s"} ${per} on this plan.`,
+    match: `You can run ${limit} kundli match${limit === 1 ? "" : "es"} ${per} on this plan.`,
     daily: `You've opened your daily readings ${limit} times today — that's the fair-use limit.`,
   };
 
