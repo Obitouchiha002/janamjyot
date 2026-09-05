@@ -572,8 +572,14 @@ PART 2 — the reason (after the "<<REASON>>" marker):
 
 PART 3 — what to ask next (after the "<<NEXT>>" marker):
   • Exactly 2 or 3 short follow-up questions, one per line, no numbering or
-    bullets, written in the FIRST PERSON as the user would type them
-    (e.g. "Agle 12 mahine career mein kaisa rahega?").
+    bullets. These are TAPPED BY THE USER AND SENT AS THEIR OWN MESSAGE, so
+    write them the way THEY would type them — asking YOU, about THEMSELVES.
+    Use "main / mera / mujhe" (or "I / my / me"), NEVER "aap / aapka / aapko"
+    (or "you / your").
+      RIGHT: "Kya mere parivar se mujhe support milega?"
+      WRONG: "Kya aapke parivar se aapko support mil raha hai?"
+    A question addressed to the user is unusable — it makes them answer
+    themselves.
   • Each must follow from THIS answer and be answerable from their chart. Never
     generic ("tell me more"), never a repeat of what they just asked.
 ${args.suggested?.length ? `  • You have ALREADY offered these — do not repeat any of them, and do not
@@ -603,6 +609,10 @@ ${languageInstruction(args.language)}`;
       .split("\n")
       .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
       .filter((l) => l.length > 3 && l.length < 120)
+      // Written to the user instead of by them. Rewriting it would mean
+      // guessing what they meant, so it is dropped: two good chips beat three
+      // where one asks the reader about themselves.
+      .filter((l) => !/\b(aap|aapka|aapke|aapko|आप|आपक|your |you )\b/i.test(l))
       .slice(0, 3);
     rest = rest.slice(0, nIdx);
   }
