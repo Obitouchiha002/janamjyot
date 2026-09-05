@@ -17,7 +17,7 @@ const { Pool } = pg;
 // Accept either DATABASE_URL (standard / Neon / Supabase) or POSTGRES_URL
 // (the variable name Vercel's built-in Postgres integration injects).
 const connectionString = (process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
-const USE_PG = connectionString.length > 0;
+export const USE_PG = connectionString.length > 0;
 
 if (USE_PG) {
   console.log("[db] using Postgres (DATABASE_URL set)");
@@ -455,6 +455,27 @@ CREATE TABLE IF NOT EXISTS usage_events (
   meta       JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- What every AI generation would have cost at list price, whoever served it.
+-- The chain runs on free tiers today; that is a discount, not a business model,
+-- and a product priced against zero discovers its real margin on the day the
+-- discount stops. Costed here so the answer exists before it is needed.
+CREATE TABLE IF NOT EXISTS ai_calls (
+  id         BIGSERIAL PRIMARY KEY,
+  provider   TEXT NOT NULL,
+  purpose    TEXT NOT NULL,
+  in_tokens  INTEGER NOT NULL DEFAULT 0,
+  out_tokens INTEGER NOT NULL DEFAULT 0,
+  -- Paid-equivalent, in paise. Free calls are costed too, or the number lies.
+  cost_paise INTEGER NOT NULL DEFAULT 0,
+  latency_ms INTEGER NOT NULL DEFAULT 0,
+  -- 1 = the first provider answered. Higher means the ones before it failed.
+  attempt    SMALLINT NOT NULL DEFAULT 1,
+  ok         BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- No prompt, no answer, no user id: costing needs none of them, and a table
+-- that does not hold private text cannot leak it.
+CREATE INDEX IF NOT EXISTS idx_ai_calls_time ON ai_calls(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_user   ON usage_events(user_id, action, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_device ON usage_events(device_id, action, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_usage_time   ON usage_events(created_at DESC);

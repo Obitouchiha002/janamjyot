@@ -13,6 +13,7 @@
  *
  * Order can be customised with AI_PROVIDER_ORDER, e.g. "groq,gemini,openrouter".
  */
+import { logAiCall } from "./ai-log";
 import { GoogleGenAI } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -22,11 +23,32 @@ export interface GenOpts {
   maxTokens?: number;
   /** Gemini 2.5 "thinking" token budget. 0 disables it (output is not eaten by thinking). */
   thinkingBudget?: number;
+  /**
+   * This prompt carries someone's private life — their birth details, their
+   * chart, what they said about their marriage or their job. Providers whose
+   * free tier may keep content for product improvement are skipped entirely for
+   * these, even if it means falling all the way through to a paid one.
+   *
+   * Saving an API bill is not a reason to hand a stranger's conversation to a
+   * training corpus, and there is no way to take it back afterwards.
+   */
+  private?: boolean;
+  /** What this call was for — chat, life_report, match… Recorded for costing. */
+  purpose?: string;
 }
 
 interface Provider {
   name: string;
   generate(prompt: string, opts: GenOpts): Promise<string>;
+  /**
+   * True when this provider MAY use prompt content to improve its models on the
+   * tier we are on. Assumed true unless we know otherwise: getting this wrong
+   * in the cautious direction costs money, in the other direction it costs
+   * someone's privacy, and only one of those is recoverable.
+   */
+  trainsOnContent?: boolean;
+  /** Paid-equivalent rate, US$ per million tokens, for costing free calls too. */
+  rate?: { in: number; out: number };
 }
 
 /**
@@ -341,19 +363,88 @@ function buildProviders(): Provider[] {
     .split(",")
     .map((s) => s.trim().toLowerCase());
   const ordered: Provider[] = [];
-  for (const name of order) ordered.push(...(byName[name] ?? []));
+  for (const name of order) {
+    for (const p of byName[name] ?? []) {
+      const meta = PROVIDER_META[name];
+      // Unknown provider → assumed to train. The cautious default costs money;
+      // the other default costs someone's privacy, and only one is recoverable.
+      p.trainsOnContent = meta ? meta.trains : true;
+      p.rate = meta?.rate ?? { in: 1, out: 3 };
+      ordered.push(p);
+    }
+  }
   return ordered;
 }
+
+/**
+ * What each provider does with a prompt, and what it would cost if nothing were
+ * free. Both matter for the same reason: a business cannot be built on a free
+ * tier it does not understand.
+ *
+ * `trainsOnContent` reflects the tier we are actually on. Google's free tier
+ * says content may be used to improve their products; the paid tier says it is
+ * not — so Gemini is treated as training-capable unless GEMINI_PAID_TIER is set
+ * to say otherwise. Groq states it does not train on customer data. A local
+ * Ollama never leaves the machine. Anthropic's API does not train on inputs.
+ * OpenRouter depends on how it is routed, so it is assumed unsafe unless
+ * OPENROUTER_ZDR says the account is on zero-data-retention routing.
+ *
+ * Rates are US$ per million tokens, list price, used to cost calls that are
+ * currently free. A free tier is a discount, not a business model, and pricing
+ * it as though we were paying is the only way to know whether ₹49 for fifty
+ * questions is a product or a slow leak.
+ */
+const PROVIDER_META: Record<string, { trains: boolean; rate: { in: number; out: number } }> = {
+  gemini:     { trains: env("GEMINI_PAID_TIER") !== "true", rate: { in: 0.30, out: 2.50 } },
+  groq:       { trains: false,                              rate: { in: 0.20, out: 0.60 } },
+  openrouter: { trains: env("OPENROUTER_ZDR") !== "true",   rate: { in: 0.50, out: 1.50 } },
+  openai:     { trains: false,                              rate: { in: 0.40, out: 1.60 } },
+  anthropic:  { trains: false,                              rate: { in: 3.00, out: 15.00 } },
+  ollama:     { trains: false,                              rate: { in: 0,    out: 0 } },
+};
 
 let cached: Provider[] | null = null;
 function providers(): Provider[] {
   if (!cached) {
     cached = buildProviders();
+    const safe = cached.filter((p) => !p.trainsOnContent).map((p) => p.name);
     console.log(
       `[llm] providers configured (in fallback order): ${cached.map((p) => p.name).join(", ") || "NONE"}`
     );
+    console.log(
+      `[llm] privacy-safe for personal prompts: ${safe.join(", ") || "NONE — personal prompts will FAIL"}`
+    );
   }
   return cached;
+}
+
+/**
+ * What one generation would have cost at list price, whoever served it.
+ *
+ * Token counts are estimated from characters (~4 per token) because the
+ * providers do not all report usage through this interface. That is precise
+ * enough for the only question being asked — "is a chat costing more than
+ * thirty paise?" — and being approximately right about the economics beats
+ * being exactly right about nothing, which is where a free tier leaves you.
+ *
+ * Fire-and-forget: costing must never be able to fail a user's answer.
+ */
+function recordCall(
+  p: Provider, prompt: string, out: string, ms: number,
+  attempt: number, ok: boolean, purpose?: string,
+): void {
+  try {
+    const inTok = Math.ceil(prompt.length / 4);
+    const outTok = Math.ceil((out || "").length / 4);
+    const usd = (inTok / 1e6) * (p.rate?.in ?? 0) + (outTok / 1e6) * (p.rate?.out ?? 0);
+    // One conversion, one place. Moves with the rupee only when we say so.
+    const paise = Math.round(usd * Number(env("USD_INR") || 88) * 100);
+    void logAiCall({
+      provider: p.name, purpose: purpose || "other",
+      in_tokens: inTok, out_tokens: outTok, cost_paise: paise,
+      latency_ms: ms, attempt, ok,
+    });
+  } catch { /* costing must never break a reply */ }
 }
 
 /**
@@ -367,26 +458,49 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
       "No AI provider configured. Set GEMINI_API_KEY (and/or GROQ_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY) in .env.local"
     );
   }
+  // Private by DEFAULT. Almost every prompt this app builds carries a birth
+  // chart and whatever the person just said about their marriage or their job,
+  // and annotating fifteen call sites means the sixteenth — added months from
+  // now by someone who never read this — leaks. Opt out explicitly with
+  // `private: false` for a prompt that genuinely contains nobody's life.
+  //
+  // The bill is recoverable. The disclosure is not.
+  const isPrivate = opts.private !== false;
+  const usable = isPrivate ? list.filter((p) => !p.trainsOnContent) : list;
+  if (isPrivate && !usable.length) {
+    throw new Error(
+      "No privacy-safe AI provider is configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY, " +
+      "or GEMINI_PAID_TIER=true if the Gemini key is on a paid billing account " +
+      "(the paid tier does not use content for product improvement; the free one may)."
+    );
+  }
+
   let lastErr: any;
-  for (const p of list) {
+  let attempt = 0;
+  for (const p of usable) {
+    attempt++;
     const s = stat(p.name);
     s.requests++;
     s.lastUsedAt = new Date().toISOString();
+    const started = Date.now();
     try {
       const out = await p.generate(prompt, opts);
       if (out && out.trim()) {
         s.success++;
         s.lastStatus = "ok";
         s.lastError = undefined;
+        recordCall(p, prompt, out, Date.now() - started, attempt, true, opts.purpose);
         if (lastErr) console.log(`[llm] recovered via ${p.name}`);
         return out;
       }
+      recordCall(p, prompt, "", Date.now() - started, attempt, false, opts.purpose);
       s.failures++;
       s.lastStatus = "error";
       s.lastError = "empty output";
       lastErr = new Error(`${p.name} returned empty output`);
     } catch (e: any) {
       const msg = String(e?.message ?? "");
+      recordCall(p, prompt, "", Date.now() - started, attempt, false, opts.purpose);
       s.failures++;
       if (/429|quota|rate.?limit|exhaust/i.test(msg)) {
         s.quotaHits++;
