@@ -638,6 +638,39 @@ export async function answerUniversal(args: {
       `year is the fact, the window is your reading — never present the two as the same ` +
       `thing.\n`
     : "";
+
+  /*
+   * Not knowing something is itself worth stating.
+   *
+   * A blank is silently filled in — "meri shaadi kab hogi?" from someone whose
+   * status nobody has ever asked about became a wedding date, as though single
+   * were the default. It is not; they may be married, divorced, widowed, or
+   * testing us. Listing what is MISSING, right beside what is known, turns an
+   * invisible assumption into a visible gap the model has to handle.
+   *
+   * The alternative — interrogating people before every answer — is its own
+   * failure, so the rule is narrow: ask only when the unknown changes what the
+   * answer MEANS. "Kal ka din kaisa hai" needs nothing. "Shaadi kab hogi" is a
+   * different sentence depending on the answer.
+   */
+  const STATUS_KEYS = ["marital_status", "employment", "children"] as const;
+  const unknown = STATUS_KEYS.filter((k) => !(k in (args.facts ?? {})));
+  const unknownBlock = unknown.length
+    ? `\nNOT KNOWN — never assume any of these, and never state one as if it were true:\n` +
+      unknown.map((k) => `- ${k.replace(/_/g, " ")}`).join("\n") + `\n` +
+      `If the answer depends on one of them, do ONE of two things:\n` +
+      `  (a) ask a single short question and stop — "aap abhi unmarried hain, married, ` +
+      `ya divorced?" — and put the choices in PART 3 so they can tap one; or\n` +
+      `  (b) answer conditionally, covering the cases: "agar aap abhi unmarried hain to ` +
+      `2027-28 ka daur shaadi ke liye strong dikhta hai; agar shaadi ho chuki hai to ` +
+      `yahi daur us rishte mein ek bade badlav ka ho sakta hai."\n` +
+      `Prefer (a) when the whole answer turns on it — marriage timing, a first child, ` +
+      `when a job will come. Prefer (b) when it only colours the answer — how the next ` +
+      `six months look. Ask about nothing when it does not matter at all: "kal ka din ` +
+      `kaisa rahega" needs no status from anyone.\n` +
+      `Never ask twice for something already listed under KNOWN FACTS, and never ask ` +
+      `more than one thing in a reply.\n`
+    : "";
   const convo = (args.history ?? [])
     .slice(-8)
     .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`)
@@ -651,7 +684,7 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${unknownBlock}${stage}
 The user asks: "${args.question}"
 
 ${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now
