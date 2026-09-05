@@ -3347,6 +3347,15 @@ app.post("/api/chat/universal", async (req, res) => {
       role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
       text: String(m.message || "").split("\n<<REASON>>\n")[0],
     }));
+    // Follow-ups it has already offered. Without these the model cannot tell it
+    // is repeating itself, and it did: two consecutive answers suggested the
+    // same question with one word changed, which reads as a script rather than
+    // a conversation.
+    const suggested = Array.from(new Set(
+      raw.slice(-6)
+        .flatMap((m: any) => (Array.isArray(m.response_json?.next) ? m.response_json.next : []))
+        .map((x: any) => String(x)),
+    )).slice(-8);
 
     await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
     // First name only — enough for the astrologer to address them warmly and to
@@ -3365,7 +3374,7 @@ app.post("/api/chat/universal", async (req, res) => {
     const { answer, reason, next } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history, userName, memory, isFirst,
+      history, userName, memory, isFirst, suggested,
     });
 
     if (!answer || !answer.trim()) {

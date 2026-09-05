@@ -524,6 +524,7 @@ export async function answerUniversal(args: {
   history?: Array<{ role: "user" | "assistant"; text: string }>;
   userName?: string;  // the person's first name — so the chat never asks who they are
   memory?: string;    // what earlier conversations established about them
+  suggested?: string[]; // follow-ups already offered — never repeat one
   isFirst?: boolean;  // their very first question — it decides whether they stay
 }): Promise<{ answer: string; reason: string; next: string[] }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
@@ -575,6 +576,9 @@ PART 3 — what to ask next (after the "<<NEXT>>" marker):
     (e.g. "Agle 12 mahine career mein kaisa rahega?").
   • Each must follow from THIS answer and be answerable from their chart. Never
     generic ("tell me more"), never a repeat of what they just asked.
+${args.suggested?.length ? `  • You have ALREADY offered these — do not repeat any of them, and do not
+    offer a reworded version of one. Move the conversation somewhere new:
+${args.suggested.map((x) => `      - ${x}`).join("\n")}` : ""}
   • Same language as PART 1.
 
 Write PART 1, the marker "<<REASON>>", PART 2, the marker "<<NEXT>>", then PART 3.
