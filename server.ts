@@ -1,6 +1,7 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
 import { distressLevel, severeReply, lowNote } from "./server/distress";
 import { isGreetingOnly, greetingReply } from "./server/greeting";
+import { whatToAsk, clarifyReply } from "./server/clarify";
 import express from "express";
 
 /** Turn raw provider errors into a clean, user-facing message. */
@@ -64,6 +65,8 @@ import {
   clearChatHistory,
   getChatMemory,
   saveChatMemory,
+  getChartFacts,
+  mergeChartFacts,
   clearChatMemory,
   createUser,
   getUserByEmail,
@@ -3473,11 +3476,40 @@ app.post("/api/chat/universal", async (req, res) => {
     // Their first question decides whether they come back, so the prompt is
     // told when it is one.
     const isFirst = history.filter((h) => h.role === "user").length === 0;
+    // What they have told us about their own life. This outranks the chart in
+    // the prompt, which is the difference between a reading and a contradiction.
+    const knownFacts = await getChartFacts(chartId).catch(() => ({}));
 
-    const { answer, reason, next, action } = await answerUniversal({
+    /*
+     * Some questions cannot be answered honestly without one more fact, and
+     * whether to ask is decided HERE rather than by the model. Three separate
+     * prompt instructions — a rule in the list, the age on its own line above
+     * the question, an explicit NOT-KNOWN block beside the known facts — each
+     * failed to stop a flat wedding date going to someone whose marital status
+     * nobody had ever asked about. A constraint that has to hold every single
+     * time does not belong in a prompt.
+     *
+     * Free: no model call, no credit, no waiting. Their tapped answer returns
+     * through the ordinary path, is recorded as a fact, and is never asked for
+     * again — so this costs one exchange, once, and improves every later
+     * reading.
+     */
+    const need = whatToAsk(question, knownFacts);
+    if (need) {
+      const c = clarifyReply(need, language, userName);
+      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
+      await insertChatMessage({
+        chartId, role: "assistant", message: c.answer, context: "chat",
+        responseJson: { category: "clarify", next: c.next },
+      });
+      console.log("[chat-u] asked for", need, "— not charged");
+      return res.json({ answer: c.answer, reason: "", category: "clarify", next: c.next });
+    }
+
+    const { answer, reason, next, action, facts } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history, userName, memory, isFirst, suggested,
+      history, userName, memory, isFirst, suggested, facts: knownFacts,
     });
 
     // A low-distress message still gets its real answer — it is their chart and
@@ -3490,18 +3522,36 @@ app.post("/api/chat/universal", async (req, res) => {
       return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });
     }
 
+    /*
+     * Drop any suggestion it has already made. The prompt is told not to repeat
+     * one and it repeated them anyway — after answering "main married hoon" it
+     * still offered "Main married hoon" as the next thing to tap. Telling a
+     * model not to repeat itself is not the same as it not repeating itself,
+     * which is the lesson this file has now learned four times.
+     */
+    const seen = new Set(suggested.map((s) => s.trim().toLowerCase()));
+    const fresh = (next ?? []).filter((n) => !seen.has(String(n).trim().toLowerCase()));
+
     // Store answer + reason together behind the same marker, so a reload can
     // split them exactly like a live reply (no schema change needed).
     const stored = reason ? `${finalAnswer}\n<<REASON>>\n${reason}` : finalAnswer;
-    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next, action } });
+    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next: fresh, action } });
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
     await settleCharge(req, auth.charge, "chat", chartId, { category });
-    res.json({ answer: finalAnswer, reason, category, next, action: action || undefined });
+    res.json({ answer: finalAnswer, reason, category, next: fresh, action: action || undefined });
 
     // Bookkeeping AFTER responding — remembering this turn must never make the
     // person wait for their reply.
+    // Anything they just confirmed about their life is written down, so it can
+    // never be asked for again or argued with by a later reading. Newest wins.
+    if (facts && Object.keys(facts).length) {
+      mergeChartFacts(chartId, facts)
+        .then(() => console.log("[chat-u] facts recorded:", Object.keys(facts).join(", ")))
+        .catch((e) => console.warn("[chat-u] fact merge skipped:", e?.message));
+    }
+
     updateChatNotes({ existingNotes: memory, question, reply: answer })
       .then((notes) => (notes && notes !== memory ? saveChatMemory(chartId, notes) : undefined))
       .catch((e) => console.warn("[chat-u] memory update skipped:", e?.message));
