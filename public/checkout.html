@@ -66,6 +66,41 @@
   .done p{color:var(--ink2);margin:0;font-size:14.5px}
   .muted{color:var(--ink2);font-size:13px}
   [hidden]{display:none !important}
+  /* ── Desktop: the same page, at the size a desktop deserves ──────────────
+     The layout was tuned for a phone, so on a wide screen it read as a thin
+     strip of small print — exactly the wrong impression on the page where
+     someone is about to pay. Nothing moves; everything just gets its proper
+     size. */
+  @media (min-width: 820px){
+    .top .in{max-width:720px;padding:18px 24px}
+    .brand{font-size:20px}
+    .lock{font-size:13.5px}
+    .wrap{max-width:720px;padding:38px 24px 80px}
+    h1{font-size:31px;margin-bottom:6px}
+    .sub{font-size:16.5px;margin-bottom:26px}
+    .card{padding:26px 28px;border-radius:18px;margin-bottom:18px}
+    .row{padding:13px 0}
+    .row .k{font-size:15.5px}
+    .row .v{font-size:16.5px}
+    .total{padding-top:18px;margin-top:8px}
+    .total .k{font-size:17px}
+    .total .v{font-size:42px}
+    h2{font-size:12.5px;margin-bottom:14px}
+    ul.get li{font-size:15.5px;padding:11px 0}
+    ul.get s{font-size:13.5px}
+    .fine{font-size:14px}
+    .timer{font-size:15.5px;padding:15px 20px;border-radius:14px;margin-bottom:18px}
+    .timer b{font-size:20px}
+    .btn{font-size:17.5px;padding:18px;border-radius:14px}
+    .btn.sec{font-size:16px;padding:15px}
+    input{font-size:16.5px;padding:15px 17px;border-radius:12px}
+    label{font-size:14px;margin-bottom:8px}
+    .methods span{font-size:13.5px;padding:7px 13px}
+    .note{font-size:13.5px}
+    .warn,.err{font-size:14.5px;padding:14px 17px;border-radius:13px}
+    .done .big{font-size:46px}
+    .done h3{font-size:23px}
+  }
 </style>
 </head>
 <body>
@@ -167,7 +202,7 @@
   /* The app can hand us the signed-in email so this is one tap, not a retype.
      Only the email travels — never the token, which must not sit in a URL. */
   var prefill = (qs.get('email') || '').trim();
-  var cfg = null, pack = null, timerId = null, expired = false;
+  var cfg = null, pack = null, timerId = null, expired = false, signedInEmail = '';
 
   /* ── 5-minute window. A checkout that sits open for an hour is how stale
        orders and "I paid but nothing happened" confusion happen; a visible
@@ -230,11 +265,18 @@
     }
 
     if(cfg.test_mode){
-      $('testNote').innerHTML = '<b>Test mode</b> — no real money is charged. Use card <b>4111 1111 1111 1111</b>, any future expiry, any CVV.';
+      /* Card 4111… is a Visa test BIN that reads as international, and the
+         account does not take international cards — it fails at the last step.
+         UPI collect is the test route that actually completes. */
+      $('testNote').innerHTML = '<b>Test mode</b> — no real money is charged. ' +
+        'Pick <b>UPI</b> and enter <b>success@razorpay</b> (use <b>failure@razorpay</b> to test a failed payment).';
       $('testNote').hidden = false;
     }
 
-    if(token()){ showPay(); }
+    if(token()){
+      api('/api/billing/history').then(function(h){ signedInEmail = h.email || ''; }).catch(function(){});
+      showPay();
+    }
     else { if(prefill) $('em').value = prefill; $('authCard').hidden = false; }
   }
 
@@ -265,7 +307,7 @@
     showErr(''); this.disabled = true; this.textContent = 'Checking…';
     var btn = this;
     api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({email:email,code:code})})
-      .then(function(d){ if(!d.token) throw new Error('That code did not work.'); setToken(d.token); showPay(); })
+      .then(function(d){ if(!d.token) throw new Error('That code did not work.'); setToken(d.token); signedInEmail = email; showPay(); })
       .catch(function(e){ showErr(e.message); })
       .finally(function(){ btn.disabled=false; btn.textContent='Verify & continue'; });
   };
@@ -317,8 +359,30 @@
           btn.disabled = false; btn.textContent = 'Pay ₹' + pack.rupees + ' securely';
           var rzp = new window.Razorpay({
             key: order.key_id, amount: order.amount, currency: order.currency || 'INR',
-            order_id: order.order_id, name: 'JanamJyot', description: pack.label,
-            theme: { color: '#C07A1E' },
+            order_id: order.order_id,
+            name: 'JanamJyot',
+            description: pack.label,
+            /* Our own mark, not Razorpay's "J" placeholder — the gateway is the
+               one screen where a stranger decides whether to trust us. */
+            image: location.origin + '/icon-512.png',
+            theme: { color: '#C07A1E', backdrop_color: '#F7F5F0' },
+            prefill: { email: signedInEmail || '' },
+            notes: { pack: packId },
+            /* Left to itself the desktop modal offers a QR and nothing else, so
+               anyone without a phone in hand is stuck. Asking for the `collect`
+               flow puts the "enter your UPI ID" field back alongside it. */
+            config: {
+              display: {
+                blocks: {
+                  upi: {
+                    name: 'Pay using UPI',
+                    instruments: [{ method: 'upi', flows: ['collect', 'qr', 'intent'] }]
+                  }
+                },
+                sequence: ['block.upi'],
+                preferences: { show_default_blocks: true }
+              }
+            },
             handler: function(){ if(timerId) clearInterval(timerId); waitForCredits(before); },
             modal: { ondismiss: function(){ showErr('Payment cancelled — nothing was charged.'); } }
           });
