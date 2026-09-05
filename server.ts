@@ -1,4 +1,5 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
+import { distressLevel, severeReply, lowNote } from "./server/distress";
 import express from "express";
 
 /** Turn raw provider errors into a clean, user-facing message. */
@@ -3362,6 +3363,17 @@ app.post("/api/chat/universal", async (req, res) => {
     // never ask "who are you?" (it already has their whole chart). Full names are
     // more personal data than the model needs.
     const userName = String(chart.birth_details?.name || "").trim().split(/\s+/)[0] || undefined;
+    // Some questions are not astrology questions. A severe one never reaches a
+    // model: a fixed reply with real numbers goes back, and it is not charged.
+    const distress = distressLevel(question);
+    if (distress === "severe") {
+      const { answer, next } = severeReply(language, userName);
+      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
+      await insertChatMessage({ chartId, role: "assistant", message: answer, context: "chat", responseJson: { category: "wellbeing", next } });
+      console.log("[chat-u] severe distress — fixed reply, not charged");
+      return res.json({ answer, reason: "", category: "wellbeing", next });
+    }
+
     // What earlier conversations established. This was read only by the
     // astrologer personas, so the main chat forgot everything between visits
     // and made people repeat themselves — the single most "this thing doesn't
@@ -3377,6 +3389,10 @@ app.post("/api/chat/universal", async (req, res) => {
       history, userName, memory, isFirst, suggested,
     });
 
+    // A low-distress message still gets its real answer — it is their chart and
+    // they asked about it — with one line saying help exists.
+    const finalAnswer = distress === "low" ? answer + lowNote(language) : answer;
+
     if (!answer || !answer.trim()) {
       // An empty bubble is worse than an error: it looks like the app broke and
       // it would still have cost a credit below.
@@ -3385,13 +3401,13 @@ app.post("/api/chat/universal", async (req, res) => {
 
     // Store answer + reason together behind the same marker, so a reload can
     // split them exactly like a live reply (no schema change needed).
-    const stored = reason ? `${answer}\n<<REASON>>\n${reason}` : answer;
+    const stored = reason ? `${finalAnswer}\n<<REASON>>\n${reason}` : finalAnswer;
     await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next } });
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
     await settleCharge(req, auth.charge, "chat", chartId);
-    res.json({ answer, reason, category, next });
+    res.json({ answer: finalAnswer, reason, category, next });
 
     // Bookkeeping AFTER responding — remembering this turn must never make the
     // person wait for their reply.
