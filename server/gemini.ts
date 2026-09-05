@@ -300,8 +300,31 @@ export function buildChartPacket(chart: any, category: Category, transit?: any) 
     .map((name: string) => getPlanet(chart, name))
     .filter(Boolean);
 
+  /*
+   * Today, and how old this person is today — computed here, never left to the
+   * model.
+   *
+   * Neither fact was ever in the prompt, so every period read as if it were
+   * ahead. A chart made for someone in their seventies was told their time was
+   * looking good and given a marriage yoga; someone already married was given a
+   * future wedding date. Both are the same mistake: describing a window that
+   * closed decades ago in the future tense, because nothing said when "now" is.
+   *
+   * Models are unreliable at date arithmetic and reliable at comparing two
+   * numbers they are handed, so they are handed.
+   */
+  const dob = String(chart.birth_details?.date_of_birth ?? "");
+  const born = Date.parse(dob + "T00:00:00Z");
+  const today = new Date();
+  const ageYears = Number.isFinite(born)
+    ? Math.floor((today.getTime() - born) / (365.2425 * 86_400_000))
+    : null;
+
   return {
     category,
+    // Everything below is relative to THIS date. Anything earlier has happened.
+    today: today.toISOString().slice(0, 10),
+    age_years: ageYears,
     all_charts: buildFullChartContext(chart),
     live_transit: transit ?? null,
     focus: {
@@ -597,6 +620,24 @@ PART 1 — the answer (before the marker):
     married, do not answer as though they are; if they named a person earlier,
     "unki" means that person, not a fresh guess. Read the conversation above
     before deciding who "they" refers to.
+  • CHECK THE DATE BEFORE YOU CHOOSE A TENSE. The packet gives you "today" and
+    "age_years". Every period in the chart is either before that date or after
+    it, and saying "hoga" about a window that closed in 1998 is not a small
+    slip — it tells them the reading is not really about them.
+      – A window that has passed is described in the PAST: "aapki shaadi ka
+        prabal yog 1997–2000 ke beech tha."
+      – And when a life event's window has already gone by, ASK rather than
+        predict: "aapki shaadi ho chuki hai?" If they say yes, read what that
+        period DID bring and move to what is ahead. Never hand someone who has
+        been married twenty years a future wedding date.
+  • MIND THE AGE. Someone of 68 is not asking when they will start their career,
+    and a chart made for a parent or a grandparent is often not the person
+    typing. If the age makes a question read oddly, say so gently and check —
+    "yeh kundli aapki hai ya kisi aur ki?" — before answering.
+    If a chart belongs to someone who has died, nothing about their future
+    exists to read. Speak of their life in the past tense, with respect, and
+    never offer them coming years, a marriage yoga, or good times ahead. If you
+    are unsure, ask before assuming they are here.
   • A chart shows LEANINGS AND PERIODS. It does not know FACTS about right now.
     "Main abhi kya kar raha hoon?", "main kis field mein kaam karta hoon?",
     "mere paas kitna paisa hai?", "kya main mar gaya hoon?" — these are things
