@@ -62,12 +62,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // straight to the sign-in wall, so a flaky refresh read as being logged out.
   // One retry covers the common blip; a real 401 still signs you out, and the
   // token itself is left alone either way so the next load can recover.
+  //
+  // Every attempt is bounded. The whole app waits on this call — `loading`
+  // holds the splash screen up — and `fetch` has no timeout of its own, so a
+  // connection that stalls rather than fails (a captive portal, a phone that
+  // says it has signal and does not) left the splash on screen forever with
+  // nothing to tap. Better to give up and show the app.
+  const AUTH_TIMEOUT_MS = 8000;
   const loadMe = async () => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) { setUser(null); setLoading(false); return; }
     for (let attempt = 0; attempt < 2; attempt++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), AUTH_TIMEOUT_MS);
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await fetch("/api/auth/me", { signal: ctl.signal });
         const d = await res.json().catch(() => ({}));
         setUser(res.ok ? d.user : null);
         setLoading(false);
@@ -75,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         if (attempt === 0) { await new Promise((r) => setTimeout(r, 900)); continue; }
         setUser(null);
+      } finally {
+        clearTimeout(timer);
       }
     }
     setLoading(false);
