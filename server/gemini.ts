@@ -276,6 +276,40 @@ function recentPastDashas(chart: any, limit = 8) {
     .map((a) => ({ period: a.label ?? a.lord, from: a.from, to: a.to }));
 }
 
+/**
+ * A plain sentence about how old this person is, and what that rules out.
+ *
+ * Written from a number we computed, not left for the model to infer, and
+ * placed on its own next to the question rather than in the rules — because
+ * with the rule alone it still promised a seventy-eight-year-old a wedding
+ * inside two years.
+ */
+function lifeStageNote(age: number | null): string {
+  if (age == null || age < 0 || age > 130) return "";
+  const head = `\nIMPORTANT — THIS PERSON IS ${age} YEARS OLD TODAY.\n`;
+  if (age >= 60) {
+    return head +
+      `At this age a first marriage, the start of a career, or the birth of a first ` +
+      `child are almost certainly in their PAST, not their future. Do NOT predict any ` +
+      `of them as coming. Speak about those windows in the past tense, and if you need ` +
+      `to know what actually happened, ASK — do not assume. If this chart was made for ` +
+      `a parent, a grandparent or someone who has passed away, say so gently and check ` +
+      `before reading anything as their future.\n`;
+  }
+  if (age >= 40) {
+    return head +
+      `A first marriage or the start of a career has most likely already happened. ` +
+      `Ask before predicting either as still to come, and describe a window that has ` +
+      `passed in the past tense.\n`;
+  }
+  if (age < 18) {
+    return head +
+      `Do not discuss marriage timing, romance or anything sexual for a minor. Keep to ` +
+      `studies, temperament, family and health, and say plainly why.\n`;
+  }
+  return head;
+}
+
 export function buildChartPacket(chart: any, category: Category, transit?: any) {
   // Never crash on an unrecognised category — fall back to the general packet.
   const cfg = PACKET_CONFIG[category] ?? PACKET_CONFIG.general;
@@ -555,9 +589,47 @@ export async function answerUniversal(args: {
   userName?: string;  // the person's first name — so the chat never asks who they are
   memory?: string;    // what earlier conversations established about them
   suggested?: string[]; // follow-ups already offered — never repeat one
+  /** What the PERSON has confirmed about their life. Outranks the chart. */
+  facts?: Record<string, string | number | boolean>;
   isFirst?: boolean;  // their very first question — it decides whether they stay
-}): Promise<{ answer: string; reason: string; next: string[]; action?: string }> {
+}): Promise<{ answer: string; reason: string; next: string[]; action?: string; facts?: Record<string, string | number> }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
+  /*
+   * The age, stated on its own, immediately above the question.
+   *
+   * It was already inside the JSON packet and a rule in the list below told the
+   * model to check it — and it still told a seventy-eight-year-old their
+   * marriage yoga was forming within two years. A constraint buried as bullet
+   * seven of a long list is a suggestion; the same fact as its own short
+   * paragraph next to the question is an instruction. This is the same lesson
+   * the follow-up chips taught: for anything that must not be got wrong, put it
+   * where it cannot be skimmed past — and back it with something outside the
+   * prompt where you can.
+   */
+  const stage = lifeStageNote(packet.age_years);
+
+  /*
+   * What they have told us, stated as fact, above everything else.
+   *
+   * Three kinds of thing get confused in an answer and must not be: a FACT the
+   * person confirmed, CALCULATED astrology the engine produced, and the model's
+   * INTERPRETATION of it. Only the first is true about their life. Presenting
+   * an interpretation as a fact is what produced "aapki shaadi 2027 mein hogi"
+   * for someone married since 2021 — the chart was read correctly and the
+   * sentence was still false.
+   */
+  const factLines = Object.entries(args.facts ?? {})
+    .map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${v}`)
+    .join("\n");
+  const factBlock = factLines
+    ? `\nKNOWN FACTS — this person told us these about their own life:\n${factLines}\n` +
+      `These are FACTS. The chart is not evidence against them. Never contradict one, ` +
+      `never predict as future something they have said already happened, and if a ` +
+      `question does not fit a known fact, ask what they mean rather than choosing an ` +
+      `interpretation that ignores it. Asked "meri shaadi kab hogi?" by someone whose ` +
+      `marital status here is married, the right reply is to ask whether they mean the ` +
+      `road ahead in that marriage, or something else — not a wedding date.\n`
+    : "";
   const convo = (args.history ?? [])
     .slice(-8)
     .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`)
@@ -571,7 +643,7 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
 The user asks: "${args.question}"
 
 ${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now
@@ -736,8 +808,22 @@ PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
   • In PART 1, do not describe the form or tell them to go elsewhere in the
     app — just answer warmly and let the action appear.
 
+PART 5 — facts they just confirmed (after a "<<FACTS>>" marker), OPTIONAL:
+  • If THIS message states something factual about their own life, record it as
+    "key: value" lines, one per line, so it is never asked for or contradicted
+    again. Use these keys where they fit:
+      marital_status (single/married/divorced/widowed) · marriage_year ·
+      children (a number) · employment · job_title · city · studying ·
+      health_note · partner_name
+  • ONLY what THEY stated. Never what you inferred, never what the chart
+    suggests, never a maybe. "Meri shaadi 2021 mein hui" gives
+    marital_status: married and marriage_year: 2021. "Shaadi ka soch raha hoon"
+    gives nothing.
+  • If they correct something, write the new value — the newest statement wins.
+  • Nothing to record? Leave it out entirely.
+
 Write PART 1, the marker "<<REASON>>", PART 2, then — only if they apply — the
-marker "<<NEXT>>" with PART 3, and the marker "<<DO>>" with PART 4. Nothing else.
+markers "<<NEXT>>", "<<DO>>" and "<<FACTS>>" with their parts. Nothing else.
 
 ${languageInstruction(args.language)}`;
 
@@ -746,9 +832,33 @@ ${languageInstruction(args.language)}`;
   // Parsed defensively: a model that skips a marker must still produce a usable
   // answer rather than an empty bubble, so every part is optional on the way out.
   const idx = raw.indexOf("<<REASON>>");
-  if (idx === -1) return { answer: raw.trim(), reason: "", next: [], action: "" };
+  if (idx === -1) return { answer: raw.trim(), reason: "", next: [], action: "", facts: {} };
   const answer = raw.slice(0, idx).trim();
   let rest = raw.slice(idx + "<<REASON>>".length);
+
+  /*
+   * Facts the person just stated. Kept to a fixed vocabulary for the same
+   * reason actions are: these outrank the chart in every later answer, so a
+   * model must not be able to invent a key nobody designed for — an
+   * unrecognised one is dropped rather than stored and trusted forever.
+   */
+  const FACT_KEYS = new Set([
+    "marital_status", "marriage_year", "children", "employment", "job_title",
+    "city", "studying", "health_note", "partner_name",
+  ]);
+  const facts: Record<string, string | number> = {};
+  const fIdx = rest.indexOf("<<FACTS>>");
+  if (fIdx !== -1) {
+    for (const line of rest.slice(fIdx + "<<FACTS>>".length).split("\n")) {
+      const m = line.match(/^\s*[-*]?\s*([a-z_]+)\s*:\s*(.+?)\s*$/i);
+      if (!m) continue;
+      const key = m[1].toLowerCase();
+      if (!FACT_KEYS.has(key)) continue;
+      const val = m[2].slice(0, 120);
+      facts[key] = /^\d{1,4}$/.test(val) ? Number(val) : val;
+    }
+    rest = rest.slice(0, fIdx);
+  }
 
   // A task the person asked for, if any. Kept to a fixed vocabulary so a model
   // cannot invent an action the app has no way to perform.
@@ -780,7 +890,7 @@ ${languageInstruction(args.language)}`;
   }
   let reason = rest.trim();
   if (reason === "—" || reason === "-") reason = "";
-  return { answer, reason, next, action };
+  return { answer, reason, next, action, facts };
 }
 
 /**

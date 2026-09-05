@@ -294,6 +294,22 @@ CREATE TABLE IF NOT EXISTS chat_memory (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- What the PERSON has told us about their life, as opposed to what a chart
+-- suggests. Separate from chat_memory (prose the model writes for itself)
+-- because these are load-bearing: a confirmed fact outranks any astrological
+-- inference, and something that outranks inference cannot live inside a
+-- paragraph the model rewrites each turn.
+--
+-- Asked "meri shaadi kab hogi?" by someone who said last week they married in
+-- 2021, the app answered with a future date. It was not missing intelligence,
+-- it was missing a place to keep what it had already been told.
+CREATE TABLE IF NOT EXISTS chart_facts (
+  chart_id   UUID PRIMARY KEY REFERENCES chart_calculations(id) ON DELETE CASCADE,
+  -- { marital_status: "married", marriage_year: 2021, children: 1, ... }
+  facts      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Passwordless e-mail sign-in codes. Kept in their OWN table (not on app_users)
 -- because a first-time user has no account row yet when the code is sent.
 -- Only the HASH of the code is stored.
@@ -777,6 +793,57 @@ export async function getChatMemory(chartId: string): Promise<string> {
     return rows[0]?.notes ?? "";
   }
   return (fileData.chat_memory ?? {})[chartId] ?? "";
+}
+
+/**
+ * What this person has told us about their own life.
+ *
+ * Kept apart from chat_memory on purpose. Memory is prose the model writes for
+ * itself and rewrites every turn; these are load-bearing claims made by the
+ * person, and the whole point is that they OUTRANK anything the chart suggests.
+ * Something that outranks inference cannot live inside a paragraph that
+ * inference is free to edit.
+ */
+export type ChartFacts = Record<string, string | number | boolean>;
+
+export async function getChartFacts(chartId: string): Promise<ChartFacts> {
+  if (USE_PG) {
+    const { rows } = await pool!.query(`SELECT facts FROM chart_facts WHERE chart_id = $1`, [chartId]);
+    return (rows[0]?.facts ?? {}) as ChartFacts;
+  }
+  return ((fileData as any).chart_facts?.[chartId] ?? {}) as ChartFacts;
+}
+
+/**
+ * Merge in what was just confirmed. Newer wins: someone who says today they
+ * are married is married, whatever they or the chart implied last month —
+ * "the newest confirmed fact overrides" is the rule that keeps a long
+ * conversation from arguing with itself.
+ */
+export async function mergeChartFacts(chartId: string, patch: ChartFacts): Promise<ChartFacts> {
+  const clean: ChartFacts = {};
+  for (const [k, v] of Object.entries(patch ?? {})) {
+    const key = String(k).trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 40);
+    if (!key || v === null || v === undefined || v === "") continue;
+    clean[key] = typeof v === "string" ? v.slice(0, 120) : v;
+  }
+  if (!Object.keys(clean).length) return getChartFacts(chartId);
+
+  if (USE_PG) {
+    const { rows } = await pool!.query(
+      `INSERT INTO chart_facts (chart_id, facts, updated_at) VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (chart_id) DO UPDATE
+         SET facts = chart_facts.facts || $2::jsonb, updated_at = now()
+       RETURNING facts`,
+      [chartId, JSON.stringify(clean)],
+    );
+    return (rows[0]?.facts ?? {}) as ChartFacts;
+  }
+  (fileData as any).chart_facts ??= {};
+  const merged = { ...((fileData as any).chart_facts[chartId] ?? {}), ...clean };
+  (fileData as any).chart_facts[chartId] = merged;
+  saveFile();
+  return merged;
 }
 
 export async function saveChatMemory(chartId: string, notes: string): Promise<void> {
