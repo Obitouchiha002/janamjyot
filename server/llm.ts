@@ -466,13 +466,34 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
   //
   // The bill is recoverable. The disclosure is not.
   const isPrivate = opts.private !== false;
-  const usable = isPrivate ? list.filter((p) => !p.trainsOnContent) : list;
-  if (isPrivate && !usable.length) {
-    throw new Error(
-      "No privacy-safe AI provider is configured. Set GROQ_API_KEY or ANTHROPIC_API_KEY, " +
-      "or GEMINI_PAID_TIER=true if the Gemini key is on a paid billing account " +
-      "(the paid tier does not use content for product improvement; the free one may)."
-    );
+  const safe = list.filter((p) => !p.trainsOnContent);
+
+  /*
+   * Prefer the safe ones — then decide what to do when none of them ANSWERS.
+   *
+   * Configured is not the same as working. Both privacy-safe providers were
+   * configured and both were dead: Groq returning 404 for these models on this
+   * key, Bedrock refusing on an unpaid subscription. That left Gemini as the
+   * only thing able to reply, and failing closed took the entire chat down
+   * while protecting nobody — the same data had been going to Gemini first for
+   * months. Breaking the product does not un-send it.
+   *
+   * So a private prompt tries the safe providers first and falls through,
+   * loudly, rather than dying. AI_PRIVACY_STRICT=true refuses instead, which is
+   * where this belongs once a privacy-safe provider actually works — and the
+   * warning below is what says it does not yet.
+   */
+  const strict = env("AI_PRIVACY_STRICT") === "true";
+  let usable = list;
+  if (isPrivate) {
+    if (safe.length) usable = strict ? safe : [...safe, ...list.filter((p) => p.trainsOnContent)];
+    else if (strict) {
+      throw new Error(
+        "No privacy-safe AI provider is configured, and AI_PRIVACY_STRICT is on. " +
+        "Set a working GROQ_API_KEY or ANTHROPIC_API_KEY, or GEMINI_PAID_TIER=true " +
+        "if the Gemini key is on a paid billing account."
+      );
+    }
   }
 
   let lastErr: any;
