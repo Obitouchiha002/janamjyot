@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Send, ChevronDown, ShieldCheck, Plus, RotateCw } from "lucide-react";
 import AskMeter from "@/components/AskMeter";
+import ChatAction from "@/components/ChatAction";
 import AnswerText from "@/components/AnswerText";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
@@ -29,6 +30,8 @@ type Turn = {
   error?: boolean;
   /** Follow-ups the model suggested, in the user's own voice. */
   next?: string[];
+  /** A task the person asked for, carried out inside the thread. */
+  action?: string;
   /** The question to re-send when an answer failed. */
   retry?: string;
 };
@@ -63,8 +66,37 @@ const GREETING: Record<string, { hi: string; sub: string; starters: string[] }> 
   },
 };
 
+const READ: Record<string, string> = {
+  en: "I've read your kundli. Ask me whatever is on your mind.",
+  hinglish: "Maine aapki kundli padh li hai. Ab jo mann me ho poochiye.",
+  hi: "मैंने आपकी कुंडली पढ़ ली है। अब जो मन में हो पूछिए।",
+};
+
+/** The four numbers people recognise, from the chart we already fetched. */
+function ChartGlance({ intro, lang }: { intro: any; lang: string }) {
+  const K: Record<string, string[]> = {
+    en: ["Lagna", "Moon sign", "Nakshatra", "Running dasha"],
+    hinglish: ["Lagna", "Chandra rashi", "Nakshatra", "Chal rahi dasha"],
+    hi: ["लग्न", "चंद्र राशि", "नक्षत्र", "चल रही दशा"],
+  };
+  const keys = K[lang] || K.en;
+  const vals = [intro.lagna, intro.rashi, intro.nakshatra, intro.dasha];
+  if (!vals.some(Boolean)) return null;
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
+      {keys.map((k, i) => (
+        <div key={k} className="bg-card px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{k}</p>
+          <p className="mt-0.5 truncate text-[13px] font-bold">{vals[i] || "—"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const { chartId } = useParams();
+  const [intro, setIntro] = useState<any>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +105,22 @@ export default function ChatPage() {
   const [lang, setLang] = useState<string>(getLang());
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!chartId) return;
+    fetch(`/api/chart/${chartId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c) => {
+        if (!c) return;
+        const s = c.summary ?? {};
+        setIntro({
+          name: String(c.birth_details?.name || "").split(" ")[0],
+          lagna: s.lagna, rashi: s.rashi, nakshatra: s.nakshatra,
+          dasha: [s.current_mahadasha, s.current_antardasha].filter(Boolean).join(" / "),
+        });
+      })
+      .catch(() => {});
+  }, [chartId]);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
@@ -140,7 +188,8 @@ export default function ChatPage() {
           role: "assistant",
           answer: data.answer,
           reason: data.reason || undefined,
-          next: Array.isArray(data.next) ? data.next.slice(0, 3) : undefined,
+          next: Array.isArray(data.next) ? data.next.slice(0, 2) : undefined,
+          action: data.action || undefined,
         }]);
         haptic.success();
       } else {
@@ -215,10 +264,17 @@ export default function ChatPage() {
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
         {turns.length === 0 && (() => {
           const g = GREETING[lang] || GREETING.en;
+          const who = intro?.name ? `${intro.name} ji` : null;
           return (
           <div className="px-1 pt-3">
-            <p className="text-[15px] font-semibold">{g.hi}</p>
-            <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">{g.sub}</p>
+            {/* Addressed by name, with their own chart already read, because an
+                astrologer who opens with "namaste, who are you" is not one.
+                Everything shown here is calculated, not generated. */}
+            <p className="text-[15px] font-semibold">{who ? `${g.hi.replace(" 🙏", "")} ${who} 🙏` : g.hi}</p>
+            {intro && <ChartGlance intro={intro} lang={lang} />}
+            <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
+              {intro ? (READ[lang] || READ.en) : g.sub}
+            </p>
             <div className="mt-4 space-y-2">
               {g.starters.map((s) => (
                 <button
@@ -269,6 +325,9 @@ export default function ChatPage() {
                     )}
                   </>
                 )}
+
+                {/* The task they asked for, done here rather than described. */}
+                {t.action && chartId && <ChatAction action={t.action} chartId={chartId} />}
 
                 {/* One tap to keep going. A long answer that ends in silence
                     puts the whole burden of "what now" on the person, and most

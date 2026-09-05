@@ -486,6 +486,13 @@ then give a real, grounded answer with timing and one practical step.
 /** What the app can do — so the ONE chat can also answer "how do I use X". Kept
  *  short and factual; the model must not invent features that aren't here. */
 export const APP_GUIDE = `JanamJyot app — what it does (answer feature questions from THIS list only, never invent a feature):
+
+If they ask what you can do, answer in the FIRST PERSON as things YOU do for
+them — "main aapki kundli padh ke..., main aapka milan kar sakta hoon" — not as
+a tour of menus. Six or seven short lines, the most useful first, and end by
+inviting the next question. Say plainly that you can also DO some of these
+right here in the chat (matching, reports, the forecast) rather than only
+talk about them.
 • Janam Kundli — full birth chart (D1) plus divisional charts D9, D10, D6, D11.
 • Dasha timeline — Vimshottari mahadasha/antardasha with dates.
 • Daily guidance / "Aaj ka din" — today's clear line + a Reason with the real placements; a notification comes each morning.
@@ -526,7 +533,7 @@ export async function answerUniversal(args: {
   memory?: string;    // what earlier conversations established about them
   suggested?: string[]; // follow-ups already offered — never repeat one
   isFirst?: boolean;  // their very first question — it decides whether they stay
-}): Promise<{ answer: string; reason: string; next: string[] }> {
+}): Promise<{ answer: string; reason: string; next: string[]; action?: string }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
   const convo = (args.history ?? [])
     .slice(-8)
@@ -560,6 +567,11 @@ PART 1 — the answer (before the marker):
     numbers, dasha or Sanskrit terms in this part. Just what it means for them
     and, where it helps, one concrete thing to do or a time window.
   • Keep it short: 2-5 short lines. If it's a yes/no, lead with the yes/no.
+  • If ONE piece of information would genuinely change your answer — whether
+    they are already working or looking, whether a relationship is new or long —
+    ask for it, in one short line at the end. Ask only when it really matters;
+    a question at the end of every reply is as mechanical as a menu, and never
+    ask for anything already in their chart or said earlier.
   • For a feature/how-to question, answer from the app guide plainly.
   • Bold the single most important phrase with **double asterisks**. No other
     markdown, no bullets in this part.
@@ -571,8 +583,15 @@ PART 2 — the reason (after the "<<REASON>>" marker):
     never invent a placement. For a pure app/how-to question, write "—".
 
 PART 3 — what to ask next (after the "<<NEXT>>" marker):
-  • Exactly 2 or 3 short follow-up questions, one per line, no numbering or
-    bullets. These are TAPPED BY THE USER AND SENT AS THEIR OWN MESSAGE, so
+  • OPTIONAL, and usually you should leave it EMPTY. Offering something after
+    every single answer is what makes a chat feel like a machine working
+    through a script. Write suggestions ONLY when this answer genuinely opened
+    a door — a period worth looking into, a related area of their life the
+    answer touched. If you just closed a topic cleanly, or they asked a small
+    factual thing, or you already asked them something in PART 1, write nothing
+    after the marker.
+  • When you do write them: ONE or TWO, never three. One per line, no numbering
+    or bullets. These are TAPPED BY THE USER AND SENT AS THEIR OWN MESSAGE, so
     write them the way THEY would type them — asking YOU, about THEMSELVES.
     Use "main / mera / mujhe" (or "I / my / me"), NEVER "aap / aapka / aapko"
     (or "you / your").
@@ -587,8 +606,26 @@ ${args.suggested?.length ? `  • You have ALREADY offered these — do not repe
 ${args.suggested.map((x) => `      - ${x}`).join("\n")}` : ""}
   • Same language as PART 1.
 
-Write PART 1, the marker "<<REASON>>", PART 2, the marker "<<NEXT>>", then PART 3.
-Nothing else.
+PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
+  • You can also DO things, not only talk about them. If the person is asking
+    for one of these — not merely mentioning it — write the marker "<<DO>>" on
+    its own line and then EXACTLY ONE of these words, nothing else:
+      match        they want a kundli matched with someone
+      life_report  they want their full life report
+      timeline     they want their next years laid out
+      career       they want a career report
+      wealth       they want a money/wealth report
+      marriage     they want a marriage report
+  • The app turns this into a real action for them — for "match" it opens the
+    other person's details right inside the chat and runs the real matching.
+  • Do NOT write this marker for an ordinary question that merely touches the
+    topic. "Meri shaadi kab hogi?" is a question, answer it. "Meri kundli
+    match kar do" is a task. When in doubt, leave it out.
+  • In PART 1, do not describe the form or tell them to go elsewhere in the
+    app — just answer warmly and let the action appear.
+
+Write PART 1, the marker "<<REASON>>", PART 2, then — only if they apply — the
+marker "<<NEXT>>" with PART 3, and the marker "<<DO>>" with PART 4. Nothing else.
 
 ${languageInstruction(args.language)}`;
 
@@ -597,9 +634,20 @@ ${languageInstruction(args.language)}`;
   // Parsed defensively: a model that skips a marker must still produce a usable
   // answer rather than an empty bubble, so every part is optional on the way out.
   const idx = raw.indexOf("<<REASON>>");
-  if (idx === -1) return { answer: raw.trim(), reason: "", next: [] };
+  if (idx === -1) return { answer: raw.trim(), reason: "", next: [], action: "" };
   const answer = raw.slice(0, idx).trim();
   let rest = raw.slice(idx + "<<REASON>>".length);
+
+  // A task the person asked for, if any. Kept to a fixed vocabulary so a model
+  // cannot invent an action the app has no way to perform.
+  const ACTIONS = ["match", "life_report", "timeline", "career", "wealth", "marriage"];
+  let action = "";
+  const dIdx = rest.indexOf("<<DO>>");
+  if (dIdx !== -1) {
+    const word = rest.slice(dIdx + "<<DO>>".length).trim().split(/\s|\n/)[0].toLowerCase();
+    if (ACTIONS.includes(word)) action = word;
+    rest = rest.slice(0, dIdx);
+  }
 
   let next: string[] = [];
   const nIdx = rest.indexOf("<<NEXT>>");
@@ -613,12 +661,14 @@ ${languageInstruction(args.language)}`;
       // guessing what they meant, so it is dropped: two good chips beat three
       // where one asks the reader about themselves.
       .filter((l) => !/\b(aap|aapka|aapke|aapko|आप|आपक|your |you )\b/i.test(l))
-      .slice(0, 3);
+      // Two at most: three reads as a menu, which is the opposite of a
+      // conversation.
+      .slice(0, 2);
     rest = rest.slice(0, nIdx);
   }
   let reason = rest.trim();
   if (reason === "—" || reason === "-") reason = "";
-  return { answer, reason, next };
+  return { answer, reason, next, action };
 }
 
 /**

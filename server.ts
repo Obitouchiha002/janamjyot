@@ -2278,6 +2278,54 @@ app.get("/api/transit/:chartId", async (req, res) => {
  * Body: { boy: <birthInput>, girl: <birthInput>, language?, ai? }
  * Returns the full koota breakdown + doshas, plus an optional AI summary.
  */
+/**
+ * POST /api/match/from-chart — matching started from inside a conversation.
+ *
+ * The chat already knows whose chart it is, so asking the person to retype
+ * their own birth details is asking them to prove something the app is holding.
+ * They give the OTHER person's details; theirs come from the saved chart.
+ *
+ * Same price, same authorise-then-settle path and the same access check as any
+ * other matching — starting from chat changes where it is asked for, not what
+ * it costs or who may ask.
+ */
+app.post("/api/match/from-chart", async (req: any, res) => {
+  const chartId = String(req.body?.chartId ?? "");
+  const chart = await getNormalizedChart(chartId);
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) {
+    return res.status(403).json({ error: "This chart is not available on this account/device." });
+  }
+
+  const mine = validateBirthInput(chart.birth_details);
+  const theirs = validateBirthInput(req.body?.other);
+  if (!mine.ok || !mine.value) return res.status(400).json({ error: "Your saved chart is incomplete." });
+  if (!theirs.ok || !theirs.value) {
+    return res.status(400).json({ error: "Please check their birth details.", details: theirs.errors });
+  }
+
+  const auth = await charge(req, res, "match", "matching");
+  if (!auth) return;
+
+  try {
+    const who = identityOf(req as any);
+    recordUsage({ userId: who.userId, deviceId: who.deviceId, action: "match", meta: { surface: "chat" } }).catch(() => {});
+    const result = matchKundli(personMoon(mine.value, AYANAMSA), personMoon(theirs.value, AYANAMSA));
+
+    let summary: string | null = null;
+    if (featureOn("match")) {
+      const language = typeof req.body?.language === "string" && req.body.language.trim() ? req.body.language.trim() : "en";
+      try { summary = await generateMatchSummary(result, language); }
+      catch (e: any) { console.warn("[match-chat] AI summary skipped:", e?.message); }
+    }
+    await settleCharge(req, auth.charge, "matching", chartId, { category: "marriage", surface: "chat" });
+    res.json({ ...result, summary });
+  } catch (err: any) {
+    console.error("[match-chat] error:", err?.message);
+    res.status(500).json({ error: "Matching failed" });
+  }
+});
+
 app.post("/api/match", async (req, res) => {
   const auth = await charge(req, res, "match", "matching");
   if (!auth) return;
@@ -3299,7 +3347,10 @@ app.post("/api/ask-question", handleChat);
  */
 const TODAY_RE = /\b(today|aaj|tonight|abhi)\b/i;
 const TOMORROW_RE = /\b(tomorrow|kal|agle din)\b/i;
-const APP_RE = /\b(app|feature|button|screen|kaise (use|kaam)|kaam kaise|how (do|to)|use kaise|option|setting|notif)/i;
+// "aap kya kya kar sakte ho" is the most common opening question and the one
+// most likely to be answered vaguely, so it routes to the real feature list
+// rather than to the model's imagination.
+const APP_RE = /\b(app|feature|button|screen|kaise (use|kaam)|kaam kaise|how (do|to)|use kaise|option|setting|notif|kya kar sakte|kya kya kar|kya karte ho|what can you|who are you|tum kaun|aap kaun|kya kar sakta|kya bata sakte|help me with|madad)/i;
 
 app.post("/api/chat/universal", async (req, res) => {
   const chartId = req.body?.chartId;
@@ -3392,7 +3443,7 @@ app.post("/api/chat/universal", async (req, res) => {
     // told when it is one.
     const isFirst = history.filter((h) => h.role === "user").length === 0;
 
-    const { answer, reason, next } = await answerUniversal({
+    const { answer, reason, next, action } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
       history, userName, memory, isFirst, suggested,
@@ -3411,12 +3462,12 @@ app.post("/api/chat/universal", async (req, res) => {
     // Store answer + reason together behind the same marker, so a reload can
     // split them exactly like a live reply (no schema change needed).
     const stored = reason ? `${finalAnswer}\n<<REASON>>\n${reason}` : finalAnswer;
-    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next } });
+    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next, action } });
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
     await settleCharge(req, auth.charge, "chat", chartId, { category });
-    res.json({ answer: finalAnswer, reason, category, next });
+    res.json({ answer: finalAnswer, reason, category, next, action: action || undefined });
 
     // Bookkeeping AFTER responding — remembering this turn must never make the
     // person wait for their reply.
