@@ -51,6 +51,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/right-now\//, 'Abhi Sahi Hai?'],
   [/^\/timeline\//, 'Life Timeline'],
   [/^\/notifications$/, 'Notifications'],
+  [/^\/plan$/, 'My Plan'],
   [/^\/reports\/[^/]+\/[^/]+$/, 'Report'],
   [/^\/reports\//, 'Reports'],
   [/^\/report\//, 'Life Report'],
@@ -81,7 +82,7 @@ export function titleFor(pathname: string): string {
  */
 export function depthOf(pathname: string): number {
   if (isRootTab(pathname)) return 0;
-  if (/^\/(create-chart|match|login|help|settings|developer|ai-status|admin|muhurat|yogas|ashtakavarga|alerts)$/.test(pathname)) return 1;
+  if (/^\/(create-chart|match|login|help|settings|developer|ai-status|admin|muhurat|yogas|ashtakavarga|alerts|plan)$/.test(pathname)) return 1;
   if (/^\/edit-chart\//.test(pathname)) return 1;
   if (/^\/theme$/.test(pathname)) return 2;
   if (/^\/dashboard\//.test(pathname)) return 1;

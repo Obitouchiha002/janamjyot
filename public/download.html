@@ -1162,7 +1162,6 @@
       <a href="#support" data-page="support">Help &amp; policies</a>
     </nav>
     <div class="hdr-cta">
-      <a class="btn btn-ghost" style="padding:11px 18px;font-size:14px" href="/login">🖥️ Open Web App</a>
       <a class="btn btn-gold" style="padding:11px 20px;font-size:14px" href="#download" data-dl>Download App</a>
       <button class="burger" id="burger" aria-label="Open menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -1179,7 +1178,6 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <a href="/login" style="color:var(--gold-lt);font-weight:700">🖥️ Open Web App</a>
   <a href="#home" data-m data-page="home">Home</a>
   <a href="#pricing" data-m data-page="pricing">Pricing</a>
   <a href="#account" data-m data-page="account">My account</a>
@@ -1707,10 +1705,9 @@
         <div>
           <span class="eyebrow">✦ Get the App</span>
           <h2 style="margin-top:14px">Carry Your Personal JanamJyot Wherever You Go</h2>
-          <p class="lead" style="margin-top:12px">Install the Android app, or open JanamJyot right in your browser — a full desktop &amp; iPad experience, same charts and accuracy.</p>
+          <p class="lead" style="margin-top:12px">Install the Android app and carry your kundli, daily guidance and reports with you — same charts, same accuracy, offline-ready.</p>
           <div class="cta-row" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:22px">
-            <a class="btn btn-gold" href="/login">🖥️ Open Web App</a>
-            <button class="btn btn-ghost" data-modal>⬇ Download Android APK</button>
+            <button class="btn btn-gold" data-modal>⬇ Download Android APK</button>
             <a class="btn btn-ghost" href="#preview">Scan to Download</a>
           </div>
           <div class="dl-meta">
@@ -1944,7 +1941,10 @@
      advertise something the sheet contradicts. Prices come from the server's
      own list at /api/credits; these labels only describe them. */
   (function(){
-    var TOKEN_KEY = 'jj:web-token';
+    /* The SAME key the web app (/app.html) and /checkout.html use. These are
+       all one origin and one account: a separate key here made a person who
+       had just signed in get asked to sign in again on the very next page. */
+    var TOKEN_KEY = 'va_token';
     var $ = function(id){ return document.getElementById(id); };
     var modal = $('buyModal'), grid = $('plans');
     if(!modal || !grid) return;

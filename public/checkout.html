@@ -162,7 +162,11 @@
     });
   }
 
-  var packId = new URLSearchParams(location.search).get('pack') || 'starter';
+  var qs = new URLSearchParams(location.search);
+  var packId = qs.get('pack') || 'starter';
+  /* The app can hand us the signed-in email so this is one tap, not a retype.
+     Only the email travels — never the token, which must not sit in a URL. */
+  var prefill = (qs.get('email') || '').trim();
   var cfg = null, pack = null, timerId = null, expired = false;
 
   /* ── 5-minute window. A checkout that sits open for an hour is how stale
@@ -174,7 +178,7 @@
     timerId = setInterval(function(){
       left--;
       var m = Math.floor(left/60), s = left%60;
-      $('timer').textContent = m + ':' + (s<10?'0':'') + s;
+      $('timer').textContent = (m<10?'0':'') + m + ':' + (s<10?'0':'') + s;
       if(left <= 0){
         clearInterval(timerId); expired = true;
         $('timerBox').className = 'timer out';
@@ -225,7 +229,8 @@
       $('testNote').hidden = false;
     }
 
-    if(token()){ showPay(); } else { $('authCard').hidden = false; }
+    if(token()){ showPay(); }
+    else { if(prefill) $('em').value = prefill; $('authCard').hidden = false; }
   }
 
   function showPay(){

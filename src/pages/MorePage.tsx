@@ -1,6 +1,6 @@
 import {
   HeartHandshake, LifeBuoy, CalendarDays, Wand2, ChevronRight,
-  Settings, Cpu, Share2, Star, LogOut, LogIn, Shield, Code2, Bell,
+  Settings, Cpu, Share2, Star, LogOut, LogIn, Shield, Code2, Bell, Coins,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useAuth } from '@/auth';
@@ -62,6 +62,7 @@ export default function MorePage() {
   ];
 
   const app: Row[] = [
+    { title: 'My Plan & Credits', desc: 'Current plan, trial expiry, credits and receipts', icon: Coins, to: '/plan', tint: '#C07A1E' },
     { title: 'Settings', desc: 'Theme, language and preferences', icon: Settings, to: '/settings', tint: '#7DD3C0' },
     { title: 'Notifications', desc: 'Daily guidance & reminders', icon: Bell, to: '/notifications', tint: '#E8B44A' },
     // AI provider/model health is internal — admins only (see /api/ai-status).

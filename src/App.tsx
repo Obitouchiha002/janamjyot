@@ -59,6 +59,7 @@ import AdvancedToolsPage from './pages/AdvancedToolsPage';
 import RemediesPage from './pages/RemediesPage';
 import DailyGuidancePage from './pages/DailyGuidancePage';
 import NotificationsPage from './pages/NotificationsPage';
+import PlanPage from './pages/PlanPage';
 import ReportsPage from './pages/ReportsPage';
 import ReportViewPage from './pages/ReportViewPage';
 import TimelinePage from './pages/TimelinePage';
@@ -172,6 +173,7 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/theme" element={<ThemePage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
+      <Route path="/plan" element={<PlanPage />} />
       <Route path="/developer" element={<DeveloperPage />} />
       {/* Without this, a stale notification deep-link or a bad share URL renders
           the shell around an empty body, with no hint anything went wrong. */}
