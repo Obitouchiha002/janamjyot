@@ -1214,7 +1214,7 @@
         <li>Live AI-astrologer chat with voice</li>
         <li>Hindi · Hinglish · English</li>
       </ul>
-      <p class="as-meta">v1.10 · ~7.4 MB · Android 6.0+ · 🇮🇳 Made in India</p>
+      <p class="as-meta"><span id="asVer">v1.10</span> · <span id="asSize">~7.4 MB</span> · Android 6.0+ · 🇮🇳 Made in India</p>
     </section>
   </main>
 
@@ -1818,8 +1818,8 @@
             <a class="btn btn-ghost" href="#preview">Scan to Download</a>
           </div>
           <div class="dl-meta">
-            <span><b id="mVer">v1.0.0</b> version</span>
-            <span><b id="mSize">~8 MB</b> file size</span>
+            <span><b id="mVer">v1.10</b> version</span>
+            <span><b id="mSize">~7.4 MB</b> file size</span>
             <span><b>Android 6.0+</b></span>
             <span><b>Direct APK</b> · No store needed</span>
           </div>
@@ -1967,8 +1967,8 @@
     <h3><span id="modalLogo" style="width:30px;height:30px;display:inline-block"></span> Download JanamJyot</h3>
     <div style="margin-top:16px">
       <div class="row"><span>App</span><span>JanamJyot</span></div>
-      <div class="row"><span>Version</span><span id="m2Ver">v1.0.0</span></div>
-      <div class="row"><span>File size</span><span id="m2Size">~8 MB</span></div>
+      <div class="row"><span>Version</span><span id="m2Ver">v1.10</span></div>
+      <div class="row"><span>File size</span><span id="m2Size">~7.4 MB</span></div>
       <div class="row"><span>Compatibility</span><span>Android 6.0+</span></div>
     </div>
     <ol>
@@ -2006,8 +2006,14 @@
   ['brandLogo','mockLogo','modalLogo','pv1'].forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML=LOGO;});
 
   document.getElementById('yr').textContent = new Date().getFullYear();
-  ['mVer','m2Ver'].forEach(function(i){document.getElementById(i).textContent=CONFIG.version;});
-  ['mSize','m2Size'].forEach(function(i){document.getElementById(i).textContent=CONFIG.fileSize;});
+  /* Every place the version or size appears, filled from one object —
+     they used to be typed into four separate bits of markup and drifted
+     apart, so one part of the page said v1.10 while another said v1.0.0. */
+  function paintVersion(){
+    ['mVer','m2Ver','asVer'].forEach(function(i){ var e=document.getElementById(i); if(e) e.textContent=CONFIG.version; });
+    ['mSize','m2Size','asSize'].forEach(function(i){ var e=document.getElementById(i); if(e) e.textContent=CONFIG.fileSize; });
+  }
+  paintVersion();
 
   // download links
   document.querySelectorAll('[data-dl]').forEach(function(a){ if(a.tagName==='A' && a.getAttribute('href')==='#download') return; });
@@ -2630,6 +2636,16 @@
        while we are on test keys and vanishes on its own the moment live keys go
        in. A hard-coded banner is exactly the kind of thing that gets left on. */
     fetch('/api/config').then(function(r){ return r.json(); }).then(function(c){
+      /* The server already knows which build is published — the in-app updater
+         reads the same value. Following it here means the download button and
+         the app can never offer different versions of JanamJyot. */
+      if(c && c.app && c.app.version){
+        CONFIG.version = 'v' + String(c.app.version).replace(/^v/, '');
+        if(c.app.apk_url) CONFIG.apkUrl = c.app.apk_url;
+        if(typeof paintVersion === 'function') paintVersion();
+        var dl = document.getElementById('modalDl');
+        if(dl) dl.setAttribute('href', CONFIG.apkUrl);
+      }
       var n = $('buyTestNote');
       if(n && c && c.payments && c.payments.test_mode){
         n.textContent = '⚠ Test mode — no real money is charged. Pick UPI and enter success@razorpay (or failure@razorpay to test a failed payment).';
