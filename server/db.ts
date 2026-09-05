@@ -1225,6 +1225,12 @@ export const REFERRAL = {
   referrer: 30,
   /** Paid to the new account immediately for using a code. */
   invitee: 10,
+  /**
+   * Most referrals anyone can be paid for. Someone sharing with friends and
+   * family will not reach this; someone farming addresses hits it on day one,
+   * which turns an unbounded leak into a known, small maximum.
+   */
+  maxPaid: 20,
 } as const;
 
 export const CREDIT_PRICES: Record<string, number> = {
@@ -1360,6 +1366,13 @@ export async function settleReferral(userId: string): Promise<number> {
     referrerId = rows[0]?.referred_by ?? null;
   }
   if (!referrerId) return 0;
+
+  // Beyond the cap the invite still counts, but it stops paying.
+  const paid = await referralStats(referrerId);
+  if (paid.joined > REFERRAL.maxPaid) {
+    console.log("[referral] cap reached, not paying:", referrerId);
+    return 0;
+  }
   await grantCredits({
     userId: referrerId, credits: REFERRAL.referrer, reason: "bonus",
     refType: "referral", refId: `referred:${userId}`, note: "Someone joined with your code",

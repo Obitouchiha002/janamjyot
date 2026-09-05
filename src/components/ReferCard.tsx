@@ -24,9 +24,9 @@ const t = (x: Tri, l: Lang) => x[l] ?? x.en;
 const L = {
   title: { en: "Refer & earn", hi: "रेफर करें, कमाएँ", hinglish: "Refer karo, kamao" },
   how: {
-    en: "Share your code. When a friend signs up with it they get {i} credits, and you get {r} once they verify their email.",
-    hi: "अपना कोड शेयर करें। दोस्त इससे जुड़ेगा तो उसे {i} क्रेडिट मिलेंगे, और ईमेल वेरिफ़ाई होते ही आपको {r}।",
-    hinglish: "Apna code share karo. Dost usse judega to usko {i} credits milenge, aur uska email verify hote hi aapko {r}.",
+    en: "Share your code. A friend who signs up with it gets {i} credits, and you get {r} once they make their first kundli.",
+    hi: "अपना कोड शेयर करें। दोस्त इससे जुड़ेगा तो उसे {i} क्रेडिट मिलेंगे, और उसकी पहली कुंडली बनते ही आपको {r}।",
+    hinglish: "Apna code share karo. Dost usse judega to usko {i} credits milenge, aur uski pehli kundli bante hi aapko {r}.",
   },
   yourCode: { en: "Your code", hi: "आपका कोड", hinglish: "Aapka code" },
   copied: { en: "Copied", hi: "कॉपी हो गया", hinglish: "Copy ho gaya" },
@@ -35,9 +35,14 @@ const L = {
   earned: { en: "Earned", hi: "कमाए", hinglish: "Kamaye" },
   waiting: { en: "Waiting to verify", hi: "वेरिफ़ाई होना बाकी", hinglish: "Verify hona baaki" },
   waitingWhy: {
-    en: "They joined but have not signed in with an emailed code yet, so your credits are still pending.",
-    hi: "वे जुड़ गए हैं पर अभी ईमेल कोड से साइन इन नहीं किया, इसलिए आपके क्रेडिट रुके हैं।",
-    hinglish: "Wo jud gaye hain par abhi email code se sign in nahi kiya, isliye aapke credits ruke hain.",
+    en: "They joined but have not made their first kundli yet. Your credits arrive the moment they do.",
+    hi: "वे जुड़ गए हैं पर अभी पहली कुंडली नहीं बनाई। जैसे ही बनाएँगे, आपके क्रेडिट आ जाएँगे।",
+    hinglish: "Wo jud gaye hain par abhi pehli kundli nahi banayi. Jaise hi banayenge, aapke credits aa jayenge.",
+  },
+  capped: {
+    en: "You have reached the {m} paid referrals limit. Sharing still works — it just stops earning.",
+    hi: "{m} रेफरल की सीमा पूरी हो गई। शेयर करना चलता रहेगा, बस क्रेडिट नहीं मिलेंगे।",
+    hinglish: "{m} referral ki limit poori ho gayi. Share karna chalta rahega, bas credits nahi milenge.",
   },
   haveCode: { en: "Got a code from a friend?", hi: "दोस्त से कोड मिला है?", hinglish: "Dost se code mila hai?" },
   apply: { en: "Apply", hi: "लगाएँ", hinglish: "Lagao" },
@@ -53,6 +58,7 @@ interface Ref {
   code: string; link: string;
   joined: number; pending: number; earned: number;
   reward: number; invitee_reward: number;
+  capped?: boolean; max?: number;
 }
 
 export default function ReferCard({ canApply, onChanged }: { canApply: boolean; onChanged?: () => void }) {
@@ -151,6 +157,11 @@ export default function ReferCard({ canApply, onChanged }: { canApply: boolean; 
 
       {r.pending > 0 && (
         <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted-foreground">{t(L.waitingWhy, lang)}</p>
+      )}
+      {r.capped && (
+        <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
+          {t(L.capped, lang).replace("{m}", String(r.max ?? 20))}
+        </p>
       )}
 
       {canApply && (

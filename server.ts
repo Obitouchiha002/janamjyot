@@ -114,6 +114,7 @@ import {
 } from "./server/db";
 import {
   hashPassword, verifyPassword, signToken, requireAuth, optionalAuth, requireAdmin, ADMIN_EMAIL,
+  normalizeEmail,
 } from "./server/auth";
 import { validateBirthInput, buildIsoDatetime } from "./server/validate";
 import {
@@ -443,7 +444,7 @@ async function adoptGuestCharts(req: any, userId: string) {
 
 app.post("/api/auth/signup", async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
-  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   if (!name || !/^\S+@\S+\.\S+$/.test(email) || password.length < 6) {
     return res.status(400).json({ error: "Enter your name, a valid email, and a 6+ character password." });
@@ -463,7 +464,7 @@ app.post("/api/auth/signup", async (req, res) => {
 });
 
 app.post("/api/auth/login", async (req, res) => {
-  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
   const user = await getUserByEmail(email);
   if (!user) return res.status(401).json({ error: "Wrong email or password." });
@@ -510,7 +511,7 @@ const OTP_TTL_MIN = 10;
 const OTP_MAX_ATTEMPTS = 5;
 
 app.post("/api/auth/otp/request", async (req, res) => {
-  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Please enter a valid email address." });
   }
@@ -534,7 +535,7 @@ app.post("/api/auth/otp/request", async (req, res) => {
 });
 
 app.post("/api/auth/otp/verify", async (req, res) => {
-  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   const code = String(req.body?.code ?? "").trim();
   const name = String(req.body?.name ?? "").trim();
   if (!email || !code) return res.status(400).json({ error: "Email and code are required." });
@@ -599,11 +600,8 @@ app.post("/api/auth/otp/verify", async (req, res) => {
  * that inbox: an emailed six-digit code, or a Google ID token Google verified.
  */
 async function grantAdminIfOwner(user: any): Promise<any> {
-  // Both callers have just proved this person holds the inbox, which is exactly
-  // the bar the referrer's reward waits for.
-  settleReferral(user.id).catch((e) => console.warn("[referral] settle failed:", e?.message));
   if (user.role === "admin") return user;
-  if (String(user.email ?? "").toLowerCase() !== ADMIN_EMAIL) return user;
+  if (normalizeEmail(user.email) !== ADMIN_EMAIL) return user;
   await setUserRole(user.id, "admin");
   console.log("[auth] admin granted to the configured admin address");
   return { ...user, role: "admin" };
@@ -631,6 +629,8 @@ app.get("/api/referral", async (req: any, res) => {
       link: `${(process.env.PUBLIC_APP_URL || "https://janamjyot.lzworth.in").replace(/\/$/, "")}/?ref=${code}`,
       joined: stats.joined,
       pending: stats.pending,
+      capped: stats.joined >= REFERRAL.maxPaid,
+      max: REFERRAL.maxPaid,
       earned: stats.earned,
       reward: REFERRAL.referrer,
       invitee_reward: REFERRAL.invitee,
@@ -682,7 +682,7 @@ function resetThrottled(email: string): boolean {
  * have accounts. The link carries a random token; only its hash is stored.
  */
 app.post("/api/auth/forgot-password", async (req, res) => {
-  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const email = normalizeEmail(req.body?.email);
   const ok = { ok: true, message: "If that email has an account, a reset link is on its way." };
   if (!email) return res.status(400).json({ error: "Please enter your email." });
   if (!isMailConfigured()) {
@@ -791,7 +791,7 @@ app.post("/api/auth/google", async (req, res) => {
     return res.status(401).json({ error: "This Google sign-in could not be accepted." });
   }
 
-  const email = String(claims.email).toLowerCase();
+  const email = normalizeEmail(claims.email);
   const sub = String(claims.sub);
   const name = String(claims.name || email.split("@")[0]);
   const picture = claims.picture ? String(claims.picture) : null;
@@ -2108,6 +2108,12 @@ app.post("/api/create-chart", async (req, res) => {
       deviceId: me.deviceId,
     });
     recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "chart", meta: { chartId } }).catch(() => {});
+    // A referral pays out here, not at signup and not at verification. A working
+    // inbox is cheap — Gmail hands out unlimited addresses that all arrive in
+    // one mailbox — but a saved kundli means a real person entered a real birth
+    // date and got something back. It is the first thing anyone who actually
+    // wants the app does, and the last thing someone farming codes bothers with.
+    if (me.userId) settleReferral(me.userId).catch((e) => console.warn("[referral] settle failed:", e?.message));
     // Charged only now, with the kundli saved. A calculation that failed
     // returned above, so a failure never costs anyone a credit.
     await settleCharge(req, auth.charge, "chart", chartId);

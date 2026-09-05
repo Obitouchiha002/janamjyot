@@ -12,8 +12,36 @@ const SECRET = (process.env.AUTH_SECRET || "").trim() ||
 
 if (!process.env.AUTH_SECRET) console.warn("[auth] AUTH_SECRET not set — using a dev fallback. Set AUTH_SECRET for production.");
 
+/**
+ * One inbox, one account.
+ *
+ * Lowercasing is not enough. Gmail ignores dots and everything after a "+", so
+ * vansh@, v.a.n.s.h@ and vansh+7@ all land in the same inbox while looking like
+ * three different people to us. With refer-and-earn paying real credits, that
+ * is a way to mint money from a single mailbox: every one of those addresses
+ * would receive its own sign-in code and pass an "is this inbox yours" check.
+ *
+ * Only Google's domains are collapsed, because the dot rule is Google's. Other
+ * providers do treat a dot as significant, and folding it there would merge two
+ * genuinely different people into one account.
+ */
+const PLUS_ADDRESSING = new Set(["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "icloud.com", "me.com", "protonmail.com", "proton.me", "yahoo.com"]);
+const DOTS_IGNORED = new Set(["gmail.com", "googlemail.com"]);
+
+export function normalizeEmail(raw: string): string {
+  const email = String(raw ?? "").trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at < 1) return email;
+  let local = email.slice(0, at);
+  let domain = email.slice(at + 1);
+  if (domain === "googlemail.com") domain = "gmail.com";
+  if (PLUS_ADDRESSING.has(domain)) local = local.split("+")[0];
+  if (DOTS_IGNORED.has(domain)) local = local.replace(/\./g, "");
+  return local ? `${local}@${domain}` : email;
+}
+
 // The email that becomes admin on signup/login.
-export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "vk1234888i@gmail.com").trim().toLowerCase();
+export const ADMIN_EMAIL = normalizeEmail(process.env.ADMIN_EMAIL || "vk1234888i@gmail.com");
 
 // ---- password hashing (scrypt) -------------------------------------------
 export function hashPassword(pw: string): string {
