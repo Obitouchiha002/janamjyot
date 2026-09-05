@@ -39,6 +39,13 @@ const TONE = {
   good:   { tint: "#22C55E", Icon: Sun },
 } as const;
 
+const BEST_LABEL: Record<string, string> = {
+  en: "Best time", hi: "सबसे अच्छा समय", hinglish: "Sabse accha samay",
+};
+const WHY_LABEL: Record<string, string> = {
+  en: "Why this?", hi: "ऐसा क्यों?", hinglish: "Aisa kyun?",
+};
+
 const DOT = { good: "#22C55E", careful: "#F0A93B", neutral: "#8C93A4" } as const;
 
 // The "all calculated, nothing guessed" footer follows the selected language —
@@ -92,33 +99,46 @@ export default function DayBanner({ chartId }: { chartId: string }) {
           <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: t.tint }}>
             {d.label}
           </p>
-          <p className="mt-1 text-[15.5px] font-semibold leading-snug">{d.headline}</p>
+          <p className="mt-1 text-[15px] font-semibold leading-[1.45]">{d.headline}</p>
 
-          {/* quick time chips — the two windows people actually act on */}
-          {(d.best_time || d.caution_time) && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {d.best_time && (
-                <span className="rounded-full bg-[#22C55E1f] px-2.5 py-1 text-[11px] font-semibold text-[#1f9d52]">
-                  ✓ {d.best_time.start}–{d.best_time.end}
-                </span>
-              )}
-              {d.caution_time && (
-                <span className="rounded-full bg-[#F0A93B1f] px-2.5 py-1 text-[11px] font-semibold text-[#b9791a]">
-                  {d.caution_time.name} {d.caution_time.start}–{d.caution_time.end}
-                </span>
-              )}
+        </div>
+      </div>
+
+      {/* The two windows people actually act on. Loose pills said a time without
+          saying what it was for, and one of them repeated the sentence above;
+          a labelled pair reads at a glance and survives long Hindi labels. */}
+      {(d.best_time || d.caution_time) && (
+        <div className="grid grid-cols-2 gap-px border-t border-border/70 bg-border/70">
+          {d.best_time && (
+            <div className="bg-card px-4 py-2.5">
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+                {BEST_LABEL[lang] || BEST_LABEL.en}
+              </p>
+              <p className="mt-0.5 text-[13px] font-bold tabular-nums" style={{ color: "#1f9d52" }}>
+                {d.best_time.start}–{d.best_time.end}
+              </p>
+            </div>
+          )}
+          {d.caution_time && (
+            <div className="bg-card px-4 py-2.5">
+              <p className="truncate text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+                {d.caution_time.name}
+              </p>
+              <p className="mt-0.5 text-[13px] font-bold tabular-nums" style={{ color: "#b9791a" }}>
+                {d.caution_time.start}–{d.caution_time.end}
+              </p>
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* Reason — collapsed by default. Technical astrology lives here, not up top. */}
       <button
         type="button"
         onClick={() => { haptic.tap(); setOpen((o) => !o); }}
-        className="flex w-full items-center justify-center gap-1 border-t border-border/70 py-2.5 text-[12px] font-bold text-muted-foreground"
+        className="flex w-full items-center justify-center gap-1 border-t border-border/70 py-2 text-[11.5px] font-semibold text-muted-foreground/80"
       >
-        Reason
+        {WHY_LABEL[lang] || WHY_LABEL.en}
         <ChevronDown className={`h-[15px] w-[15px] transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 

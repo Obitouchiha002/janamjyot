@@ -739,9 +739,12 @@ export function buildDaySignals(input: {
   // with no name it starts the sentence (capitalise). Notifications have no
   // greeting, so they always capitalise.
   const greet = GREET(name, l);
+  // The card shows the best window as its own chip immediately below, so
+  // repeating it in the sentence said the same thing twice and pushed the line
+  // to four wrapped rows. A notification has no chip, so `short` keeps it.
   const body = leadText
-    ? (greet + (greet ? leadText : capFirst(leadText)) + "." + bestClause).trim()
-    : (greet + pick(LABEL[tone], l) + "." + bestClause).trim();
+    ? (greet + (greet ? leadText : capFirst(leadText)) + ".").trim()
+    : (greet + pick(LABEL[tone], l) + ".").trim();
   const shortBody = (capFirst(leadText || pick(LABEL[tone], l)) + "." + bestClause).trim();
 
   // A BIG special (festival / sankranti / Purnima-Amavasya / Sawan Somwar /
