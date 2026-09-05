@@ -262,7 +262,16 @@ function Users_() {
  */
 function Funnel() {
   const [days, setDays] = useState(30);
-  const [d, setD] = useState<{ signups: number; steps: Array<{ key: string; label: string; users: number }> } | null>(null);
+  const [d, setD] = useState<{
+    signups: number;
+    steps: Array<{ key: string; label: string; users: number }>;
+    money?: {
+      cohort: number; back_7d: number; back_30d: number;
+      payers: number; purchases: number; revenue_rupees: number; revenue_per_payer: number;
+      credits_bought: number; credits_spent: number;
+      subjects: Array<{ subject: string; uses: number; credits: number }>;
+    } | null;
+  } | null>(null);
 
   useEffect(() => {
     setD(null);
@@ -320,6 +329,65 @@ function Funnel() {
             );
           })}
         </div>
+      )}
+
+      {d?.money && (
+        <>
+          <div className="mt-4 grid grid-cols-4 gap-2 border-t border-border pt-3.5">
+            {([
+              ["Back 7d", d.money.cohort ? `${Math.round((d.money.back_7d / d.money.cohort) * 100)}%` : "—"],
+              ["Back 30d", d.money.cohort ? `${Math.round((d.money.back_30d / d.money.cohort) * 100)}%` : "—"],
+              ["Revenue", `₹${d.money.revenue_rupees.toLocaleString("en-IN")}`],
+              ["Per payer", `₹${d.money.revenue_per_payer}`],
+            ] as const).map(([k, v]) => (
+              <div key={k} className="rounded-2xl bg-muted px-2 py-2.5 text-center">
+                <p className="text-[15px] font-bold leading-none">{v}</p>
+                <p className="mt-1 text-[10.5px] text-muted-foreground">{k}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Bought but never spent means the purchase was hope, not habit —
+              and that shows here long before it shows up as churn. */}
+          <div className="mt-2.5 flex items-baseline justify-between rounded-2xl bg-muted px-3.5 py-2.5 text-[12.5px]">
+            <span className="text-muted-foreground">Credits bought → spent</span>
+            <span className="font-bold tabular-nums">
+              {d.money.credits_bought} → {d.money.credits_spent}
+              {d.money.credits_bought > 0 && (
+                <span className="ml-1.5 font-medium text-muted-foreground">
+                  ({Math.round((d.money.credits_spent / d.money.credits_bought) * 100)}% used)
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* The question that decides the product's direction. */}
+          <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            What paying users spend on
+          </p>
+          {d.money.subjects.length === 0 ? (
+            <p className="text-[12.5px] text-muted-foreground">Nothing yet — no paid account has spent credits.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {d.money.subjects.map((sj) => {
+                const top = d.money!.subjects[0].credits || 1;
+                return (
+                  <div key={sj.subject}>
+                    <div className="flex items-baseline justify-between text-[12.5px]">
+                      <span className="font-semibold capitalize">{sj.subject}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        <b className="text-foreground">{sj.credits}</b> cr · {sj.uses}×
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full" style={{ width: `${Math.max((sj.credits / top) * 100, 2)}%`, background: "#C07A1E" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

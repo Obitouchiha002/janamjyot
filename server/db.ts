@@ -1331,6 +1331,77 @@ export async function funnelStats(days = 30): Promise<{ days: number; signups: n
   };
 }
 
+/**
+ * The rest of the scoreboard: retention, money per paying person, and — the one
+ * that decides the product's direction — what people actually pay ABOUT.
+ *
+ * "Which pack sells best" is a pricing question and a small one. "Seventy per
+ * cent of our revenue is marriage questions" is a different company: it says
+ * what to build next, what to write on the landing page, and who to go and
+ * find. That answer only exists if every spend records its subject at the time,
+ * which is why settleCharge carries meta.category.
+ *
+ * `purchased vs consumed` is here because credits bought and never spent are
+ * not a healthy sign. Someone who pays and then does not come back has told us
+ * the purchase was hope, not habit — and that shows up here long before it
+ * shows up in churn.
+ */
+export async function moneyStats(days = 60) {
+  if (!USE_PG) return null;
+  const [ret, rev, cat, flow] = await Promise.all([
+    pool!.query(
+      `WITH cohort AS (
+         SELECT id, created_at FROM app_users
+          WHERE created_at > now() - ($1 || ' days')::interval AND status <> 'deleted'
+       )
+       SELECT count(*)::int AS n,
+              count(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM usage_events e WHERE e.user_id = c.id
+                 AND e.created_at > c.created_at + interval '1 day'
+                 AND e.created_at < c.created_at + interval '8 days'))::int  AS back_7d,
+              count(*) FILTER (WHERE EXISTS (
+                SELECT 1 FROM usage_events e WHERE e.user_id = c.id
+                 AND e.created_at > c.created_at + interval '7 days'
+                 AND e.created_at < c.created_at + interval '31 days'))::int AS back_30d
+         FROM cohort c`, [days]),
+    pool!.query(
+      `SELECT count(DISTINCT user_id)::int                    AS payers,
+              COALESCE(SUM(amount_paise),0)::int              AS paise,
+              count(*)::int                                   AS purchases
+         FROM payments
+        WHERE status = 'paid' AND created_at > now() - ($1 || ' days')::interval`, [days]),
+    // Only spends by people who have actually paid — what FREE users spend on
+    // is interest, what PAYING users spend on is the business.
+    pool!.query(
+      `SELECT COALESCE(d.meta->>'category', d.kind) AS subject,
+              count(*)::int                          AS uses,
+              SUM(d.credits)::int                    AS credits
+         FROM deliveries d
+        WHERE d.created_at > now() - ($1 || ' days')::interval
+          AND EXISTS (SELECT 1 FROM payments p WHERE p.user_id = d.user_id AND p.status = 'paid')
+        GROUP BY 1 ORDER BY credits DESC NULLS LAST LIMIT 12`, [days]),
+    pool!.query(
+      `SELECT COALESCE(SUM(delta) FILTER (WHERE delta > 0 AND reason = 'purchase'),0)::int AS bought,
+              COALESCE(-SUM(delta) FILTER (WHERE delta < 0),0)::int                        AS spent
+         FROM credit_ledger WHERE created_at > now() - ($1 || ' days')::interval`, [days]),
+  ]);
+  const r = ret.rows[0] ?? {}, v = rev.rows[0] ?? {}, f = flow.rows[0] ?? {};
+  return {
+    days,
+    cohort: r.n ?? 0,
+    back_7d: r.back_7d ?? 0,
+    back_30d: r.back_30d ?? 0,
+    payers: v.payers ?? 0,
+    purchases: v.purchases ?? 0,
+    revenue_rupees: Math.round((v.paise ?? 0) / 100),
+    revenue_per_payer: v.payers ? Math.round((v.paise ?? 0) / 100 / v.payers) : 0,
+    credits_bought: f.bought ?? 0,
+    credits_spent: f.spent ?? 0,
+    // What paying people spend on, biggest first.
+    subjects: cat.rows,
+  };
+}
+
 export async function referralCode(userId: string): Promise<string> {
   if (!USE_PG) {
     const u: any = fileData.users.find((x: any) => x.id === userId);

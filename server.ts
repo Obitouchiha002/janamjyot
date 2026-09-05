@@ -43,6 +43,7 @@ import {
   markNeedsRefund,
   adminAdjustCredits,
   funnelStats,
+  moneyStats,
   referralCode,
   attachReferral,
   settleReferral,
@@ -845,7 +846,8 @@ app.get("/api/admin/users", requireAdmin, async (req, res) =>
 app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
-    res.json(await funnelStats(days));
+    const [funnel, money] = await Promise.all([funnelStats(days), moneyStats(days)]);
+    res.json({ ...funnel, money });
   } catch (err: any) {
     fail(res, 500, "Could not load the funnel.", err, "admin-funnel");
   }
@@ -1221,6 +1223,7 @@ async function settleCharge(
   charge: { credits: number } | null,
   kind: string,
   chartId?: string | null,
+  meta?: Record<string, any>,
 ): Promise<void> {
   if (!charge) return;
   await spendCredits({
@@ -1228,6 +1231,12 @@ async function settleCharge(
     credits: charge.credits,
     kind,
     chartId: chartId ?? null,
+    // `kind` says which FEATURE was bought; `meta.category` says what it was
+    // ABOUT. Without the second one the honest answer to "what do people
+    // actually pay us for" is "chat", which is not an answer you can build a
+    // business on. With it, "most of our revenue is marriage questions"
+    // becomes a fact rather than a hunch.
+    meta,
   });
 }
 
@@ -2294,7 +2303,7 @@ app.post("/api/match", async (req, res) => {
       }
     }
     // Charged only now, with the full koota result computed.
-    await settleCharge(req, auth.charge, "matching", null);
+    await settleCharge(req, auth.charge, "matching", null, { category: "marriage" });
     res.json({ ...result, summary });
   } catch (err: any) {
     console.error("[match] error:", err?.message);
@@ -2974,7 +2983,7 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
 
     await insertReport({ chartId, report, language: lifeKey });
     // Charged only now, with the report written.
-    await settleCharge(req, auth.charge, "life_report", chartId);
+    await settleCharge(req, auth.charge, "life_report", chartId, { category: "life" });
     res.json(report);
   } catch (err: any) {
     console.error("[generate-report] error:", err?.message);
@@ -3031,7 +3040,7 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
     try { await insertReport({ chartId, report: payload, language: cacheKey }); } catch {}
     // Charged only now, with the report in hand. An AI call that failed above
     // returned before this line, so a failure never costs anyone a credit.
-    await settleCharge(req, auth.charge, "report", chartId);
+    await settleCharge(req, auth.charge, "report", chartId, { category: type });
     res.json(payload);
   } catch (err: any) {
     console.error("[report] error:", err?.message);
@@ -3190,7 +3199,7 @@ app.get("/api/chart/:chartId/timeline", async (req, res) => {
     const payload = { ...timeline, birth_details: chart.birth_details, generated_at: new Date().toISOString() };
     try { await insertReport({ chartId, report: payload, language: cacheKey }); } catch {}
     // Charged only now, with the forecast written.
-    await settleCharge(req, auth.charge, "timeline", chartId);
+    await settleCharge(req, auth.charge, "timeline", chartId, { category: "timeline" });
     res.json(payload);
   } catch (err: any) {
     console.error("[timeline] error:", err?.message);
@@ -3406,7 +3415,7 @@ app.post("/api/chat/universal", async (req, res) => {
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
-    await settleCharge(req, auth.charge, "chat", chartId);
+    await settleCharge(req, auth.charge, "chat", chartId, { category });
     res.json({ answer: finalAnswer, reason, category, next });
 
     // Bookkeeping AFTER responding — remembering this turn must never make the
