@@ -263,15 +263,22 @@ function bedrockProvider(apiKey: string, region: string, model: string, tag: str
 
 // ---- assemble the configured providers ------------------------------------
 function buildProviders(): Provider[] {
-  // Gemini models, tried in order. Default leads with FLASH models because they
-  // have a huge free-tier quota (~1500 requests/day each) — so the limit is
-  // practically never reached. (gemini-2.5-pro is far more limited on the free
-  // tier (~25-50/day), so it is NOT first; add it via GEMINI_MODELS if you want
-  // top quality and have billing enabled.) Override with GEMINI_MODELS.
+  /*
+   * Gemini models, tried in order. Flash first: its free-tier quota is large
+   * enough that the limit is practically never reached, where 2.5-pro is capped
+   * at a few dozen a day. Override with GEMINI_MODELS.
+   *
+   * The list ENDS with `gemini-flash-latest` on purpose. Google retires named
+   * versions — gemini-2.0-flash and gemini-2.0-flash-lite both went 404 in
+   * production, and the pinned list had no survivor behind them. A pinned model
+   * is predictable until the day it is deleted; the alias always resolves to
+   * whatever is current. Pinned versions lead so behaviour stays stable, and the
+   * alias sits at the back so a retirement can never take the app down again.
+   */
   const geminiModels = (
     env("GEMINI_MODELS") ||
     env("GEMINI_MODEL") ||
-    "gemini-2.5-flash,gemini-2.0-flash"
+    "gemini-2.5-flash,gemini-flash-latest"
   )
     .split(",")
     .map((m) => m.trim())
