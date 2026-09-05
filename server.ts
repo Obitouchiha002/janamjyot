@@ -561,6 +561,7 @@ app.post("/api/auth/otp/verify", async (req, res) => {
     if (user.status && user.status !== "active") {
       return res.status(403).json({ error: (user as any).status_reason || "This account has been suspended." });
     }
+    user = await grantAdminIfOwner(user);
     touchUser(user.id).catch(() => {});
     await adoptGuestCharts(req, user.id);
     res.json({
@@ -572,6 +573,27 @@ app.post("/api/auth/otp/verify", async (req, res) => {
     res.status(500).json({ error: "Could not verify the code. Please try again." });
   }
 });
+
+/**
+ * Admin follows the address, on every inbox-proving sign-in — not just the one
+ * that happened to create the account.
+ *
+ * It used to be set only inside the `if (!user)` branch. Password signup
+ * deliberately never grants admin (typing a publicly known address proves
+ * nothing), so if the admin address had ever been registered with a password
+ * first, signing in afterwards by emailed code or Google left it an ordinary
+ * user — and there was then no path to admin at all.
+ *
+ * Safe to run here because both callers have already proved the person holds
+ * that inbox: an emailed six-digit code, or a Google ID token Google verified.
+ */
+async function grantAdminIfOwner(user: any): Promise<any> {
+  if (user.role === "admin") return user;
+  if (String(user.email ?? "").toLowerCase() !== ADMIN_EMAIL) return user;
+  await setUserRole(user.id, "admin");
+  console.log("[auth] admin granted to the configured admin address");
+  return { ...user, role: "admin" };
+}
 
 /* ── Password: forgot → email link → reset, and change-while-signed-in ─────── */
 
@@ -737,6 +759,7 @@ app.post("/api/auth/google", async (req, res) => {
     return res.status(403).json({ error: user.status_reason || "This account has been suspended." });
   }
 
+  user = await grantAdminIfOwner(user);
   touchUser(user.id).catch(() => {});
   await adoptGuestCharts(req, user.id);
   res.json({
