@@ -542,40 +542,45 @@ export interface Quotas {
 
 /** -1 means unlimited. Tuned for free AI provider quotas — accuracy over volume. */
 export const PLANS: Record<PlanId, Quotas> = {
-  // Free: counted per month (see PLAN_WINDOW) — enough to judge the app, not
-  // enough to live in it. Daily readings stay per-day and generous, because
-  // they are the habit worth building and they cost us almost nothing.
+  // Free: questions and matches counted per WEEK (see PLAN_WINDOW) — enough to
+  // judge the app, not enough to live in it. Daily readings stay per-day and
+  // generous, because they are the habit worth building and cost us almost
+  // nothing to serve.
   free: { chart: 3, report: 2, ask: 15, match: 3, daily: 40 },
   pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
   unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
 };
 
+/** A rolling window. `total` is a lifetime cap, not a rate. */
+export type QuotaWindow = "day" | "week" | "month" | "total";
+
 /**
  * How long a plan's allowance is counted over — which is a product decision,
  * not a technical one, and differs by plan.
  *
- * Free counts questions and matches per MONTH. Fifteen questions a DAY is more
- * than almost anyone asks, so the free plan answered every real need and no one
- * ever had a reason to pay; it was generous in a way that made the paid tiers
- * pointless. Fifteen a month is enough to see whether the answers are any good,
- * which is what a free tier is for.
+ * Free counts questions and matches per WEEK. Fifteen a DAY is more than almost
+ * anyone asks, so the free plan answered every real need and nobody ever had a
+ * reason to pay. Fifteen a MONTH went too far the other way — someone who tries
+ * the app properly in week one is then locked out for three weeks, which reads
+ * as broken rather than as a limit. A week refills often enough to keep the
+ * habit alive and still runs out for anyone actually leaning on it.
  *
  * A paid plan is the opposite: it should feel unmetered day to day, so its
  * allowances stay per-day.
  */
-export const PLAN_WINDOW: Record<PlanId, Partial<Record<QuotaAction, "day" | "month" | "total">>> = {
-  free: { ask: "month", match: "month" },
+export const PLAN_WINDOW: Record<PlanId, Partial<Record<QuotaAction, QuotaWindow>>> = {
+  free: { ask: "week", match: "week" },
   pro: {},
   unlimited: {},
 };
 
 /** Window for an action on a given plan; the table below is the default. */
-export function windowFor(action: QuotaAction, plan: PlanId = "free"): "day" | "month" | "total" {
+export function windowFor(action: QuotaAction, plan: PlanId = "free"): QuotaWindow {
   return PLAN_WINDOW[plan]?.[action] ?? QUOTA_WINDOW[action];
 }
 
 /** The window each quota is counted over. `chart` is a lifetime cap, not a rate. */
-export const QUOTA_WINDOW: Record<QuotaAction, "day" | "month" | "total"> = {
+export const QUOTA_WINDOW: Record<QuotaAction, QuotaWindow> = {
   chart: "total",
   report: "month",
   ask: "day",
@@ -1759,7 +1764,7 @@ export async function usageCount(
     return rows[0]?.n ?? 0;
   }
 
-  const interval = window === "month" ? "30 days" : "1 day";
+  const interval = window === "month" ? "30 days" : window === "week" ? "7 days" : "1 day";
   const { rows } = await pool!.query(
     `SELECT count(*)::int AS n FROM usage_events
       WHERE action = $3

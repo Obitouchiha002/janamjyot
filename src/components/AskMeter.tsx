@@ -28,6 +28,7 @@ const L = {
   freeLeftPlural: {
     en: "free questions", hi: "मुफ़्त सवाल", hinglish: "free sawaal",
   },
+  thisWeek: { en: "left this week", hi: "इस हफ़्ते बचे", hinglish: "iss hafte bache" },
   thisMonth: { en: "left this month", hi: "इस महीने बचे", hinglish: "iss mahine bache" },
   today: { en: "left today", hi: "आज बचे", hinglish: "aaj bache" },
   perQuestion: {
@@ -46,7 +47,7 @@ const L = {
 
 interface State {
   freeLeft: number;
-  window: "day" | "month" | "total";
+  window: "day" | "week" | "month" | "total";
   balance: number;
   price: number;
 }
@@ -67,7 +68,7 @@ export default function AskMeter() {
         setS({
           // -1 means unlimited, and there is nothing useful to say about that.
           freeLeft: ask.limit < 0 ? -1 : Math.max(0, ask.limit - ask.used),
-          window: ask.window ?? "month",
+          window: ask.window ?? "week",
           balance: c?.balance ?? 0,
           price: c?.prices?.chat ?? 1,
         });
@@ -80,7 +81,10 @@ export default function AskMeter() {
 
   if (!s || s.freeLeft === -1) return null;
 
-  const resetWord = s.window === "month" ? t(L.thisMonth, lang) : t(L.today, lang);
+  const resetWord =
+    s.window === "month" ? t(L.thisMonth, lang)
+    : s.window === "week" ? t(L.thisWeek, lang)
+    : t(L.today, lang);
 
   // Still inside the free allowance — say how much is left, and nothing about money.
   if (s.freeLeft > 0) {
