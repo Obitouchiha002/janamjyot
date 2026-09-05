@@ -2927,7 +2927,7 @@
       clearInterval(genTimer); genTimer=setInterval(function(){ si=(si+1)%steps.length; genSub.textContent=steps[si]; }, 700);
       var minWait=new Promise(function(res){ setTimeout(res, 2000); });
 
-      var call=fetch(API+'/api/create-chart',{method:'POST',headers:{'Content-Type':'application/json','X-Device-Id':jjDeviceId()},
+      var call=fetch(API+'/api/chart-preview',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({name:name,date_of_birth:date,time_of_birth:time,place_of_birth:picked.label,latitude:picked.latitude,longitude:picked.longitude,timezone:picked.timezone})})
       .then(function(r){ if(r.status===429) throw new Error('You have reached the free limit for now — download the app for unlimited kundlis.'); return r.json(); });
 
@@ -3028,7 +3028,7 @@
       var steps=['Calculating planetary positions','Placing the twelve houses','Finding your Nakshatra','Reading your Dasha periods'],si=0; genSub.textContent=steps[0];
       clearInterval(gt); gt=setInterval(function(){ si=(si+1)%steps.length; genSub.textContent=steps[si]; },700);
       var minWait=new Promise(function(r){ setTimeout(r,2000); });
-      var call=fetch(API+'/api/create-chart',{method:'POST',headers:{'Content-Type':'application/json','X-Device-Id':jjDeviceId()},body:JSON.stringify({name:name,date_of_birth:date,time_of_birth:time,place_of_birth:picked.label,latitude:picked.latitude,longitude:picked.longitude,timezone:picked.timezone})}).then(function(r){ if(r.status===429) throw new Error('Free limit reached — download the app for unlimited kundlis.'); return r.json(); });
+      var call=fetch(API+'/api/chart-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,date_of_birth:date,time_of_birth:time,place_of_birth:picked.label,latitude:picked.latitude,longitude:picked.longitude,timezone:picked.timezone})}).then(function(r){ if(r.status===429) throw new Error('Free limit reached — download the app for unlimited kundlis.'); return r.json(); });
       Promise.all([call,minWait]).then(function(a){
         var d=a[0]; if(!d||!d.summary) throw new Error((d&&d.error)||'Could not calculate — please re-check details.');
         var s=d.summary;

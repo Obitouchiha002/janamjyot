@@ -371,13 +371,34 @@ CREATE TABLE IF NOT EXISTS payments (
   amount_paise        INTEGER NOT NULL CHECK (amount_paise > 0),
   currency            TEXT NOT NULL DEFAULT 'INR',
   pack_id             TEXT NOT NULL,
-  credits             INTEGER NOT NULL CHECK (credits > 0),
+  credits             INTEGER NOT NULL CHECK (credits >= 0),
   status              TEXT NOT NULL DEFAULT 'created',  -- created|paid|failed|refunded
   failure_reason      TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, created_at DESC);
+-- The ₹1 trial is a real payment that buys ACCESS for three days, not credits,
+-- so its row is worth 0 credits. The original CHECK (credits > 0) rejected it
+-- and the order failed with a 500 before Razorpay was ever opened.
+-- Dropped by lookup rather than by guessing the auto-generated name: if the
+-- original constraint were named anything else the DROP would silently no-op
+-- and the ₹1 trial would keep failing.
+DO $$
+DECLARE c text;
+BEGIN
+  FOR c IN
+    SELECT con.conname
+      FROM pg_constraint con
+      JOIN pg_class rel ON rel.oid = con.conrelid
+     WHERE rel.relname = 'payments'
+       AND con.contype = 'c'
+       AND pg_get_constraintdef(con.oid) ILIKE '%credits%'
+  LOOP
+    EXECUTE format('ALTER TABLE payments DROP CONSTRAINT %I', c);
+  END LOOP;
+  ALTER TABLE payments ADD CONSTRAINT payments_credits_check CHECK (credits >= 0);
+END $$;
 
 CREATE TABLE IF NOT EXISTS credit_ledger (
   id            BIGSERIAL PRIMARY KEY,

@@ -321,6 +321,15 @@ const slowLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+const previewLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 12,                      // 12 free preview charts per hour per IP
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "You have made a few charts already. Please download the app to keep going." },
+});
+
+app.use("/api/chart-preview", previewLimiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth/google", authLimiter);
@@ -353,6 +362,9 @@ const PUBLIC_API = [
   /^\/panchang$/,
   /^\/panchang-today$/,
   /^\/billing\/packs$/,
+  // The website's teaser: it computes from what the visitor just typed,
+  // stores nothing and returns no chart id. See the route for why.
+  /^\/chart-preview$/,
   // Razorpay calls this server-to-server with no session. It is not "open":
   // the HMAC signature check inside the route is its authentication.
   /^\/billing\/webhook$/,
@@ -1674,6 +1686,62 @@ app.get("/api/places", async (req, res) => {
  * Validates birth details, fetches REAL chart data from Prokerala, normalizes
  * it, persists profile + calculation, and returns chartId + dashboard summary.
  */
+/**
+ * POST /api/chart-preview — the website's "free kundli" teaser.
+ *
+ * PUBLIC on purpose. The marketing page promises "Free · No account needed"
+ * and shows a visitor their Lagna, Moon sign, Nakshatra and running Dasha
+ * before they download anything; putting it behind the sign-in wall made the
+ * page contradict itself with "Please sign in to use this."
+ *
+ * It is safe to leave open because it is not the chart API:
+ *   • it writes NOTHING — no birth profile, no chart row, no usage record, so
+ *     there is nothing for an anonymous caller to accumulate or read back;
+ *   • it returns only `summary`, never a chart id, so none of the paid
+ *     surfaces (reports, chat, timeline) can be reached from what it hands out;
+ *   • it always uses the built-in local engine, so it can never spend a
+ *     Prokerala credit however much traffic hits it;
+ *   • it is rate-limited per IP on top of all that.
+ * The visitor's birth details are used for the calculation and then dropped.
+ */
+app.post("/api/chart-preview", async (req, res) => {
+  const v = validateBirthInput(req.body);
+  if (!v.ok || !v.value) {
+    return res.status(400).json({ error: "Invalid input", details: v.errors });
+  }
+  const input = v.value;
+  const isoDatetime = buildIsoDatetime(input.date_of_birth, input.time_of_birth, input.timezone);
+
+  try {
+    const local = computeChart({
+      datetime: isoDatetime,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      ayanamsa: AYANAMSA,
+    });
+    const raw = {
+      request: { datetime: isoDatetime, latitude: input.latitude, longitude: input.longitude, ayanamsa: AYANAMSA },
+      engine: "local",
+      planet_position: local.planetPositionData,
+      dasha_periods: local.dashaData,
+    };
+    const { normalized } = normalizeChart({
+      birth: input,
+      isoDatetime,
+      ayanamsa: AYANAMSA,
+      planetPositionData: local.planetPositionData,
+      birthDetailsData: undefined,
+      dashaData: local.dashaData,
+      raw,
+      provider: "local",
+    });
+    return res.json({ summary: normalized.summary, preview: true });
+  } catch (err: any) {
+    console.error("[chart-preview] error:", err?.message);
+    return res.status(502).json({ error: "Could not calculate — please re-check the details." });
+  }
+});
+
 app.post("/api/create-chart", async (req, res) => {
   // Check the quota before doing any work — computing a chart the user is not
   // allowed to keep would burn a provider call for nothing.

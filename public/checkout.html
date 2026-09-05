@@ -90,7 +90,7 @@
     <div class="card">
       <h2>You are paying for</h2>
       <div class="row"><span class="k" id="packName">—</span><span class="v" id="packCredits">—</span></div>
-      <div class="row"><span class="k">Validity</span><span class="v">Never expires</span></div>
+      <div class="row"><span class="k">Validity</span><span class="v" id="packValidity">Never expires</span></div>
       <div class="row"><span class="k">Renewal</span><span class="v">None — one-time</span></div>
       <div class="total"><span class="k">Total payable</span><span class="v" id="amount">—</span></div>
     </div>
@@ -206,6 +206,11 @@
     var nice = { starter:'Starter pack', popular:'Popular pack', value:'Value pack' };
     $('packName').textContent = isTrial ? cfg.trial.days + '-day full access' : (nice[pack.id] || 'Credit pack');
     $('packCredits').textContent = isTrial ? 'One time per account' : pack.credits + ' credits';
+    /* A trial that says "never expires" is the opposite of the truth, and it
+       is the one line a buyer checks before paying. */
+    $('packValidity').textContent = isTrial
+      ? cfg.trial.days + ' days, then it ends'
+      : 'Never expires';
     $('amount').textContent = '₹' + pack.rupees;
     $('payAmt').textContent = '₹' + pack.rupees + ' securely';
 
