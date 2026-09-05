@@ -93,3 +93,23 @@ export function depthOf(pathname: string): number {
 export function hidesTabBar(pathname: string): boolean {
   return /^\/(login)$/.test(pathname) || /^\/(report|chat)\//.test(pathname);
 }
+
+/**
+ * Where "back" should go when there is nothing to go back TO.
+ *
+ * `navigate(-1)` needs a previous entry, and a refresh throws the stack away —
+ * so on any screen reached by reloading, or by opening a link directly, the
+ * back chevron did nothing at all. This gives it somewhere sensible to land:
+ * the screen this one sits under, rather than the app's front door.
+ */
+export function parentOf(pathname: string): string {
+  const owner = pathname.match(/^\/(?:chat|report|timeline|daily|right-now|reports)\/([^/]+)/)?.[1]
+    ?? pathname.match(/^\/chart\/([^/]+)\//)?.[1];
+  if (owner) return `/dashboard/${owner}`;
+  if (/^\/dashboard\//.test(pathname)) return "/profiles";
+  if (/^\/(theme|notifications)$/.test(pathname)) return "/settings";
+  if (/^\/(settings|help|developer|ai-status|admin|plan)$/.test(pathname)) return "/more";
+  if (/^\/(muhurat|yogas|ashtakavarga|alerts)$/.test(pathname)) return "/tools";
+  if (/^\/(create-chart|edit-chart)/.test(pathname)) return "/profiles";
+  return "/";
+}

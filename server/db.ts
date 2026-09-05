@@ -2490,20 +2490,25 @@ export async function insertChatMessage(args: {
 export async function getChatHistory(
   chartId: string,
   context?: string
-): Promise<Array<{ role: string; message: string | null; created_at: string }>> {
+): Promise<Array<{ role: string; message: string | null; created_at: string; response_json?: any }>> {
   if (USE_PG) {
+    // response_json holds what was shown WITH a message — the chart card, the
+    // suggestion chips, the action. It was written on every reply and then
+    // never read back, so reopening a conversation lost every chart that had
+    // been in it. The words survived a refresh; nothing around them did.
     const { rows } = context
       ? await pool!.query(
-          `SELECT role, message, created_at FROM chat_messages WHERE chart_id = $1 AND context = $2 ORDER BY created_at ASC`,
+          `SELECT role, message, response_json, created_at FROM chat_messages WHERE chart_id = $1 AND context = $2 ORDER BY created_at ASC`,
           [chartId, context]
         )
       : await pool!.query(
-          `SELECT role, message, created_at FROM chat_messages WHERE chart_id = $1 ORDER BY created_at ASC`,
+          `SELECT role, message, response_json, created_at FROM chat_messages WHERE chart_id = $1 ORDER BY created_at ASC`,
           [chartId]
         );
     return rows.map((r) => ({
       role: r.role,
       message: r.message,
+      response_json: r.response_json ?? null,
       created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     }));
   }
@@ -2512,7 +2517,7 @@ export async function getChatHistory(
     // Treat older rows with no context as "ask" so they stay in the Ask AI chat.
     .filter((m) => (context ? (m.context ?? "ask") === context : true))
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
-    .map((m) => ({ role: m.role, message: m.message, created_at: m.created_at }));
+    .map((m) => ({ role: m.role, message: m.message, response_json: (m as any).response_json ?? null, created_at: m.created_at }));
 }
 
 /** Clear a chat thread (one context, or all contexts for the chart) — "New chat". */

@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Settings, Share2, Coins } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Pressable } from './Pressable';
-import { titleFor, isRootTab } from './routes';
+import { titleFor, isRootTab, parentOf } from './routes';
 import { shareText } from '@/lib/native';
 
 /**
@@ -12,17 +12,30 @@ import { shareText } from '@/lib/native';
  * app from reading like a web page with a sticky header.
  */
 export default function TopBar({ scrolled }: { scrolled: boolean }) {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const navigate = useNavigate();
   const root = isRootTab(pathname);
   const title = titleFor(pathname);
   const atTop = root && !scrolled;
 
+  /*
+   * A refresh throws the history stack away, so on a reloaded screen there is
+   * no previous entry and `navigate(-1)` silently did nothing — the chevron
+   * looked broken because it was. React Router marks the first entry of a
+   * session with the key "default"; when that is where we are, go to the
+   * screen this one sits under instead of nowhere.
+   */
+  const goBack = () => {
+    if (location.key && location.key !== 'default') navigate(-1);
+    else navigate(parentOf(pathname), { replace: true });
+  };
+
   return (
     <header className={`app-topbar ${scrolled ? 'scrolled' : ''} ${atTop ? 'at-top' : ''}`}>
       {!root ? (
         <Pressable
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           feedback="tap"
           aria-label="Back"
           className="w-11 h-11 grid place-items-center rounded-full text-foreground"

@@ -107,6 +107,13 @@ export default function ChatPage() {
   const [lang, setLang] = useState<string>(getLang());
   /** How much of the opening has "been typed" — 0 dots, 1 hello, 2 chart, 3 all. */
   const [greetStep, setGreetStep] = useState(0);
+  /**
+   * Whether the prior conversation has come back yet. Without this, `turns` is
+   * empty for the moment the fetch is in flight, the opening decides it is a
+   * new thread and greets — so every refresh replayed "Namaste Vansh ji" over a
+   * conversation that was already there.
+   */
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -139,12 +146,16 @@ export default function ChatPage() {
    * already met us and should not be made to wait through an introduction.
    */
   useEffect(() => {
+    // Wait until we know whether there IS a history. `turns` is empty while the
+    // fetch is in flight, and acting on that replayed the whole introduction
+    // over an existing conversation on every single refresh.
+    if (!historyLoaded) return;
     if (turns.length > 0) { setGreetStep(3); return; }
     const t1 = setTimeout(() => setGreetStep(1), 700);
     const t2 = setTimeout(() => setGreetStep(2), 2100);
     const t3 = setTimeout(() => setGreetStep(3), 3400);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [turns.length]);
+  }, [historyLoaded, turns.length]);
 
   // Each bubble pushes the view along, so the dots stay in sight while they run.
   useEffect(() => {
@@ -163,18 +174,30 @@ export default function ChatPage() {
     let alive = true;
     fetch(`/api/chat-history/${chartId}?context=chat`)
       .then((r) => r.json())
-      .then((rows: Array<{ role: string; message: string }>) => {
+      .then((rows: Array<{ role: string; message: string; response_json?: any }>) => {
         if (!alive || !Array.isArray(rows)) return;
         setTurns(
-          rows.map((m) =>
-            m.role === "user"
-              ? { role: "user" as const, answer: m.message }
-              : { role: "assistant" as const, ...splitReason(m.message || "") },
-          ),
+          rows.map((m) => {
+            if (m.role === "user") return { role: "user" as const, answer: m.message };
+            // Restore what was drawn WITH the message, not only the words. A
+            // reopened conversation used to lose every chart and every chip in
+            // it, which made the app look like it had forgotten what it showed.
+            const j = m.response_json ?? {};
+            return {
+              role: "assistant" as const,
+              ...splitReason(m.message || ""),
+              next: Array.isArray(j.next) && j.next.length ? j.next : undefined,
+              action: j.action || undefined,
+              card: j.card || undefined,
+            };
+          }),
         );
         scrollToEnd();
       })
-      .catch(() => { /* start empty */ });
+      .catch(() => { /* start empty */ })
+      // Either way the history question is settled, and the opening can decide
+      // whether it belongs here.
+      .finally(() => { if (alive) setHistoryLoaded(true); });
     return () => { alive = false; };
   }, [chartId, scrollToEnd]);
 
