@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Settings, Share2 } from 'lucide-react';
+import { ChevronLeft, Settings, Share2, Coins } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Pressable } from './Pressable';
 import { titleFor, isRootTab } from './routes';
 import { shareText } from '@/lib/native';
@@ -48,6 +49,7 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
 
       {root && (
         <div className="flex items-center gap-1 pr-1">
+          <WalletChip />
           <Pressable
             onClick={() => shareText('JanamJyot', 'Check out JanamJyot — accurate Vedic astrology.', (import.meta as any).env?.VITE_APP_DOWNLOAD_URL || undefined)}
             aria-label="Share app"
@@ -65,5 +67,42 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
         </div>
       )}
     </header>
+  );
+}
+
+/**
+ * The balance, in the bar, on every root screen.
+ *
+ * Credits were invisible unless you went looking under More, which is the
+ * wrong place for the one number that decides whether the next thing you tap
+ * will work. It refreshes when a screen changes and after any spend, so it
+ * never shows a figure the server has already moved past.
+ */
+function WalletChip() {
+  const [balance, setBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const read = () =>
+      fetch('/api/credits')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (alive && d && typeof d.balance === 'number') setBalance(d.balance); })
+        .catch(() => {});
+    read();
+    // Any charge dispatches this, so the number moves the moment it is spent.
+    window.addEventListener('jj:credits', read);
+    return () => { alive = false; window.removeEventListener('jj:credits', read); };
+  }, []);
+
+  if (balance === null) return null;
+  return (
+    <Pressable
+      to="/plan"
+      aria-label={`${balance} credits — open your plan`}
+      className="flex h-9 items-center gap-1.5 rounded-full border border-border px-2.5 text-[13px] font-bold"
+    >
+      <Coins className="h-[15px] w-[15px] text-accent" />
+      <span className="tabular-nums">{balance}</span>
+    </Pressable>
   );
 }

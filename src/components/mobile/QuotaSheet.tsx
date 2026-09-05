@@ -38,6 +38,11 @@ const SPRING = { type: "spring" as const, stiffness: 420, damping: 40, mass: 0.9
 function QuotaSheet({ data, onClose }: { data: QuotaPayload; onClose: () => void }) {
   const what = labelFor(data.action);
   const hasCount = typeof data.limit === "number" && data.limit >= 0;
+  // A 402 carries a price, which turns a dead end into a choice.
+  const price = data.needs_credits ?? 0;
+  const balance = data.balance ?? 0;
+  const canPay = price > 0 && balance >= price;
+  const needsTopUp = price > 0 && balance < price;
 
   return (
     <motion.div
@@ -83,7 +88,9 @@ function QuotaSheet({ data, onClose }: { data: QuotaPayload; onClose: () => void
         </div>
 
         <h2 className="text-[19px] font-bold leading-tight">
-          You've reached your {what} limit
+          {price > 0
+            ? `This costs ${price} credit${price === 1 ? "" : "s"}`
+            : `You've reached your ${what} limit`}
         </h2>
 
         <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
@@ -91,7 +98,19 @@ function QuotaSheet({ data, onClose }: { data: QuotaPayload; onClose: () => void
           {RESET_HINT[data.action] ? ` ${RESET_HINT[data.action]}` : ""}
         </p>
 
-        {hasCount && (
+        {price > 0 && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl bg-muted px-4 py-3 text-[13.5px] font-semibold">
+            <span className="text-muted-foreground">Your balance</span>
+            <span className="text-foreground">
+              {balance} credit{balance === 1 ? "" : "s"}
+              {needsTopUp && (
+                <span className="ml-2 text-destructive">need {price - balance} more</span>
+              )}
+            </span>
+          </div>
+        )}
+
+        {price === 0 && hasCount && (
           <div className="mt-4 flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-[13px] font-semibold">
             <span className="text-muted-foreground">Used</span>
             <span className="text-foreground">
@@ -106,19 +125,31 @@ function QuotaSheet({ data, onClose }: { data: QuotaPayload; onClose: () => void
         )}
 
         <div className="mt-5 space-y-2.5">
-          <Pressable
-            feedback="medium"
-            onClick={onClose}
-            className="flex w-full items-center justify-center rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
-          >
-            Got it
-          </Pressable>
+          {needsTopUp ? (
+            <Pressable
+              feedback="medium"
+              to="/plan"
+              onClick={onClose}
+              className="flex w-full items-center justify-center rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+            >
+              Add credits
+            </Pressable>
+          ) : (
+            <Pressable
+              feedback="medium"
+              onClick={onClose}
+              className="flex w-full items-center justify-center rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+            >
+              {canPay ? "Try again" : "Got it"}
+            </Pressable>
+          )}
           <Pressable
             feedback="tap"
-            onClick={() => { window.open("mailto:vk1234888i@gmail.com?subject=JanamJyot%20—%20need%20more%20access", "_blank"); onClose(); }}
+            to="/plan"
+            onClick={onClose}
             className="flex w-full items-center justify-center rounded-full border border-input px-5 py-3.5 text-[14px] font-bold text-foreground"
           >
-            Need more? Contact us
+            See my plan &amp; credits
           </Pressable>
         </div>
       </motion.div>

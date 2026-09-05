@@ -19,6 +19,10 @@ export interface QuotaPayload {
   used: number;
   action: string;
   plan: string;
+  /** Set on a 402: the free allowance is gone but credits can buy this. */
+  needs_credits?: number;
+  balance?: number;
+  free_limit?: number;
 }
 
 let installed = false;
@@ -28,7 +32,18 @@ function installQuotaInterceptor() {
   const orig = window.fetch.bind(window);
   window.fetch = async (input: any, init?: any) => {
     const res = await orig(input, init);
-    if (res.status === 429) {
+    // A successful call to a metered endpoint may have just spent credits, so
+    // tell the wallet chip to re-read rather than showing a stale number until
+    // the next navigation.
+    if (res.ok) {
+      const u = typeof input === "string" ? input : input?.url ?? "";
+      if (typeof u === "string" && /\/api\/(chat|chat-u|consult|match|create-chart|report|life-report)/.test(u)) {
+        window.dispatchEvent(new Event("jj:credits"));
+      }
+    }
+    // 402 means "the free allowance is used up, but credits can buy this" —
+    // the same sheet answers both, so it must not slip through as a raw error.
+    if (res.status === 429 || res.status === 402) {
       const url = typeof input === "string" ? input : input?.url ?? "";
       if (typeof url === "string" && url.includes("/api")) {
         res

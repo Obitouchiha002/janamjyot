@@ -1112,6 +1112,28 @@ async function authoriseAction(
   return { credits };
 }
 
+/**
+ * Free allowance first, then credits — the whole paid model, in one call.
+ *
+ * `authoriseAction` and `settleCharge` existed for a while with no call sites,
+ * so credits could be bought and then never spent on anything: the wallet was
+ * decorative and the features were gated purely by the free quota's 429. This
+ * is what connects the two.
+ *
+ * Returns null when the caller should stop — the 402 has already been sent,
+ * carrying the price and the balance so the app can offer to top up.
+ */
+async function charge(
+  req: any, res: any, action: QuotaAction, priceKey: keyof typeof CREDIT_PRICES,
+): Promise<{ charge: { credits: number } | null } | null> {
+  try {
+    return { charge: await authoriseAction(req, action, priceKey) };
+  } catch (e: any) {
+    if (e?.__httpStatus) { res.status(e.__httpStatus).json(e); return null; }
+    throw e;
+  }
+}
+
 /** Charge only once the thing actually exists. Never before. */
 async function settleCharge(
   req: any,
@@ -1919,8 +1941,8 @@ app.post("/api/chart-preview", async (req, res) => {
 app.post("/api/create-chart", async (req, res) => {
   // Check the quota before doing any work — computing a chart the user is not
   // allowed to keep would burn a provider call for nothing.
-  const over = await checkQuota(req, "chart");
-  if (over) return res.status(429).json(over);
+  const auth = await charge(req as any, res, "chart", "chart");
+  if (!auth) return;
 
   const v = validateBirthInput(req.body);
   if (!v.ok || !v.value) {
@@ -2016,6 +2038,9 @@ app.post("/api/create-chart", async (req, res) => {
       deviceId: me.deviceId,
     });
     recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "chart", meta: { chartId } }).catch(() => {});
+    // Charged only now, with the kundli saved. A calculation that failed
+    // returned above, so a failure never costs anyone a credit.
+    await settleCharge(req, auth.charge, "chart", chartId);
     return res.json({
       id: chartId,
       chartId,
@@ -2152,8 +2177,8 @@ app.get("/api/transit/:chartId", async (req, res) => {
  * Returns the full koota breakdown + doshas, plus an optional AI summary.
  */
 app.post("/api/match", async (req, res) => {
-  const overMatch = await checkQuota(req as any, "match");
-  if (overMatch) return res.status(429).json(overMatch);
+  const auth = await charge(req, res, "match", "matching");
+  if (!auth) return;
 
   const vb = validateBirthInput(req.body?.boy);
   const vg = validateBirthInput(req.body?.girl);
@@ -2175,6 +2200,8 @@ app.post("/api/match", async (req, res) => {
         console.warn("[match] AI summary failed:", e?.message);
       }
     }
+    // Charged only now, with the full koota result computed.
+    await settleCharge(req, auth.charge, "matching", null);
     res.json({ ...result, summary });
   } catch (err: any) {
     console.error("[match] error:", err?.message);
@@ -2836,8 +2863,8 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
 
     // Only a report we actually have to GENERATE counts against the quota — a
     // cached one costs nothing, so re-reading your own report is always free.
-    const over = await checkQuota(req as any, "report");
-    if (over) return res.status(429).json(over);
+    const auth = await charge(req, res, "report", "life_report");
+    if (!auth) return;
     const me = identityOf(req as any);
     recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { chartId, language } }).catch(() => {});
 
@@ -2853,6 +2880,8 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     if (report?.error) return res.status(502).json(report);
 
     await insertReport({ chartId, report, language: lifeKey });
+    // Charged only now, with the report written.
+    await settleCharge(req, auth.charge, "life_report", chartId);
     res.json(report);
   } catch (err: any) {
     console.error("[generate-report] error:", err?.message);
@@ -2891,9 +2920,9 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
     // only real AI work counts — but OUTSIDE the regenerate branch, because
     // ?regenerate=1 skips the cache entirely and is exactly the path that
     // needs a ceiling.
+    const auth = await charge(req, res, "report", "report");
+    if (!auth) return;
     {
-      const over = await checkQuota(req as any, "report");
-      if (over) return res.status(429).json(over);
       const q = identityOf(req as any);
       recordUsage({ userId: q.userId, deviceId: q.deviceId, action: "report", meta: { surface: "report" } }).catch(() => {});
     }
@@ -2907,6 +2936,9 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
 
     const payload = { type, ...report, birth_details: chart.birth_details, generated_at: new Date().toISOString() };
     try { await insertReport({ chartId, report: payload, language: cacheKey }); } catch {}
+    // Charged only now, with the report in hand. An AI call that failed above
+    // returned before this line, so a failure never costs anyone a credit.
+    await settleCharge(req, auth.charge, "report", chartId);
     res.json(payload);
   } catch (err: any) {
     console.error("[report] error:", err?.message);
@@ -3092,8 +3124,8 @@ async function handleChat(req: express.Request, res: express.Response) {
       });
     }
 
-    const overAsk = await checkQuota(req as any, "ask");
-    if (overAsk) return res.status(429).json(overAsk);
+    const auth = await charge(req, res, "ask", "chat");
+    if (!auth) return;
     const asker = identityOf(req as any);
     recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId } }).catch(() => {});
 
@@ -3134,6 +3166,9 @@ async function handleChat(req: express.Request, res: express.Response) {
       responseJson: { category },
     });
 
+    // Charged only now, with the answer in hand — an AI call that failed
+    // returned above, so a failure never costs anyone a credit.
+    await settleCharge(req, auth.charge, "chat", chartId);
     res.json({ answer, category });
   } catch (err: any) {
     console.error("[chat] error:", err?.message);
@@ -3172,8 +3207,8 @@ app.post("/api/chat/universal", async (req, res) => {
       return res.status(409).json({ error: "Chart data is not fully verified; chat is blocked.", validation_status: chart.validation_status });
     }
 
-    const over = await checkQuota(req as any, "ask");
-    if (over) return res.status(429).json(over);
+    const auth = await charge(req, res, "ask", "chat");
+    if (!auth) return;
     const asker = identityOf(req as any);
     recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
 
@@ -3230,6 +3265,9 @@ app.post("/api/chat/universal", async (req, res) => {
     const stored = reason ? `${answer}\n<<REASON>>\n${reason}` : answer;
     await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category } });
 
+    // Charged only now, with the answer in hand — an AI call that failed
+    // returned above, so a failure never costs anyone a credit.
+    await settleCharge(req, auth.charge, "chat", chartId);
     res.json({ answer, reason, category });
   } catch (err: any) {
     console.error("[chat-u] error:", err?.message);
@@ -3264,8 +3302,8 @@ async function handleConsult(req: express.Request, res: express.Response) {
       return res.status(409).json({ error: "Chart data is not fully verified; consultation is blocked.", validation_status: chart.validation_status });
     }
 
-    const over = await checkQuota(req as any, "ask");
-    if (over) return res.status(429).json(over);
+    const auth = await charge(req, res, "ask", "chat");
+    if (!auth) return;
     const me = identityOf(req as any);
     recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "ask", meta: { chartId, astrologer } }).catch(() => {});
 
@@ -3300,6 +3338,9 @@ async function handleConsult(req: express.Request, res: express.Response) {
     });
     await insertChatMessage({ chartId, role: "assistant", message: bubbles.join("\n"), context, responseJson: { bubbles, astrologer } });
 
+    // Charged only now, with the answer in hand — an AI call that failed
+    // returned above, so a failure never costs anyone a credit.
+    await settleCharge(req, auth.charge, "chat", chartId);
     res.json({ bubbles, astrologer, disclaimer: persona.disclaimer ?? null });
 
     // Refresh the long-term notes AFTER responding — this is bookkeeping, so it
