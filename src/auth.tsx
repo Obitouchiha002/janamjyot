@@ -57,15 +57,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // A held token is only given up when the SERVER rejects it. A single failed
+  // request — a dropped connection, a cold serverless start — used to drop
+  // straight to the sign-in wall, so a flaky refresh read as being logged out.
+  // One retry covers the common blip; a real 401 still signs you out, and the
+  // token itself is left alone either way so the next load can recover.
   const loadMe = async () => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) { setUser(null); setLoading(false); return; }
-    try {
-      const res = await fetch("/api/auth/me");
-      const d = await res.json();
-      setUser(res.ok ? d.user : null);
-    } catch { setUser(null); }
-    finally { setLoading(false); }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch("/api/auth/me");
+        const d = await res.json().catch(() => ({}));
+        setUser(res.ok ? d.user : null);
+        setLoading(false);
+        return;
+      } catch {
+        if (attempt === 0) { await new Promise((r) => setTimeout(r, 900)); continue; }
+        setUser(null);
+      }
+    }
+    setLoading(false);
   };
 
   useEffect(() => {
