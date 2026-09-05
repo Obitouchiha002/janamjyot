@@ -41,6 +41,7 @@ import {
   settleOrder,
   markNeedsRefund,
   adminAdjustCredits,
+  funnelStats,
   referralCode,
   attachReferral,
   settleReferral,
@@ -833,6 +834,21 @@ app.get("/api/admin/stats", requireAdmin, async (_req, res) => res.json(await ad
 app.get("/api/admin/users", requireAdmin, async (req, res) =>
   res.json(await listUsers(String(req.query.q ?? "")))
 );
+
+/**
+ * GET /api/admin/funnel?days=30 — where people stop.
+ *
+ * Totals say how busy the app is; this says whether it works. A launch without
+ * it means watching users arrive and never learning which step lost them.
+ */
+app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
+  try {
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+    res.json(await funnelStats(days));
+  } catch (err: any) {
+    fail(res, 500, "Could not load the funnel.", err, "admin-funnel");
+  }
+});
 
 /** Daily action counts for the analytics chart. */
 app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
@@ -3337,21 +3353,42 @@ app.post("/api/chat/universal", async (req, res) => {
     // never ask "who are you?" (it already has their whole chart). Full names are
     // more personal data than the model needs.
     const userName = String(chart.birth_details?.name || "").trim().split(/\s+/)[0] || undefined;
-    const { answer, reason } = await answerUniversal({
+    // What earlier conversations established. This was read only by the
+    // astrologer personas, so the main chat forgot everything between visits
+    // and made people repeat themselves — the single most "this thing doesn't
+    // know me" thing an assistant can do.
+    const memory = await getChatMemory(chartId).catch(() => "");
+    // Their first question decides whether they come back, so the prompt is
+    // told when it is one.
+    const isFirst = history.filter((h) => h.role === "user").length === 0;
+
+    const { answer, reason, next } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history, userName,
+      history, userName, memory, isFirst,
     });
+
+    if (!answer || !answer.trim()) {
+      // An empty bubble is worse than an error: it looks like the app broke and
+      // it would still have cost a credit below.
+      return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });
+    }
 
     // Store answer + reason together behind the same marker, so a reload can
     // split them exactly like a live reply (no schema change needed).
     const stored = reason ? `${answer}\n<<REASON>>\n${reason}` : answer;
-    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category } });
+    await insertChatMessage({ chartId, role: "assistant", message: stored, context: "chat", responseJson: { category, next } });
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
     await settleCharge(req, auth.charge, "chat", chartId);
-    res.json({ answer, reason, category });
+    res.json({ answer, reason, category, next });
+
+    // Bookkeeping AFTER responding — remembering this turn must never make the
+    // person wait for their reply.
+    updateChatNotes({ existingNotes: memory, question, reply: answer })
+      .then((notes) => (notes && notes !== memory ? saveChatMemory(chartId, notes) : undefined))
+      .catch((e) => console.warn("[chat-u] memory update skipped:", e?.message));
   } catch (err: any) {
     console.error("[chat-u] error:", err?.message);
     const quota = /429|quota|rate limit/i.test(err?.message ?? "");

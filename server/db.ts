@@ -1270,6 +1270,67 @@ export interface TrialState {
 const CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXYZ2346789";
 
 /** This account's code, created on first use and stable afterwards. */
+/**
+ * The launch funnel: signup → kundli → first chat → second chat → came back
+ * the next day → paid.
+ *
+ * DERIVED from what already happened rather than counted by new tracking calls.
+ * A separate events table would need every path to remember to write to it, and
+ * the first one that forgot would quietly make the numbers wrong — the same
+ * class of bug as a price nobody charged. Everything here is a consequence of
+ * rows we already write for other reasons, so it is true by construction and it
+ * works retroactively for people who signed up before anyone thought to measure.
+ *
+ * Counted over a signup cohort: "of the people who joined in this window, how
+ * far did they get" — not "how many events happened", which flatters itself.
+ */
+export interface FunnelStep { key: string; label: string; users: number }
+
+export async function funnelStats(days = 30): Promise<{ days: number; signups: number; steps: FunnelStep[] }> {
+  if (!USE_PG) return { days, signups: 0, steps: [] };
+  const { rows } = await pool!.query(
+    `WITH cohort AS (
+       SELECT id FROM app_users
+        WHERE created_at > now() - ($1 || ' days')::interval
+          AND status <> 'deleted'
+     ),
+     acts AS (
+       SELECT e.user_id,
+              count(*) FILTER (WHERE e.action = 'chart')            AS charts,
+              count(*) FILTER (WHERE e.action = 'ask')              AS asks,
+              count(DISTINCT date_trunc('day', e.created_at))       AS active_days
+         FROM usage_events e
+         JOIN cohort c ON c.id = e.user_id
+        GROUP BY e.user_id
+     ),
+     pays AS (
+       SELECT DISTINCT p.user_id FROM payments p
+         JOIN cohort c ON c.id = p.user_id
+        WHERE p.status = 'paid'
+     )
+     SELECT (SELECT count(*) FROM cohort)::int                                        AS signups,
+            (SELECT count(*) FROM acts WHERE charts > 0)::int                         AS kundli_created,
+            (SELECT count(*) FROM acts WHERE asks   > 0)::int                         AS first_chat,
+            (SELECT count(*) FROM acts WHERE asks   > 1)::int                         AS second_chat,
+            (SELECT count(*) FROM acts WHERE active_days > 1)::int                    AS returned,
+            (SELECT count(*) FROM pays)::int                                          AS paid`,
+    [days],
+  );
+  const r = rows[0] ?? {};
+  return {
+    days,
+    signups: r.signups ?? 0,
+    steps: [
+      { key: "signup",   label: "Signed up",        users: r.signups ?? 0 },
+      { key: "kundli",   label: "Made a kundli",    users: r.kundli_created ?? 0 },
+      { key: "chat1",    label: "Asked once",       users: r.first_chat ?? 0 },
+      { key: "chat2",    label: "Asked again",      users: r.second_chat ?? 0 },
+      { key: "returned", label: "Came back",        users: r.returned ?? 0 },
+      { key: "paid",     label: "Paid",             users: r.paid ?? 0 },
+    ],
+  };
+}
+
 export async function referralCode(userId: string): Promise<string> {
   if (!USE_PG) {
     const u: any = fileData.users.find((x: any) => x.id === userId);

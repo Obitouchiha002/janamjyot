@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Send, ChevronDown, ShieldCheck, Plus } from "lucide-react";
+import { Send, ChevronDown, ShieldCheck, Plus, RotateCw } from "lucide-react";
 import AskMeter from "@/components/AskMeter";
 import AnswerText from "@/components/AnswerText";
 import { getLang } from "@/lib/prefs";
@@ -27,6 +27,10 @@ type Turn = {
   answer: string;
   reason?: string;
   error?: boolean;
+  /** Follow-ups the model suggested, in the user's own voice. */
+  next?: string[];
+  /** The question to re-send when an answer failed. */
+  retry?: string;
 };
 
 const REASON_MARK = "\n<<REASON>>\n";
@@ -97,6 +101,8 @@ export default function ChatPage() {
 
   const send = async (raw: string) => {
     const q = raw.trim();
+    // `busy` is the double-send guard: a second tap while one is in flight
+    // would be a second question and a second credit.
     if (!q || busy || !chartId) return;
     haptic.tap();
     setTurns((p) => [...p, { role: "user", answer: q }]);
@@ -104,30 +110,55 @@ export default function ChatPage() {
     setBusy(true);
     setTyping(true);
     scrollToEnd();
+
+    // A model call that stalls rather than fails used to leave the typing dots
+    // running forever with `busy` stuck true — no answer, and no way to even
+    // retry. Ninety seconds is long enough for a slow generation and short
+    // enough that nobody sits staring at it.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 90_000);
     try {
       const res = await fetch("/api/chat/universal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chartId, question: q, language: lang }),
+        signal: ctl.signal,
       });
       const data = await res.json().catch(() => ({}));
       setTyping(false);
-      if (res.status === 429) {
-        setTurns((p) => [...p, { role: "assistant", answer: "Aaj ke sawaal khatam ho gaye — kal reset ho jayenge, ya apna plan dekhein.", error: true }]);
+
+      // 402 and 429 are already answered by the global sheet, which shows the
+      // price, the balance and a way to top up. Repeating them as an error
+      // bubble put two different explanations on screen at once.
+      if (res.status === 429 || res.status === 402) {
+        setTurns((p) => p.slice(0, -1));
+        setQuestion(q);
         return;
       }
-      if (res.ok && data.answer) {
-        setTurns((p) => [...p, { role: "assistant", answer: data.answer, reason: data.reason || undefined }]);
+      if (res.ok && data.answer && data.answer.trim()) {
+        setTurns((p) => [...p, {
+          role: "assistant",
+          answer: data.answer,
+          reason: data.reason || undefined,
+          next: Array.isArray(data.next) ? data.next.slice(0, 3) : undefined,
+        }]);
         haptic.success();
       } else {
-        setTurns((p) => [...p, { role: "assistant", answer: data.error || "Jawab nahi mil paya. Dobara koshish karein.", error: true }]);
+        setTurns((p) => [...p, { role: "assistant", answer: data.error || "Jawab nahi mil paya. Dobara koshish karein.", error: true, retry: q }]);
         haptic.error();
       }
-    } catch {
+    } catch (e: any) {
       setTyping(false);
-      setTurns((p) => [...p, { role: "assistant", answer: "Network error. Dobara koshish karein.", error: true }]);
+      const timedOut = e?.name === "AbortError";
+      setTurns((p) => [...p, {
+        role: "assistant",
+        answer: timedOut ? "Jawab aane mein bahut der lag gayi. Dobara bhejein." : "Network error. Dobara koshish karein.",
+        error: true,
+        retry: q,
+      }]);
       haptic.error();
     } finally {
+      clearTimeout(timer);
       setBusy(false);
       scrollToEnd();
     }
@@ -237,6 +268,39 @@ export default function ChatPage() {
                       </div>
                     )}
                   </>
+                )}
+
+                {/* One tap to keep going. A long answer that ends in silence
+                    puts the whole burden of "what now" on the person, and most
+                    people simply close the app — these are written in their own
+                    voice so tapping one is the same as typing it. */}
+                {!!t.next?.length && !t.error && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-border/60 pt-2.5">
+                    {t.next.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => send(n)}
+                        className="rounded-full border border-accent/35 bg-accent/8 px-3 py-1.5 text-left text-[12px] font-semibold text-accent disabled:opacity-40"
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* A failed answer that cannot be retried makes someone retype
+                    a question they already asked. */}
+                {t.error && t.retry && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => send(t.retry!)}
+                    className="mt-2 flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] font-bold disabled:opacity-40"
+                  >
+                    <RotateCw className="h-[13px] w-[13px]" /> Dobara bhejein
+                  </button>
                 )}
               </div>
             </div>

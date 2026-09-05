@@ -523,7 +523,9 @@ export async function answerUniversal(args: {
   appGuide?: string;  // APP_GUIDE, included when the question is about the app
   history?: Array<{ role: "user" | "assistant"; text: string }>;
   userName?: string;  // the person's first name — so the chat never asks who they are
-}): Promise<{ answer: string; reason: string }> {
+  memory?: string;    // what earlier conversations established about them
+  isFirst?: boolean;  // their very first question — it decides whether they stay
+}): Promise<{ answer: string; reason: string; next: string[] }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
   const convo = (args.history ?? [])
     .slice(-8)
@@ -538,10 +540,17 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}
 The user asks: "${args.question}"
 
-Answer in TWO parts, separated by a line that is EXACTLY "<<REASON>>":
+${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now
+whether this app knows them or is a horoscope column. PART 1 must contain at
+least one thing that is unmistakably about THEM and no one else — a period from
+their own dasha with real years, or the life area their chart actually
+activates. Still no jargon: "the stretch you are in until 2027" is right,
+"Shukra mahadasha" is not. If the answer could be pasted into a stranger's chat
+unchanged, it is wrong.\n` : ""}
+Answer in THREE parts, separated by lines that are EXACTLY "<<REASON>>" and "<<NEXT>>":
 
 PART 1 — the answer (before the marker):
   • Speak like a clear, warm person, NOT a textbook. Give the DIRECT answer to
@@ -560,17 +569,42 @@ PART 2 — the reason (after the "<<REASON>>" marker):
     Technical terms are fine HERE. Ground every claim in the chart data above —
     never invent a placement. For a pure app/how-to question, write "—".
 
-Write PART 1, then the marker line "<<REASON>>", then PART 2. Nothing else.
+PART 3 — what to ask next (after the "<<NEXT>>" marker):
+  • Exactly 2 or 3 short follow-up questions, one per line, no numbering or
+    bullets, written in the FIRST PERSON as the user would type them
+    (e.g. "Agle 12 mahine career mein kaisa rahega?").
+  • Each must follow from THIS answer and be answerable from their chart. Never
+    generic ("tell me more"), never a repeat of what they just asked.
+  • Same language as PART 1.
+
+Write PART 1, the marker "<<REASON>>", PART 2, the marker "<<NEXT>>", then PART 3.
+Nothing else.
 
 ${languageInstruction(args.language)}`;
 
   const raw = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0 });
+
+  // Parsed defensively: a model that skips a marker must still produce a usable
+  // answer rather than an empty bubble, so every part is optional on the way out.
   const idx = raw.indexOf("<<REASON>>");
-  if (idx === -1) return { answer: raw.trim(), reason: "" };
+  if (idx === -1) return { answer: raw.trim(), reason: "", next: [] };
   const answer = raw.slice(0, idx).trim();
-  let reason = raw.slice(idx + "<<REASON>>".length).trim();
+  let rest = raw.slice(idx + "<<REASON>>".length);
+
+  let next: string[] = [];
+  const nIdx = rest.indexOf("<<NEXT>>");
+  if (nIdx !== -1) {
+    next = rest
+      .slice(nIdx + "<<NEXT>>".length)
+      .split("\n")
+      .map((l) => l.replace(/^[-*\d.)\s]+/, "").trim())
+      .filter((l) => l.length > 3 && l.length < 120)
+      .slice(0, 3);
+    rest = rest.slice(0, nIdx);
+  }
+  let reason = rest.trim();
   if (reason === "—" || reason === "-") reason = "";
-  return { answer, reason };
+  return { answer, reason, next };
 }
 
 /**

@@ -118,6 +118,8 @@ function Overview() {
         <StatTile label="Actions today" value={s.actions_today} tint="#DB2777" icon={Activity} />
       </div>
 
+      <Funnel />
+
       {/* usage over time — stacked mini bars, pure CSS */}
       <div className="m-card p-4">
         <h3 className="mb-3 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">Usage · last 14 days</h3>
@@ -246,6 +248,79 @@ function Users_() {
       )}
 
       {openId && <UserSheet id={openId} onClose={() => setOpenId(null)} onChanged={() => load(q)} />}
+    </div>
+  );
+}
+
+/**
+ * Where people stop.
+ *
+ * Totals tell you how busy the app is; this tells you whether it works. Each
+ * bar is the share of one signup cohort that got that far, and the drop between
+ * two bars is the thing worth fixing next — a launch without this is watching
+ * users arrive and never learning which step lost them.
+ */
+function Funnel() {
+  const [days, setDays] = useState(30);
+  const [d, setD] = useState<{ signups: number; steps: Array<{ key: string; label: string; users: number }> } | null>(null);
+
+  useEffect(() => {
+    setD(null);
+    fetch(`/api/admin/funnel?days=${days}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((x) => x && !x.error && setD(x))
+      .catch(() => {});
+  }, [days]);
+
+  return (
+    <div className="m-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">Funnel</h3>
+        <div className="flex gap-1">
+          {[7, 30, 90].map((n) => (
+            <Pressable
+              key={n}
+              onClick={() => setDays(n)}
+              className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold ${days === n ? "bg-accent/15 text-accent" : "text-muted-foreground"}`}
+            >
+              {n}d
+            </Pressable>
+          ))}
+        </div>
+      </div>
+
+      {!d ? (
+        <div className="skeleton h-[150px]" />
+      ) : d.signups === 0 ? (
+        <p className="py-4 text-center text-[13px] text-muted-foreground">No signups in this window yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {d.steps.map((s, i) => {
+            const pct = d.signups ? Math.round((s.users / d.signups) * 100) : 0;
+            const prev = i > 0 ? d.steps[i - 1].users : null;
+            // The drop from the step before is the number that tells you what to
+            // fix; the share of the whole cohort only tells you where you are.
+            const dropped = prev !== null && prev > 0 ? prev - s.users : 0;
+            return (
+              <div key={s.key}>
+                <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
+                  <span className="font-semibold">{s.label}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    <b className="text-foreground">{s.users}</b> · {pct}%
+                    {dropped > 0 && <span className="ml-1.5 text-destructive">−{dropped}</span>}
+                  </span>
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-500"
+                    style={{ width: `${Math.max(pct, 1)}%`, background: i === d.steps.length - 1 ? "#34D399" : "var(--color-accent)" }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
