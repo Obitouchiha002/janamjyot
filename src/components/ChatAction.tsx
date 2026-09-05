@@ -17,7 +17,8 @@
  * costs, and a failure still costs nothing.
  */
 import { useEffect, useRef, useState } from "react";
-import { HeartHandshake, Sparkles, ChevronRight, X } from "lucide-react";
+import { HeartHandshake, Sparkles, ChevronRight, X, FileDown } from "lucide-react";
+import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
 import { getLang } from "@/lib/prefs";
@@ -75,7 +76,124 @@ export default function ChatAction({ action, chartId }: { action: string; chartI
   }
 
   if (action === "match") return <MatchCard chartId={chartId} lang={lang} onClose={() => setDismissed(true)} />;
+  if (action === "d1" || action === "d9") return <ChartCard chartId={chartId} which={action} lang={lang} />;
+  if (action === "pdf") return <PdfCard chartId={chartId} lang={lang} />;
   return null;
+}
+
+/**
+ * The chart itself, in the thread.
+ *
+ * Being told about a placement and seeing where it sits are different things,
+ * and sending someone to another screen to look breaks the conversation they
+ * were having. Drawn with the same component the chart screens use, from the
+ * same endpoint, so it cannot disagree with them.
+ */
+function ChartCard({ chartId, which, lang }: { chartId: string; which: "d1" | "d9"; lang: Lang }) {
+  const [data, setData] = useState<any>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/chart/${chartId}/${which}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => (d && !d.error ? setData(d) : setFailed(true)))
+      .catch(() => setFailed(true));
+  }, [chartId, which]);
+
+  if (failed) return null;
+  if (!data) return <div className="skeleton mt-2.5 aspect-square w-full rounded-xl" />;
+
+  const planets = (data.planets ?? []).map((p: any) => ({ ...p, short: String(p.planet).substring(0, 2) }));
+  const title = which === "d1"
+    ? { en: "Birth chart (D1)", hi: "जन्म कुंडली (D1)", hinglish: "Janam kundli (D1)" }[lang]
+    : { en: "Navamsa (D9)", hi: "नवांश (D9)", hinglish: "Navamsa (D9)" }[lang];
+
+  return (
+    <div className="mt-2.5 rounded-xl border border-border bg-card p-3">
+      <p className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
+      <NorthIndianChart planets={planets} ascendantSign={data.ascendant?.sign ?? ""} shortNames />
+      <Pressable to={`/chart/${chartId}/${which}`} className="mt-2 flex items-center gap-1 text-[12px] font-bold text-accent">
+        {{ en: "Placements", hi: "ग्रह स्थिति", hinglish: "Grah sthiti" }[lang]}
+        <ChevronRight className="h-[14px] w-[14px]" />
+      </Pressable>
+    </div>
+  );
+}
+
+/**
+ * The life report as a file they can keep or send.
+ *
+ * Built in the browser from the report they already own, so asking for it
+ * again costs nothing — the credit was spent when the report was generated,
+ * and turning it into a PDF is not a second purchase.
+ */
+function PdfCard({ chartId, lang }: { chartId: string; lang: Lang }) {
+  const [state, setState] = useState<"idle" | "busy" | "done" | "none">("idle");
+
+  const build = async () => {
+    setState("busy");
+    try {
+      // cached_only: asking for a file must never become a 29-credit purchase.
+      const r = await fetch("/api/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chartId, cached_only: true }),
+      });
+      const rep = r.ok ? await r.json() : null;
+      if (!rep || rep.error || !rep.sections?.length) { setState("none"); return; }
+
+      const { jsPDF } = await import("jspdf");   // lazy: never in the first load
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const M = 44, W = doc.internal.pageSize.getWidth(), CW = W - M * 2;
+      let y = 64;
+      const line = (text: string, size: number, bold = false, gap = 16) => {
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        doc.setFontSize(size);
+        for (const l of doc.splitTextToSize(String(text).replace(/\*\*/g, ""), CW)) {
+          if (y > 780) { doc.addPage(); y = 64; }
+          doc.text(l, M, y); y += gap;
+        }
+      };
+      line(`${rep.birth_details?.name || "Life report"} — JanamJyot`, 18, true, 24);
+      line(
+        [rep.birth_details?.date_of_birth, rep.birth_details?.time_of_birth, rep.birth_details?.place_of_birth]
+          .filter(Boolean).join(" · "), 10, false, 22,
+      );
+      for (const s of rep.sections) { y += 8; line(s.title || "", 13, true, 20); line(s.body || s.content || "", 10.5, false, 15); }
+      doc.save(`JanamJyot-${(rep.birth_details?.name || "report").replace(/\s+/g, "-")}.pdf`);
+      setState("done");
+    } catch {
+      setState("none");
+    }
+  };
+
+  if (state === "none") {
+    return (
+      <p className="mt-2.5 text-[12px] text-muted-foreground">
+        {{ en: "Generate your life report first, then I can make the PDF.",
+           hi: "पहले अपनी लाइफ रिपोर्ट बनवाइए, फिर मैं PDF बना दूँगा।",
+           hinglish: "Pehle apni life report banwaiye, phir main PDF bana dunga." }[lang]}
+      </p>
+    );
+  }
+
+  return (
+    <Pressable
+      onClick={state === "idle" ? build : undefined}
+      disabled={state === "busy"}
+      feedback="medium"
+      className="mt-2.5 flex w-full items-center gap-2.5 rounded-xl border border-accent/35 bg-accent/8 px-3.5 py-3 text-left disabled:opacity-60"
+    >
+      <FileDown className="h-[17px] w-[17px] shrink-0 text-accent" />
+      <span className="flex-1 text-[13px] font-bold text-accent">
+        {state === "busy"
+          ? { en: "Making the PDF…", hi: "PDF बन रही है…", hinglish: "PDF ban rahi hai…" }[lang]
+          : state === "done"
+            ? { en: "Saved — tap to make it again", hi: "सेव हो गई — दोबारा बनाने के लिए दबाएँ", hinglish: "Save ho gayi — dobara banane ke liye dabaein" }[lang]
+            : { en: "Download my life report (PDF)", hi: "मेरी लाइफ रिपोर्ट (PDF) डाउनलोड करें", hinglish: "Meri life report (PDF) download karein" }[lang]}
+      </span>
+    </Pressable>
+  );
 }
 
 interface Place { label: string; latitude: number; longitude: number; timezone: string }

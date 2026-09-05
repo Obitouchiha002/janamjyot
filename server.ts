@@ -1,5 +1,6 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
 import { distressLevel, severeReply, lowNote } from "./server/distress";
+import { isGreetingOnly, greetingReply } from "./server/greeting";
 import express from "express";
 
 /** Turn raw provider errors into a clean, user-facing message. */
@@ -3011,6 +3012,16 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
       if (cached) return res.json({ ...cached, cached: true });
     }
 
+    /*
+     * "Make me a PDF" must never become "spend 29 credits generating a report".
+     * The chat asks with cached_only, so if there is nothing to turn into a PDF
+     * yet it is told so and can say "generate the report first" — rather than
+     * quietly buying one on the person's behalf because they asked for a file.
+     */
+    if (req.body?.cached_only === true) {
+      return res.status(404).json({ error: "No life report has been generated for this chart yet." });
+    }
+
     // Only a report we actually have to GENERATE counts against the quota — a
     // cached one costs nothing, so re-reading your own report is always free.
     const auth = await charge(req, res, "report", "life_report");
@@ -3432,6 +3443,26 @@ app.post("/api/chat/universal", async (req, res) => {
       await insertChatMessage({ chartId, role: "assistant", message: answer, context: "chat", responseJson: { category: "wellbeing", next } });
       console.log("[chat-u] severe distress — fixed reply, not charged");
       return res.json({ answer, reason: "", category: "wellbeing", next });
+    }
+
+    /*
+     * "hi" is not a question, and it was being answered with six lines about
+     * Shani in the lagna. Someone opening with a hello wants to be greeted and
+     * shown where to start — a wall of interpretation before they have asked
+     * anything reads as a machine emptying itself.
+     *
+     * Answered here rather than by a model: three short lines, their chart as
+     * a card, and a few things they might actually want to know. No AI call, no
+     * credit, no latency — and it cannot drift into an essay on a bad day.
+     */
+    if (isGreetingOnly(question)) {
+      const g = greetingReply(language, userName);
+      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
+      await insertChatMessage({
+        chartId, role: "assistant", message: g.answer, context: "chat",
+        responseJson: { category: "greeting", next: g.next, card: "chart" },
+      });
+      return res.json({ answer: g.answer, reason: "", category: "greeting", next: g.next, card: "chart" });
     }
 
     // What earlier conversations established. This was read only by the

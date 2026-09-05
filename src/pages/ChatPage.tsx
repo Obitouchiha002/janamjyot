@@ -32,6 +32,8 @@ type Turn = {
   next?: string[];
   /** A task the person asked for, carried out inside the thread. */
   action?: string;
+  /** Something to draw with the message — "chart" is their four key numbers. */
+  card?: string;
   /** The question to re-send when an answer failed. */
   retry?: string;
 };
@@ -103,6 +105,8 @@ export default function ChatPage() {
   const [typing, setTyping] = useState(false);
   const [openReason, setOpenReason] = useState<Record<number, boolean>>({});
   const [lang, setLang] = useState<string>(getLang());
+  /** How much of the opening has "been typed" — 0 dots, 1 hello, 2 chart, 3 all. */
+  const [greetStep, setGreetStep] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -121,6 +125,33 @@ export default function ChatPage() {
       })
       .catch(() => {});
   }, [chartId]);
+
+  /*
+   * Let the opening arrive rather than appear.
+   *
+   * Paced like someone typing: a beat before the hello, longer before the
+   * chart because reading a kundli takes a moment, shorter before the
+   * invitation. The exact numbers matter less than the fact that there are
+   * gaps at all — three things landing together is a page, three things
+   * landing in sequence is a person.
+   *
+   * Only for a genuinely new thread; someone returning to their history has
+   * already met us and should not be made to wait through an introduction.
+   */
+  useEffect(() => {
+    if (turns.length > 0) { setGreetStep(3); return; }
+    const t1 = setTimeout(() => setGreetStep(1), 700);
+    const t2 = setTimeout(() => setGreetStep(2), 2100);
+    const t3 = setTimeout(() => setGreetStep(3), 3400);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [turns.length]);
+
+  // Each bubble pushes the view along, so the dots stay in sight while they run.
+  useEffect(() => {
+    if (greetStep > 0 && turns.length === 0) {
+      requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    }
+  }, [greetStep, turns.length]);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
@@ -188,8 +219,11 @@ export default function ChatPage() {
           role: "assistant",
           answer: data.answer,
           reason: data.reason || undefined,
-          next: Array.isArray(data.next) ? data.next.slice(0, 2) : undefined,
+          // Two is right after a real answer; a greeting is a menu by nature,
+          // so it may offer four.
+          next: Array.isArray(data.next) ? data.next.slice(0, data.card ? 4 : 2) : undefined,
           action: data.action || undefined,
+          card: data.card || undefined,
         }]);
         haptic.success();
       } else {
@@ -265,32 +299,72 @@ export default function ChatPage() {
         {turns.length === 0 && (() => {
           const g = GREETING[lang] || GREETING.en;
           const who = intro?.name ? `${intro.name} ji` : null;
+          const bubble = "max-w-[86%] rounded-[20px] rounded-bl-md border border-border bg-card px-4 py-3 shadow-sm";
           return (
-          <div className="px-1 pt-3">
-            {/* Addressed by name, with their own chart already read, because an
-                astrologer who opens with "namaste, who are you" is not one.
-                Everything shown here is calculated, not generated. */}
-            <p className="text-[15px] font-semibold">{who ? `${g.hi.replace(" 🙏", "")} ${who} 🙏` : g.hi}</p>
-            {intro && <ChartGlance intro={intro} lang={lang} />}
-            <p className="mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
-              {intro ? (READ[lang] || READ.en) : g.sub}
-            </p>
-            <div className="mt-4 space-y-2">
-              {g.starters.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => send(s)}
-                  className="m-card block w-full px-4 py-3 text-left text-[13.5px] font-semibold"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            <p className="mt-4 flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              {{ en: "AI · from your real chart, all calculated", hi: "एआई · आपकी असली कुंडली से, सब calculated", hinglish: "AI · aapki asli kundli se, sab calculated" }[lang] || "AI · from your real chart"}
-            </p>
+          <div className="space-y-3">
+            {/* The opening arrives the way a person sends it: a short hello,
+                then the chart, then the invitation — each after a pause, with
+                the typing dots in between. It used to land as one wall of text
+                the instant the screen opened, which reads as a page rather than
+                as someone who has just looked at your kundli. Everything shown
+                is calculated, not generated. */}
+            {greetStep >= 1 && (
+              <div className="m-enter flex justify-start">
+                <div className={bubble}>
+                  <p className="text-[14.5px] font-semibold">
+                    {who ? `${g.hi.replace(" 🙏", "")} ${who} 🙏` : g.hi}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {greetStep >= 2 && intro && (
+              <div className="m-enter flex w-full justify-start">
+                <div className={`${bubble} w-[86%]`}>
+                  <ChartGlance intro={intro} lang={lang} />
+                </div>
+              </div>
+            )}
+
+            {greetStep >= 3 && (
+              <div className="m-enter flex justify-start">
+                <div className={bubble}>
+                  <p className="text-[14.5px] leading-[1.6]">{intro ? (READ[lang] || READ.en) : g.sub}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Dots between the bubbles, not only before the first one. */}
+            {greetStep < 3 && (
+              <div className="flex justify-start">
+                <div className="rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3">
+                  <span className="flex items-center gap-1">
+                    {[0, 1, 2].map((k) => (
+                      <span key={k} className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground/60" style={{ animationDelay: `${k * 0.15}s` }} />
+                    ))}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {greetStep >= 3 && (
+              <div className="m-enter space-y-2 pt-1">
+                {g.starters.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => send(s)}
+                    className="m-card block w-full px-4 py-3 text-left text-[13.5px] font-semibold"
+                  >
+                    {s}
+                  </button>
+                ))}
+                <p className="flex items-center gap-1.5 px-1 pt-2 text-[11px] text-muted-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {{ en: "AI · from your real chart, all calculated", hi: "एआई · आपकी असली कुंडली से, सब calculated", hinglish: "AI · aapki asli kundli se, sab calculated" }[lang] || "AI · from your real chart"}
+                </p>
+              </div>
+            )}
           </div>
           );
         })()}
@@ -308,6 +382,15 @@ export default function ChatPage() {
                 <div className="selectable text-[14.5px] leading-[1.6]">
                   <AnswerText text={t.answer} />
                 </div>
+
+                {/* "I've looked at your chart" is a claim; this is the evidence,
+                    drawn from the same calculation the rest of the app uses. */}
+                {t.card === "chart" && intro && (
+                  <div className="mt-2.5">
+                    <ChartGlance intro={intro} lang={lang} />
+                  </div>
+                )}
+
                 {t.reason && (
                   <>
                     <button

@@ -631,8 +631,17 @@ PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
       career       they want a career report
       wealth       they want a money/wealth report
       marriage     they want a marriage report
+      d1           they want to SEE their birth chart / lagna kundli / D1
+      d9           they want to SEE their navamsa / D9 chart
+      pdf          they want their life report as a PDF to keep or send
   • The app turns this into a real action for them — for "match" it opens the
-    other person's details right inside the chat and runs the real matching.
+    other person's details right inside the chat and runs the real matching;
+    for "d1"/"d9" the chart is DRAWN under your message; for "pdf" the file is
+    built and handed to them there.
+  • With "d1" or "d9", the chart appears right below what you wrote — so use
+    PART 1 to say one useful thing about it (their lagna, the placements that
+    stand out), not "here is your chart". After that they can ask about
+    anything in it and you are both looking at the same chart.
   • Do NOT write this marker for an ordinary question that merely touches the
     topic. "Meri shaadi kab hogi?" is a question, answer it. "Meri kundli
     match kar do" is a task. When in doubt, leave it out.
@@ -655,7 +664,7 @@ ${languageInstruction(args.language)}`;
 
   // A task the person asked for, if any. Kept to a fixed vocabulary so a model
   // cannot invent an action the app has no way to perform.
-  const ACTIONS = ["match", "life_report", "timeline", "career", "wealth", "marriage"];
+  const ACTIONS = ["match", "life_report", "timeline", "career", "wealth", "marriage", "d1", "d9", "pdf"];
   let action = "";
   const dIdx = rest.indexOf("<<DO>>");
   if (dIdx !== -1) {
