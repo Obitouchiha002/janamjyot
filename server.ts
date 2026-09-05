@@ -40,6 +40,7 @@ import {
   createProviderOrder,
   settleOrder,
   markNeedsRefund,
+  adminAdjustCredits,
   pendingOrders,
   findReusableOrder,
   createMockOrder,
@@ -834,6 +835,12 @@ app.get("/api/admin/user/:id", requireAdmin, async (req, res) => {
   for (const a of ["chart", "report", "ask", "match"] as QuotaAction[]) {
     usage[a] = { used: await usageCount({ userId: user.id }, a), limit: limits[a], window: QUOTA_WINDOW[a] };
   }
+  const [balance, trial, payments, ledger] = await Promise.all([
+    creditBalance(user.id),
+    trialState(user.id),
+    paymentHistory(user.id, 20),
+    creditHistory(user.id, 20),
+  ]);
   res.json({
     user: {
       id: user.id, name: user.name, email: user.email, role: user.role, plan: user.plan,
@@ -841,8 +848,45 @@ app.get("/api/admin/user/:id", requireAdmin, async (req, res) => {
       created_at: user.created_at, google: !!user.google_sub,
     },
     usage,
+    // The money side of the account. Without it an admin answering "why can I
+    // not ask a question" had to guess whether it was the plan or the balance.
+    credits: {
+      balance,
+      trial: { active: trial.active, used: trial.used, ends_at: trial.endsAt },
+      payments,
+      ledger,
+    },
     charts: await chartsByOwner(user.id),
   });
+});
+
+/**
+ * POST /api/admin/user/:id/credits { delta, note } — give or take back credits.
+ *
+ * The database already had adminAdjustCredits, but nothing reached it, so a
+ * refund or a goodwill top-up was impossible from inside the product: the panel
+ * could show that a payment needed refunding and then do nothing about it.
+ *
+ * It writes a ledger row like every other movement — same append-only trail,
+ * same balance-never-stored rule — so an adjustment is as auditable as a
+ * purchase, and is refused if it would push the balance below zero.
+ */
+app.post("/api/admin/user/:id/credits", requireAdmin, async (req: any, res) => {
+  try {
+    const target = await getUserById(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found." });
+    const delta = Number(req.body?.delta);
+    const note = String(req.body?.note ?? "").slice(0, 200);
+    const out = await adminAdjustCredits({ userId: target.id, delta, note: note || null });
+    if ("error" in out) return res.status(400).json({ error: out.error });
+    await audit({
+      actorId: req.user.id, actorEmail: req.user.email, action: "credits.adjust",
+      target: target.id, detail: { delta, note, balance: out.balance },
+    });
+    res.json({ ok: true, balance: out.balance });
+  } catch (err: any) {
+    fail(res, 500, "Could not adjust credits.", err, "admin-credits");
+  }
 });
 
 // ── Provider API keys ──────────────────────────────────────────────────────

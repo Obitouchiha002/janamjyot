@@ -839,20 +839,28 @@ export async function listUsers(search = ""): Promise<any[]> {
   if (USE_PG) {
     const like = `%${search.trim().toLowerCase()}%`;
     const { rows } = await pool!.query(
+      // Aggregated once per table and joined, not three correlated subqueries
+      // per row. At 500 rows that was 1,500 extra queries for one screen, which
+      // is what made the admin users list crawl.
       `SELECT u.id, u.name, u.email, u.role, u.plan, u.status, u.status_reason,
               u.limits_json, u.created_at, u.last_seen_at,
-              (SELECT count(*) FROM chart_calculations c WHERE c.owner_id = u.id)::int AS charts,
-              (SELECT count(*) FROM usage_events e
-                WHERE e.user_id = u.id AND e.action = 'ask'
-                  AND e.created_at > now() - interval '30 days')::int AS asks_30d,
+              COALESCE(c.n, 0)::int AS charts,
+              COALESCE(a.n, 0)::int AS asks_30d,
               -- Balance is always derived from the ledger, never a stored column,
               -- so the number the admin sees can never drift from the truth.
-              (SELECT COALESCE(SUM(l.delta), 0) FROM credit_ledger l
-                WHERE l.user_id = u.id)::int AS credits
+              COALESCE(l.n, 0)::int AS credits
          FROM app_users u
+         LEFT JOIN (SELECT owner_id, count(*) AS n FROM chart_calculations GROUP BY owner_id) c
+                ON c.owner_id = u.id
+         LEFT JOIN (SELECT user_id, count(*) AS n FROM usage_events
+                     WHERE action = 'ask' AND created_at > now() - interval '30 days'
+                     GROUP BY user_id) a
+                ON a.user_id = u.id
+         LEFT JOIN (SELECT user_id, SUM(delta) AS n FROM credit_ledger GROUP BY user_id) l
+                ON l.user_id = u.id
         WHERE ($1 = '%%' OR lower(u.email) LIKE $1 OR lower(u.name) LIKE $1)
         ORDER BY u.created_at DESC
-        LIMIT 500`,
+        LIMIT 200`,
       [like]
     );
     return rows.map((r) => ({ ...r, suspended: r.status !== "active" }));
@@ -1554,7 +1562,7 @@ export async function paymentHistory(userId: string, limit = 50) {
  * answered with "this email, this order, this amount, at this time" rather
  * than a bare id.
  */
-export async function allPayments(limit = 200) {
+export async function allPayments(limit = 100) {
   if (!USE_PG) {
     const byId = new Map(fileData.users.map((u: any) => [u.id, u]));
     return fileData.payments.slice(-limit).reverse().map((p) => ({

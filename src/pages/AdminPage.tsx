@@ -177,10 +177,15 @@ function Users_() {
   const [users, setUsers] = useState<any[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // The endpoint returns up to 500 accounts and every one of them used to be
+  // rendered, which is what made this screen crawl on a phone. Show a page at a
+  // time; search reaches the rest, and that is what an admin actually does.
+  const PAGE = 40;
+  const [shown, setShown] = useState(PAGE);
   const load = useCallback((query = "") => {
     fetch(`/api/admin/users?q=${encodeURIComponent(query)}`)
       .then((r) => r.json())
-      .then((d) => setUsers(Array.isArray(d) ? d : []))
+      .then((d) => { setUsers(Array.isArray(d) ? d : []); setShown(PAGE); })
       .catch(() => setUsers([]));
   }, []);
 
@@ -203,7 +208,7 @@ function Users_() {
       {users?.length === 0 && <p className="px-1 py-6 text-center text-[13px] text-muted-foreground">No users found.</p>}
 
       <div className="space-y-2.5">
-        {users?.map((u) => (
+        {users?.slice(0, shown).map((u) => (
           <Pressable
             key={u.id}
             onClick={() => { haptic.tap(); setOpenId(u.id); }}
@@ -222,11 +227,23 @@ function Users_() {
             </span>
             <span className="flex shrink-0 flex-col items-end gap-1">
               <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: `${PLAN_TINT[u.plan] ?? "#64748B"}22`, color: PLAN_TINT[u.plan] ?? "#64748B" }}>{u.plan}</span>
+              <span className="text-[11px] font-bold tabular-nums" style={{ color: u.credits > 0 ? "#C07A1E" : undefined }}>
+                {u.credits ?? 0} cr
+              </span>
               {u.status !== "active" && <span className="text-[10px] font-bold uppercase text-destructive">{u.status}</span>}
             </span>
           </Pressable>
         ))}
       </div>
+
+      {users && users.length > shown && (
+        <Pressable
+          onClick={() => setShown((n) => n + PAGE)}
+          className="w-full rounded-2xl border border-border py-3 text-center text-[13.5px] font-bold"
+        >
+          Show more · {shown} of {users.length}
+        </Pressable>
+      )}
 
       {openId && <UserSheet id={openId} onClose={() => setOpenId(null)} onChanged={() => load(q)} />}
     </div>
@@ -244,6 +261,8 @@ function UserSheet({ id, onClose, onChanged }: { id: string; onClose: () => void
   const [data, setData] = useState<any>(null);
   const [reason, setReason] = useState("");
   const [limits, setLimits] = useState<Record<string, string>>({});
+  const [credDelta, setCredDelta] = useState("");
+  const [credNote, setCredNote] = useState("");
 
   const reload = useCallback(() => {
     fetch(`/api/admin/user/${id}`).then((r) => r.json()).then((d) => {
@@ -312,6 +331,90 @@ function UserSheet({ id, onClose, onChanged }: { id: string; onClose: () => void
                   <p className="text-[15px] font-bold">{v.used}<span className="text-muted-foreground"> / {v.limit < 0 ? "∞" : v.limit}</span></p>
                 </div>
               ))}
+            </div>
+
+            {/* money — balance, the trial, what they bought, and every movement.
+                Without this an admin answering "why can I not ask a question"
+                had to guess whether it was the plan or an empty balance. */}
+            <h3 className="mb-2 mt-5 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">Credits &amp; money</h3>
+            <div className="rounded-2xl border border-border p-3.5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[12px] text-muted-foreground">Balance</span>
+                <span className="text-[24px] font-black tabular-nums" style={{ color: "#C07A1E" }}>
+                  {data.credits?.balance ?? 0} <span className="text-[13px] font-bold">credits</span>
+                </span>
+              </div>
+              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2">
+                <span className="text-[12px] text-muted-foreground">Trial</span>
+                <span className="text-[12.5px] font-bold">
+                  {data.credits?.trial?.active
+                    ? `active till ${String(data.credits.trial.ends_at || "").slice(0, 16).replace("T", " ")}`
+                    : data.credits?.trial?.used ? "used" : "not used"}
+                </span>
+              </div>
+
+              {/* Give or take back. Writes a ledger row like every other
+                  movement, so an adjustment is as auditable as a purchase. */}
+              <div className="mt-3 flex gap-2">
+                <input
+                  className="w-20 rounded-xl border border-input bg-card px-3 py-2 text-[14px] tabular-nums outline-none focus:border-accent"
+                  placeholder="±50"
+                  inputMode="numeric"
+                  value={credDelta}
+                  onChange={(e) => setCredDelta(e.target.value)}
+                />
+                <input
+                  className="min-w-0 flex-1 rounded-xl border border-input bg-card px-3 py-2 text-[13px] outline-none focus:border-accent"
+                  placeholder="Reason (kept in the ledger)"
+                  value={credNote}
+                  onChange={(e) => setCredNote(e.target.value)}
+                />
+              </div>
+              <Pressable
+                onClick={() => {
+                  const d = Number(credDelta);
+                  if (!Number.isFinite(d) || d === 0) return;
+                  act(() => post(`/api/admin/user/${id}/credits`, { delta: d, note: credNote }));
+                  setCredDelta(""); setCredNote("");
+                }}
+                subtle
+                className="mt-2 w-full rounded-xl bg-accent/15 py-2.5 text-center text-[13.5px] font-bold text-accent"
+              >
+                Apply adjustment
+              </Pressable>
+
+              {!!data.credits?.payments?.length && (
+                <>
+                  <p className="mb-1 mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Purchases</p>
+                  {data.credits.payments.slice(0, 6).map((p: any) => (
+                    <div key={p.order_id} className="flex justify-between gap-3 border-t border-border py-1.5 text-[12px]">
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {p.pack_id} · {String(p.created_at).slice(0, 10)}
+                      </span>
+                      <span className="shrink-0 font-bold">
+                        ₹{p.amount_paise / 100}
+                        <span className="ml-1.5" style={{ color: p.status === "paid" ? "#34D399" : "#F87171" }}>{p.status}</span>
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {!!data.credits?.ledger?.length && (
+                <>
+                  <p className="mb-1 mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Every movement</p>
+                  {data.credits.ledger.slice(0, 8).map((l: any, i: number) => (
+                    <div key={i} className="flex justify-between gap-3 border-t border-border py-1.5 text-[12px]">
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {l.reason}{l.note ? ` · ${l.note}` : ""} · {String(l.created_at).slice(0, 10)}
+                      </span>
+                      <span className="shrink-0 font-bold tabular-nums" style={{ color: l.delta > 0 ? "#34D399" : "#F87171" }}>
+                        {l.delta > 0 ? "+" : ""}{l.delta}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
 
             {/* plan */}
