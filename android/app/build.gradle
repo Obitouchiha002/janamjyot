@@ -7,8 +7,8 @@ android {
         applicationId "com.vanshkashyap.vedicastra"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
-        versionName "1.8"
+        versionCode 10
+        versionName "1.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,9 +16,32 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    /*
+     * Signed with the SAME key every shipped build has used. The signature is
+     * the identity of an app that installs from a file rather than a store: a
+     * different key is not an update, it is a second app, and everyone already
+     * running JanamJyot would have to uninstall (losing their data) to move.
+     * Overridable per machine via gradle properties; the default is the key the
+     * releases up to 1.8 were signed with. That file must be backed up — lose
+     * it and no existing install can ever be updated again.
+     */
+    signingConfigs {
+        release {
+            storeFile file(project.findProperty('JJ_KEYSTORE')
+                ?: "${System.properties['user.home']}/.android/debug.keystore")
+            storePassword project.findProperty('JJ_KEYSTORE_PASSWORD') ?: 'android'
+            keyAlias      project.findProperty('JJ_KEY_ALIAS')         ?: 'androiddebugkey'
+            keyPassword   project.findProperty('JJ_KEY_PASSWORD')      ?: 'android'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
+            // Up to 1.8 the shipped APK was a debug build, so it carried
+            // android:debuggable="true" — anyone with USB access could attach a
+            // debugger and read the session token straight out of the process.
+            // That is not acceptable in a build that handles payments.
+            signingConfig signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

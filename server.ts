@@ -972,16 +972,21 @@ app.get("/api/config", (_req, res) => {
     // In-app update. The APK is sideloaded, so there is no store to tell anyone
     // a new build exists — the app compares its own version against this and
     // offers the download itself.
-    app: {
-      version: String(getSetting("app_version") || process.env.APP_VERSION || "1.0"),
-      apk_url: process.env.APK_URL
-        // Fallback only — set APK_URL (or the admin app-version setting) when a
-        // new build ships, or the in-app updater keeps pointing at the old file.
-        || `${(process.env.PUBLIC_APP_URL || "https://janamjyot.vercel.app").replace(/\/$/, "")}/JanamJyot-v1.3.apk`,
+    app: (() => {
+      const version = String(getSetting("app_version") || process.env.APP_VERSION || "1.0");
+      const base = (process.env.PUBLIC_APP_URL || "https://janamjyot.lzworth.in").replace(/\/$/, "");
+      return {
+      version,
+      // Derived from the published version, never hardcoded. It used to be a
+      // fixed .../JanamJyot-v1.3.apk while the version said 1.8, so tapping
+      // "update" installed a build five releases OLD. Version and file cannot
+      // disagree now: publishing a version publishes its file.
+      apk_url: process.env.APK_URL || `${base}/JanamJyot-v${version}.apk`,
       notes: String(getSetting("app_update_notes") || ""),
       // When true the prompt reappears every launch instead of once per version.
       mandatory: !!getSetting("app_update_mandatory"),
-    },
+      };
+    })(),
     // Lets the checkout say "test mode, use this card" while we are on test
     // keys, and say nothing at all once live keys are in — so the banner can
     // never be left on by accident in front of paying customers.
