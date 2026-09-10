@@ -394,7 +394,7 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   .hero-title { font-size: 33px !important; max-width: none !important; }
   .hero-glance { display: flex; }
   .zodiac-ring { display: none; }      /* the glance panel fills the right now */
-  .chip-mobile, .hero-newkundli, .chart-strip { display: none; }  /* the glance panel shows these on desktop */
+  .chip-mobile, .hero-newkundli { display: none; }  /* moved to glance / navbar */
 
   /* Desktop uses the in-hero "Talk to Astrologer" button, not a floating one. */
   .home-fab { display: none !important; }
