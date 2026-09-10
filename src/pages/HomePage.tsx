@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Plus, ChevronRight, ChevronDown, Clock, MessageCircle, HeartHandshake, Sparkles,
-  Sun, TriangleAlert, Info, CheckCircle2, PauseCircle, XCircle,
+  Plus, ChevronRight, ArrowRight, Clock, MessageCircle, HeartHandshake, Sparkles, Info,
+  Moon, Sun, Sunrise, Flame, CalendarDays,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useCachedFetch } from '@/lib/useCachedFetch';
@@ -15,19 +16,97 @@ import { haptic } from '@/lib/native';
 /*
  * Home — calm, and useful every day.
  *
- * It used to be a card holding a form (greeting, headline, input, chips,
- * links) over a stack of equal-weight boxes. Now one thing leads: the day,
- * coloured by its mood, with the windows people act on and a live "right
- * now". Under it, the astrologer — a person to talk to, not an empty box —
- * then what is coming (tomorrow, the next vrat and festivals) and their chart
- * in one line. Everything here is calculated; nothing on Home calls an AI.
+ * One card system (the .hm-* tokens in index.css): white surface, hairline
+ * border, one eyebrow style, dividers instead of boxes inside boxes, one
+ * footer action per card, and colour only as dots, pills and icons. The data
+ * is exactly what it was — same endpoints, same fields; only the presentation
+ * changed. Everything here is calculated; nothing on Home calls an AI.
  */
 
 type L3 = 'en' | 'hi' | 'hinglish';
 type Tri = Record<L3, string>;
 const lang3 = (): L3 => { const g = getLang(); return g === 'hi' || g === 'hinglish' ? g : 'en'; };
 const tr = (x: Tri, l: L3) => x[l] ?? x.en;
-const locale = (l: L3) => (l === 'hi' ? 'hi-IN' : 'en-IN');
+const locale = (l: L3) => (l === 'hi' ? 'hi-IN' : 'en-US');
+
+const T = {
+  today: { en: 'Today', hi: 'आज', hinglish: 'Aaj' },
+  best: { en: 'Best time', hi: 'सबसे अच्छा समय', hinglish: 'Sabse accha samay' },
+  rightNow: { en: 'Right now', hi: 'अभी', hinglish: 'Abhi' },
+  fullDay: { en: 'See full day', hi: 'पूरा दिन देखें', hinglish: 'Poora din dekhein' },
+  why: { en: 'Why this reading?', hi: 'ऐसा क्यों?', hinglish: 'Aisa kyun?' },
+  calc: {
+    en: "From your birth chart's transits for today — all calculated, nothing guessed.",
+    hi: 'आपकी जन्म कुंडली के आज के गोचर से — सब गणना से, कोई तुक्का नहीं।',
+    hinglish: 'Aapki janam kundli ke aaj ke gochar se — sab calculated, koi tukka nahi.',
+  },
+  astro: { en: 'Your astrologer', hi: 'आपके ज्योतिषी', hinglish: 'Aapke jyotishi' },
+  available: { en: 'Available now', hi: 'अभी उपलब्ध', hinglish: 'Abhi available' },
+  astroLine: {
+    en: "Something on your mind? Love, work, money — I'll read your kundli and tell you plainly.",
+    hi: 'कुछ पूछना है? रिश्ता, नौकरी, पैसा — मैं आपकी कुंडली पढ़कर सीधा बताऊँगा।',
+    hinglish: 'Kuch poochna hai? Rishta, naukri, paisa — main aapki kundli padh ke seedha bataunga.',
+  },
+  about: { en: 'Ask about someone in your life', hi: 'अपने किसी खास के बारे में पूछें', hinglish: 'Kisi apne ke baare mein poochein' },
+  talk: { en: 'Talk now', hi: 'बात करें', hinglish: 'Baat karein' },
+  coming: { en: 'Coming up', hi: 'आगे क्या', hinglish: 'Aage kya' },
+  tomorrow: { en: 'Tomorrow', hi: 'कल', hinglish: 'Kal' },
+  none: { en: 'No vrat or festival in the next two weeks.', hi: 'अगले दो हफ़्ते कोई व्रत या त्योहार नहीं।', hinglish: 'Agle do hafte koi vrat ya tyohar nahi.' },
+  panchang: { en: 'Full panchang', hi: 'पूरा पंचांग', hinglish: 'Poora panchang' },
+  hello: { en: 'Namaste', hi: 'नमस्ते', hinglish: 'Namaste' },
+} satisfies Record<string, Tri>;
+
+/* ── Time, the way people read it ─────────────────────────────────────────
+   "01:51 PM" → "1:51 PM"; a range shares its AM/PM when both ends do
+   ("12:17 – 1:51 PM"), with an en dash between thin spaces. Rendered inside
+   .hm-num, so it never wraps. */
+const THIN = ' ';
+function clock(s?: string) {
+  const m = /^(\d{1,2}):(\d{2})\s*([AP]M)?/i.exec(String(s ?? '').trim());
+  return m ? { t: `${Number(m[1])}:${m[2]}`, p: (m[3] || '').toUpperCase() } : null;
+}
+function fmtClock(s?: string) { const c = clock(s); return c ? `${c.t}${c.p ? ` ${c.p}` : ''}` : String(s ?? ''); }
+function fmtRange(a?: string, b?: string) {
+  const x = clock(a), y = clock(b);
+  if (!x || !y) return [a, b].filter(Boolean).join(' – ');
+  const dash = `${THIN}–${THIN}`;
+  return x.p === y.p ? `${x.t}${dash}${y.t} ${y.p}`.trim() : `${x.t} ${x.p}${dash}${y.t} ${y.p}`;
+}
+function todayEyebrow(l: L3, d = new Date()) {
+  const wd = d.toLocaleDateString(locale(l), { weekday: 'short' });
+  const mo = d.toLocaleDateString(locale(l), { month: 'short' });
+  return `${tr(T.today, l)} · ${wd} ${d.getDate()} ${mo}`;
+}
+
+/** Status is always a dot AND a word — never colour alone. */
+const VARIANT = {
+  good: { dot: 'var(--hm-good)', bg: 'var(--hm-good-bg)', ink: 'var(--hm-good-ink)' },
+  caution: { dot: 'var(--hm-caution)', bg: 'var(--hm-caution-bg)', ink: 'var(--hm-caution-ink)' },
+  neutral: { dot: 'var(--hm-neutral)', bg: 'var(--hm-neutral-bg)', ink: 'var(--hm-neutral-ink)' },
+} as const;
+const toneVariant = (tone?: string) => (tone === 'good' ? VARIANT.good : tone === 'warn' ? VARIANT.caution : VARIANT.neutral);
+
+function StatusPill({ tone, label }: { tone?: string; label: string }) {
+  const v = toneVariant(tone);
+  return (
+    <span className="inline-flex max-w-[55%] shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+      style={{ background: v.bg, color: v.ink }}>
+      <span className="hm-dot" style={{ background: v.dot }} />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+/** Every card ends the same way: one link, right-aligned. */
+function FooterLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-1 flex justify-end">
+      <Pressable to={to} subtle className="hm-link -mr-1 px-1">
+        {children} <ArrowRight className="h-4 w-4" />
+      </Pressable>
+    </div>
+  );
+}
 
 /**
  * Rotating zodiac ring behind the hero. Pure SVG geometry — 12 house spokes and
@@ -115,38 +194,6 @@ function usePlace(chartId: string) {
   };
 }
 
-/** Date, tithi and the greeting — type on the page, not another box. */
-function HomeHeader({ chartId, name }: { chartId: string; name: string }) {
-  const l = lang3();
-  const { q } = usePlace(chartId);
-  const { data: p } = useCachedFetch<any>(q ? `/api/panchang-today?${q}&lang=${l}` : null);
-  const date = new Date().toLocaleDateString(locale(l), { weekday: 'long', day: 'numeric', month: 'long' });
-  return (
-    <header className="m-enter px-1 pt-1">
-      <p className="text-[12.5px] font-semibold text-muted-foreground">
-        {date}{p?.tithi ? ` · ${p.tithi}` : ''}
-      </p>
-      <h1 className="mt-1 text-[28px] font-bold leading-[1.1] tracking-tight">
-        {tr({ en: 'Namaste', hi: 'नमस्ते', hinglish: 'Namaste' }, l)},{' '}
-        <span className="text-accent">{name}{l === 'en' ? '' : ' ji'}</span>
-      </h1>
-      {p?.special && (
-        <Pressable to="/panchang" feedback="tap"
-          className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-accent/12 px-3 py-1.5 text-[12.5px] font-bold text-accent">
-          <Sparkles className="h-[14px] w-[14px]" />
-          {tr({ en: 'Today', hi: 'आज', hinglish: 'Aaj' }, l)}: {p.special.label}
-        </Pressable>
-      )}
-    </header>
-  );
-}
-
-const TONE = {
-  good: { tint: '#22C55E', ink: '#15803D', Icon: Sun },
-  advice: { tint: '#C9A24B', ink: '#8A6D1F', Icon: Info },
-  warn: { tint: '#F0A93B', ink: '#A16207', Icon: TriangleAlert },
-} as const;
-
 /**
  * The "right now" verdict in the reader's language. The endpoint's own line is
  * English-only, and it sat in the middle of a Hinglish card.
@@ -164,100 +211,137 @@ function nowLine(n: any, l: L3): string {
     : tr({ en: "Don't start anything new now", hi: 'अभी नया काम शुरू न करें', hinglish: 'Abhi naya kaam shuru mat kariye' }, l);
 }
 
-/** The day — the one big thing on Home. */
-function TodayHero({ chartId }: { chartId: string }) {
+/** Tithi and the greeting — type on the page, not another box. */
+function HomeHeader({ chartId, name }: { chartId: string; name: string }) {
   const l = lang3();
-  const [open, setOpen] = useState(false);
+  const { q } = usePlace(chartId);
+  const { data: p } = useCachedFetch<any>(q ? `/api/panchang-today?${q}&lang=${l}` : null);
+  return (
+    <header className="m-enter px-1 pt-1">
+      <p className="hm-eyebrow truncate">{p?.tithi ? [p.tithi, p.masa].filter(Boolean).join(' · ') : ' '}</p>
+      <h1 className="hm-serif mt-1.5 text-[30px] font-semibold leading-[1.15] tracking-[-0.01em]" style={{ color: 'var(--hm-text)' }}>
+        {tr(T.hello, l)}, {name}{l === 'en' ? '' : ' ji'}
+      </h1>
+      {p?.special && (
+        <Pressable to="/panchang" feedback="tap" className="mt-0.5 inline-flex min-h-[44px] items-center gap-1.5 text-[14px] font-semibold"
+          style={{ color: 'var(--hm-accent-ink)' }}>
+          <Sparkles className="h-4 w-4" style={{ color: 'var(--hm-accent)' }} />
+          {tr(T.today, l)}: {p.special.label}
+        </Pressable>
+      )}
+    </header>
+  );
+}
+
+/** The reasons behind the day — kept off the card, one tap away. */
+function WhySheet({ open, onClose, factors, l }: { open: boolean; onClose: () => void; factors: any[]; l: L3 }) {
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <motion.div className="hm fixed inset-0 z-[90] flex items-end justify-center" role="dialog" aria-modal="true" aria-label={tr(T.why, l)}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+          <button aria-label="Close" onClick={onClose} className="absolute inset-0 h-full w-full bg-black/40" />
+          <motion.div className="relative max-h-[80vh] w-full max-w-[560px] overflow-y-auto rounded-t-[24px] px-5 pt-3"
+            style={{ background: 'var(--hm-card)', paddingBottom: 'calc(var(--sab, 0px) + 24px)' }}
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 420, damping: 40 }}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full" style={{ background: 'var(--hm-border)' }} />
+            <p className="hm-eyebrow">{tr(T.why, l)}</p>
+            <div className="mt-3">
+              {factors.map((f: any, i: number) => (
+                <div key={f.code ?? i}>
+                  {i > 0 && <div className="hm-divider my-3" />}
+                  <p className="text-[15px] font-semibold" style={{ color: 'var(--hm-text)' }}>{f.title}</p>
+                  <p className="hm-caption mt-1 leading-relaxed">{f.detail}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-[12px] leading-relaxed" style={{ color: 'var(--hm-text-2)' }}>{tr(T.calc, l)}</p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+function TodaySkeleton() {
+  return (
+    <section className="hm-card" aria-hidden>
+      <div className="flex items-center justify-between"><div className="skeleton h-3 w-28" /><div className="skeleton h-6 w-24 rounded-full" /></div>
+      <div className="skeleton mt-4 h-5 w-full" /><div className="skeleton mt-2 h-5 w-2/3" />
+      <div className="mt-5 grid grid-cols-2 gap-4"><div className="skeleton h-12" /><div className="skeleton h-12" /></div>
+      <div className="skeleton mt-5 h-10 w-full" />
+    </section>
+  );
+}
+
+/** The day — the one big thing on Home. */
+function TodayCard({ chartId }: { chartId: string }) {
+  const l = lang3();
+  const [why, setWhy] = useState(false);
   const { data: d } = useCachedFetch<any>(`/api/chart/${chartId}/day-signals?lang=${l}`);
   const { q } = usePlace(chartId);
   const { data: now, refresh } = useCachedFetch<any>(q ? `/api/right-now?${q}` : null);
   // Windows roll over while the screen is open — poll only while it is visible.
   useVisibleInterval(refresh, 5 * 60_000);
-
-  if (!d) {
-    return (
-      <section className="rounded-[26px] border border-border bg-card p-5">
-        <div className="space-y-3"><div className="skeleton h-3 w-24" /><div className="skeleton h-6 w-full" /><div className="skeleton h-6 w-2/3" /><div className="skeleton h-14 w-full rounded-2xl" /></div>
-      </section>
-    );
-  }
-  const t = TONE[d.tone as keyof typeof TONE] ?? TONE.advice;
-  const verdict = now?.verdict === 'go'
-    ? { Icon: CheckCircle2, ink: '#15803D' }
-    : now?.verdict === 'wait' ? { Icon: PauseCircle, ink: '#A16207' } : { Icon: XCircle, ink: '#B91C1C' };
+  if (!d) return <TodaySkeleton />;
+  const nowV = now?.verdict === 'go' ? VARIANT.good : now?.verdict === 'wait' ? VARIANT.neutral : VARIANT.caution;
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-[26px] p-5 shadow-sm"
-      style={{ background: `linear-gradient(160deg, ${t.tint}2e 0%, var(--color-card) 58%)`, border: `1px solid ${t.tint}45` }}
-    >
-      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: t.ink }}>
-        <t.Icon className="h-[14px] w-[14px]" strokeWidth={2.4} /> {d.label}
-      </p>
-      <p className="mt-2 text-[19px] font-bold leading-[1.35] text-foreground">{d.headline}</p>
+    <section className="hm-card m-enter">
+      <div className="flex items-center justify-between gap-3">
+        <p className="hm-eyebrow hm-num">{todayEyebrow(l)}</p>
+        <StatusPill tone={d.tone} label={d.label} />
+      </div>
+
+      <div className="mt-3 flex items-start gap-1">
+        <p className="line-clamp-2 min-w-0 flex-1 text-[18px] font-semibold leading-[26px]" style={{ color: 'var(--hm-text)' }}>{d.headline}</p>
+        <button type="button" onClick={() => { haptic.tap(); setWhy(true); }} aria-label={tr(T.why, l)}
+          className="-mr-2.5 -mt-2 grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ color: 'var(--hm-text-2)' }}>
+          <Info className="h-[18px] w-[18px]" />
+        </button>
+      </div>
 
       {(d.best_time || d.caution_time) && (
-        <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl bg-card/75">
+        <div className="mt-4 grid grid-cols-2">
           {d.best_time && (
-            <div className="px-3.5 py-2.5">
-              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Clock className="h-[11px] w-[11px]" /> {tr({ en: 'Best time', hi: 'सबसे अच्छा समय', hinglish: 'Sabse accha samay' }, l)}
+            <div className="min-w-0 pr-3">
+              <p className="hm-caption flex items-center gap-1.5">
+                <span className="hm-dot" style={{ background: 'var(--hm-good)' }} />
+                <Clock className="h-[13px] w-[13px]" /> <span className="truncate">{tr(T.best, l)}</span>
               </p>
-              <p className="mt-1 text-[14px] font-bold tabular-nums" style={{ color: '#15803D' }}>{d.best_time.start}–{d.best_time.end}</p>
+              <p className="hm-num hm-fit mt-1 font-semibold" style={{ color: 'var(--hm-text)' }}>{fmtRange(d.best_time.start, d.best_time.end)}</p>
             </div>
           )}
           {d.caution_time && (
-            <div className={`px-3.5 py-2.5 ${d.best_time ? 'border-l border-border/60' : ''}`}>
-              <p className="truncate text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{d.caution_time.name}</p>
-              <p className="mt-1 text-[14px] font-bold tabular-nums" style={{ color: '#A16207' }}>{d.caution_time.start}–{d.caution_time.end}</p>
+            <div className={`min-w-0 ${d.best_time ? 'border-l pl-3' : ''}`} style={{ borderColor: 'var(--hm-border)' }}>
+              <p className="hm-caption flex items-center gap-1.5">
+                <span className="hm-dot" style={{ background: 'var(--hm-caution)' }} />
+                <span className="truncate">{d.caution_time.name}</span>
+              </p>
+              <p className="hm-num hm-fit mt-1 font-semibold" style={{ color: 'var(--hm-text)' }}>{fmtRange(d.caution_time.start, d.caution_time.end)}</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Right now — live, from the same windows. */}
-      {now?.headline && (
-        <Pressable to={`/right-now/${chartId}`} feedback="select"
-          className="mt-2.5 flex w-full items-center gap-2.5 rounded-2xl bg-card/75 px-3.5 py-2.5 text-left">
-          <verdict.Icon className="h-[18px] w-[18px] shrink-0" style={{ color: verdict.ink }} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              {tr({ en: 'Right now', hi: 'अभी', hinglish: 'Abhi' }, l)}{now.now ? ` · ${now.now}` : ''}
+      {now?.verdict && (
+        <>
+          <div className="hm-divider mt-4" />
+          <Pressable to={`/right-now/${chartId}`} feedback="select" className="hm-press -mx-2 mt-1 flex min-h-[56px] w-[calc(100%+16px)] items-center gap-3 px-2 py-2 text-left">
+            <span className="hm-dot hm-live" style={{ background: nowV.dot, ['--hm-pulse' as any]: nowV.dot }} />
+            <span className="min-w-0 flex-1">
+              <span className="hm-caption hm-num block">{tr(T.rightNow, l)}{now.now ? ` · ${fmtClock(now.now)}` : ''}</span>
+              <span className="mt-0.5 line-clamp-2 block text-[15px] font-medium leading-[21px]" style={{ color: 'var(--hm-text)' }}>{nowLine(now, l)}</span>
             </span>
-            <span className="mt-0.5 block text-[13.5px] font-semibold leading-snug">{nowLine(now, l)}</span>
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </Pressable>
+            <ChevronRight className="h-[18px] w-[18px] shrink-0" style={{ color: 'var(--hm-text-3)' }} />
+          </Pressable>
+        </>
       )}
 
-      <div className="mt-3 flex items-center justify-between">
-        <button type="button" onClick={() => { haptic.tap(); setOpen((o) => !o); }}
-          className="flex items-center gap-1 text-[12px] font-semibold text-muted-foreground">
-          {tr({ en: 'Why this?', hi: 'ऐसा क्यों?', hinglish: 'Aisa kyun?' }, l)}
-          <ChevronDown className={`h-[13px] w-[13px] transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
-        </button>
-        <Pressable to={`/daily/${chartId}`} subtle className="flex items-center gap-0.5 text-[12.5px] font-bold" style={{ color: t.ink }}>
-          {tr({ en: 'Full day', hi: 'पूरा दिन', hinglish: 'Poora din' }, l)} <ChevronRight className="h-4 w-4" />
-        </Pressable>
-      </div>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div key="why" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
-            <div className="mt-3 space-y-2.5 border-t border-border/60 pt-3">
-              {(d.factors ?? []).map((f: any) => (
-                <div key={f.code}>
-                  <p className="text-[12.5px] font-bold leading-tight">{f.title}</p>
-                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{f.detail}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.section>
+      <FooterLink to={`/daily/${chartId}`}>{tr(T.fullDay, l)}</FooterLink>
+      <WhySheet open={why} onClose={() => setWhy(false)} factors={d.factors ?? []} l={l} />
+    </section>
   );
 }
 
@@ -272,96 +356,95 @@ function AstroCard({ chartId }: { chartId: string }) {
       .catch(() => {});
   }, [chartId, l]);
   return (
-    <section className="m-card m-enter p-4" style={{ animationDelay: '0.05s' }}>
+    <section className="hm-card m-enter" style={{ animationDelay: '0.04s' }}>
       <div className="flex items-center gap-3">
-        <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-full text-white shadow-md"
-          style={{ background: 'linear-gradient(145deg, var(--color-accent), #B45309)' }}>
-          <Sparkles className="h-[22px] w-[22px]" />
-          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-card bg-emerald-500" />
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-white" style={{ background: 'var(--hm-accent)' }}>
+          <Sparkles className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <p className="text-[15.5px] font-bold leading-tight">{tr({ en: 'Your astrologer', hi: 'आपके ज्योतिषी', hinglish: 'Aapke jyotishi' }, l)}</p>
-          <p className="mt-0.5 text-[12px] font-semibold text-emerald-600">{tr({ en: 'Available now', hi: 'अभी उपलब्ध', hinglish: 'Abhi available' }, l)}</p>
+          <p className="hm-title">{tr(T.astro, l)}</p>
+          <p className="hm-caption mt-0.5 flex items-center gap-1.5">
+            <span className="hm-dot" style={{ background: 'var(--hm-good)' }} /> {tr(T.available, l)}
+          </p>
         </div>
       </div>
-      <p className="mt-3 text-[14px] leading-relaxed">
-        {fu ? fu.line : tr({
-          en: "Something on your mind? Love, work, money — I'll read your kundli and tell you plainly.",
-          hi: 'कुछ पूछना है? रिश्ता, नौकरी, पैसा — मैं आपकी कुंडली पढ़कर सीधा बताऊँगा।',
-          hinglish: 'Kuch poochna hai? Rishta, naukri, paisa — main aapki kundli padh ke seedha bataunga.',
-        }, l)}
-      </p>
-      <div className="mt-3.5 grid grid-cols-[1fr_auto] gap-2">
-        <Pressable to={fu ? `/chat/${chartId}?from=followup` : `/chat/${chartId}`} feedback="medium"
-          className="flex items-center justify-center gap-1.5 rounded-full bg-accent py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25">
-          <MessageCircle className="h-[17px] w-[17px]" strokeWidth={2.4} />
-          {tr({ en: 'Talk now', hi: 'बात करें', hinglish: 'Baat karein' }, l)}
-        </Pressable>
-        <Pressable to={`/chat/${chartId}?from=rishta`} feedback="tap"
-          className="flex items-center gap-1.5 rounded-full border border-border px-4 text-[13px] font-bold">
-          <HeartHandshake className="h-[16px] w-[16px] text-accent" />
-          {tr({ en: 'About someone', hi: 'किसी के बारे में', hinglish: 'Kisi ke baare mein' }, l)}
-        </Pressable>
-      </div>
+      <p className="hm-body mt-3">{fu ? fu.line : tr(T.astroLine, l)}</p>
+      <div className="hm-divider mt-4" />
+      <Pressable to={`/chat/${chartId}?from=rishta`} feedback="tap" className="hm-press -mx-2 mt-1 flex min-h-[48px] w-[calc(100%+16px)] items-center gap-3 px-2 text-left">
+        <HeartHandshake className="h-[18px] w-[18px] shrink-0" style={{ color: 'var(--hm-accent)' }} />
+        <span className="hm-body min-w-0 flex-1 font-medium">{tr(T.about, l)}</span>
+        <ChevronRight className="h-[18px] w-[18px] shrink-0" style={{ color: 'var(--hm-text-3)' }} />
+      </Pressable>
+      <Pressable to={fu ? `/chat/${chartId}?from=followup` : `/chat/${chartId}`} feedback="medium"
+        className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[14px] text-[15px] font-semibold text-white"
+        style={{ background: 'var(--hm-accent-strong)' }}>
+        <MessageCircle className="h-[18px] w-[18px]" /> {tr(T.talk, l)}
+      </Pressable>
     </section>
   );
 }
 
-/** What is coming — tomorrow, and the next vrat and festivals. */
-function AheadCard({ chartId }: { chartId: string }) {
+const KIND_ICON: Record<string, any> = { moon: Moon, festival: Flame, sankranti: Sun, month: CalendarDays, vrat: Sparkles };
+
+/** What is coming — the next vrat and festivals, tomorrow marked. */
+function ComingUpCard({ chartId }: { chartId: string }) {
   const l = lang3();
   const { data } = useCachedFetch<any>(`/api/chart/${chartId}/day-signals/upcoming?days=14&lang=${l}`);
-  if (!data) return <section className="m-card p-4"><div className="space-y-2.5"><div className="skeleton h-3 w-20" /><div className="skeleton h-4 w-full" /><div className="skeleton h-4 w-2/3" /></div></section>;
+  if (!data) {
+    return (
+      <section className="hm-card" aria-hidden>
+        <div className="skeleton h-3 w-24" />
+        {[0, 1, 2].map((i) => <div key={i} className="mt-4 flex items-center gap-3"><div className="skeleton h-12 w-11 rounded-xl" /><div className="flex-1 space-y-2"><div className="skeleton h-4 w-2/3" /><div className="skeleton h-3 w-1/3" /></div></div>)}
+      </section>
+    );
+  }
   const days: any[] = Array.isArray(data.days) ? data.days : [];
-  const tomorrow = days[1];
-  const fests = days.slice(1).filter((d) => d?.special).slice(0, 3);
-  const fmt = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale(l), { weekday: 'short', day: 'numeric', month: 'short' });
+  const tomorrow = days[1]?.date;
+  const rows = days.slice(1).filter((d) => d?.special).slice(0, 3);
   return (
-    <section className="m-card m-enter overflow-hidden" style={{ animationDelay: '0.1s' }}>
-      <h3 className="px-4 pt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-        {tr({ en: 'Coming up', hi: 'आगे क्या', hinglish: 'Aage kya' }, l)}
-      </h3>
-      {/* Tomorrow's mood, its vrat if any, and its best window. Not the day's
-          sentence — the engine writes every day as "aaj", which under a
-          "Tomorrow" heading read as a mistake. */}
-      {tomorrow && (
-        <div className="px-4 pb-3.5 pt-2">
-          <p className="text-[12px] font-bold text-muted-foreground">{tr({ en: 'Tomorrow', hi: 'कल', hinglish: 'Kal' }, l)}</p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <span className="rounded-full px-2.5 py-1 text-[12px] font-bold"
-              style={{ background: `${(TONE[tomorrow.tone as keyof typeof TONE] ?? TONE.advice).tint}22`, color: (TONE[tomorrow.tone as keyof typeof TONE] ?? TONE.advice).ink }}>
-              {tomorrow.label}
-            </span>
-            {tomorrow.special && tomorrow.special.label !== tomorrow.label && (
-              <span className="rounded-full bg-accent/12 px-2.5 py-1 text-[12px] font-bold text-accent">{tomorrow.special.label}</span>
-            )}
-          </div>
-          {tomorrow.best_time && (
-            <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-              {tr({ en: 'Best time', hi: 'सबसे अच्छा समय', hinglish: 'Sabse accha samay' }, l)}:{' '}
-              <span className="font-bold tabular-nums text-foreground">{tomorrow.best_time.start}–{tomorrow.best_time.end}</span>
-            </p>
-          )}
-        </div>
-      )}
-      {fests.length > 0 && (
-        <div className="border-t border-border/70 px-4 py-3.5">
-          <p className="text-[12px] font-bold text-muted-foreground">
-            {tr({ en: 'Vrat & festivals ahead', hi: 'आने वाले व्रत और त्योहार', hinglish: 'Aane wale vrat aur tyohar' }, l)}
-          </p>
-          <ul className="mt-2 space-y-2">
-            {fests.map((f) => (
-              <li key={f.date} className="flex items-center justify-between gap-3 text-[13.5px]">
-                <span className="min-w-0 truncate font-semibold">{f.special.label}</span>
-                <span className="shrink-0 text-[12.5px] text-muted-foreground">{fmt(f.date)}</span>
+    <section className="hm-card m-enter" style={{ animationDelay: '0.08s' }}>
+      <p className="hm-eyebrow">{tr(T.coming, l)}</p>
+      {rows.length === 0 ? (
+        <p className="hm-caption mt-3">{tr(T.none, l)}</p>
+      ) : (
+        <ul className="mt-3">
+          {rows.map((r, i) => {
+            const dt = new Date(`${r.date}T00:00:00`);
+            const Icon = KIND_ICON[r.special.kind] ?? Sparkles;
+            return (
+              <li key={r.date}>
+                {i > 0 && <div className="hm-divider my-3" />}
+                <div className="flex items-center gap-3">
+                  <span className="flex h-12 w-11 shrink-0 flex-col items-center justify-center rounded-xl" style={{ background: 'var(--hm-chip)' }}>
+                    <span className="text-[11px] font-semibold uppercase leading-none" style={{ color: 'var(--hm-text-2)' }}>
+                      {dt.toLocaleDateString(locale(l), { weekday: 'short' })}
+                    </span>
+                    <span className="hm-num mt-1 text-[18px] font-semibold leading-none" style={{ color: 'var(--hm-text)' }}>{dt.getDate()}</span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-[15px] font-semibold" style={{ color: 'var(--hm-text)' }}>{r.special.label}</span>
+                      {r.date === tomorrow && (
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: 'var(--hm-neutral-bg)', color: 'var(--hm-neutral-ink)' }}>
+                          {tr(T.tomorrow, l)}
+                        </span>
+                      )}
+                    </span>
+                    {r.best_time && (
+                      <span className="hm-caption mt-0.5 flex items-center gap-1" aria-label={`${tr(T.best, l)} ${fmtRange(r.best_time.start, r.best_time.end)}`}>
+                        <Clock className="h-[12px] w-[12px] shrink-0" />
+                        <span className="hm-num">{fmtRange(r.best_time.start, r.best_time.end)}</span>
+                      </span>
+                    )}
+                  </span>
+                  <Icon className="h-[18px] w-[18px] shrink-0" style={{ color: 'var(--hm-text-3)' }} aria-hidden />
+                </div>
               </li>
-            ))}
-          </ul>
-        </div>
+            );
+          })}
+        </ul>
       )}
-      <Pressable to="/panchang" subtle className="flex items-center justify-between border-t border-border/70 px-4 py-3 text-[13px] font-bold text-accent">
-        {tr({ en: 'Full panchang', hi: 'पूरा पंचांग', hinglish: 'Poora panchang' }, l)} <ChevronRight className="h-4 w-4" />
-      </Pressable>
+      <FooterLink to="/panchang">{tr(T.panchang, l)}</FooterLink>
     </section>
   );
 }
@@ -375,25 +458,27 @@ function ChartStrip({ chartId }: { chartId: string }) {
   const till = data?.dashas?.current_period?.to
     ? new Date(`${String(data.dashas.current_period.to).slice(0, 10)}T00:00:00`).toLocaleDateString(locale(l), { month: 'short', year: 'numeric' })
     : '';
-  const vals = data
-    ? [data.ascendant?.sign ?? '—', moon ?? '—',
-       data.dashas?.current_mahadasha ? `${data.dashas.current_mahadasha}–${data.dashas.current_antardasha}` : '—']
-    : null;
+  const dasha = data?.dashas?.current_mahadasha ? `${data.dashas.current_mahadasha} – ${data.dashas.current_antardasha}` : undefined;
+  const cols = [
+    { Icon: Sunrise, k: K[0], v: data?.ascendant?.sign as string | undefined, sub: '' },
+    { Icon: Moon, k: K[1], v: moon as string | undefined, sub: '' },
+    { Icon: Clock, k: K[2], v: dasha, sub: till ? tr({ en: `till ${till}`, hi: `${till} तक`, hinglish: `${till} tak` }, l) : '' },
+  ];
   return (
-    <Pressable to={`/dashboard/${chartId}`} className="m-card m-enter flex w-full items-stretch divide-x divide-border overflow-hidden text-left" style={{ animationDelay: '0.14s' }}>
-      {K.map((k, i) => (
-        <span key={k} className="min-w-0 flex-1 px-3 py-3 text-center">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{k}</span>
-          {vals
-            ? <span className="mt-0.5 block truncate text-[13.5px] font-bold">{vals[i]}</span>
-            : <span className="skeleton mx-auto mt-1 block h-4 w-14" />}
-          {i === 2 && till && (
-            <span className="mt-0.5 block text-[10.5px] text-muted-foreground">
-              {tr({ en: `till ${till}`, hi: `${till} तक`, hinglish: `${till} tak` }, l)}
-            </span>
-          )}
-        </span>
-      ))}
+    <Pressable to={`/dashboard/${chartId}`} className="hm-card hm-press m-enter relative block w-full text-left" style={{ animationDelay: '0.12s', padding: 0 }}>
+      <span className="grid grid-cols-3">
+        {cols.map((c, i) => (
+          <span key={c.k} className={`min-w-0 px-3.5 py-4 ${i ? 'border-l' : ''}`} style={{ borderColor: 'var(--hm-border)' }}>
+            <c.Icon className="h-4 w-4" style={{ color: 'var(--hm-accent)' }} aria-hidden />
+            <span className="mt-2 block text-[12px] font-medium" style={{ color: 'var(--hm-text-2)' }}>{c.k}</span>
+            {data
+              ? <span className={`hm-fit-sm mt-0.5 block font-semibold ${i === 2 ? 'break-words' : 'truncate'}`} style={{ color: 'var(--hm-text)' }}>{c.v ?? '—'}</span>
+              : <span className="skeleton mt-1 block h-4 w-14" />}
+            {c.sub && <span className="hm-num mt-0.5 block text-[12px]" style={{ color: 'var(--hm-text-2)' }}>{c.sub}</span>}
+          </span>
+        ))}
+      </span>
+      <ChevronRight className="absolute right-2.5 top-3 h-4 w-4" style={{ color: 'var(--hm-text-3)' }} aria-hidden />
     </Pressable>
   );
 }
@@ -415,34 +500,32 @@ export default function HomePage() {
 
   const primary = pickPrimary(profiles, user?.name);
 
-  // Loading: the shape of the page, not a flash of "create your first kundli".
+  // Loading: the shape of the page, never a flash of an empty state.
   if (profiles === null) {
     return (
-      <div className="space-y-4 pt-2 pb-10" aria-hidden>
-        <div className="space-y-2 px-1"><div className="skeleton h-3 w-44" /><div className="skeleton h-8 w-56" /></div>
-        <div className="skeleton h-56 w-full rounded-[26px]" />
-        <div className="skeleton h-36 w-full" />
+      <div className="hm mx-auto w-full max-w-[720px] space-y-4 pt-2 pb-10" aria-hidden>
+        <div className="space-y-2 px-1"><div className="skeleton h-3 w-40" /><div className="skeleton h-8 w-56" /></div>
+        <TodaySkeleton />
+        <div className="hm-card"><div className="skeleton h-11 w-40" /><div className="skeleton mt-4 h-4 w-full" /><div className="skeleton mt-5 h-12 w-full" /></div>
       </div>
     );
   }
 
   if (!primary) {
     return (
-      <div className="space-y-5 pt-2 pb-10">
-        <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
+      <div className="hm mx-auto w-full max-w-[720px] space-y-5 pt-2 pb-10">
+        <section className="hm-card m-enter relative overflow-hidden">
           <ZodiacRing />
           <div className="relative z-10">
-            <p className="text-[13px] font-medium text-muted-foreground">
-              {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
-            </p>
-            <h2 className="mt-1 max-w-[75%] text-[26px] font-bold leading-[1.2] tracking-tight">
-              Your stars,<br /><span className="text-accent">precisely read</span>
+            <p className="hm-eyebrow">{greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}</p>
+            <h2 className="hm-serif mt-2 max-w-[75%] text-[28px] font-semibold leading-[1.15]" style={{ color: 'var(--hm-text)' }}>
+              Your stars, precisely read
             </h2>
-            <p className="mt-2 max-w-[78%] text-[13px] leading-relaxed text-muted-foreground">
+            <p className="hm-body mt-2 max-w-[80%]" style={{ color: 'var(--hm-text-2)' }}>
               Sidereal Lahiri charts, dashas and guidance — calculated on your exact birth moment.
             </p>
             <Pressable to="/create-chart" feedback="medium"
-              className="mt-5 inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25">
+              className="mt-5 inline-flex h-12 items-center gap-2 rounded-[14px] px-5 text-[15px] font-semibold text-white" style={{ background: 'var(--hm-accent-strong)' }}>
               <Plus className="h-[18px] w-[18px]" strokeWidth={2.6} /> Create Your First Kundli
             </Pressable>
           </div>
@@ -452,11 +535,11 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-4 pt-1 pb-10">
+    <div className="hm mx-auto w-full max-w-[720px] space-y-4 pt-1 pb-10">
       <HomeHeader chartId={primary.id} name={primary.name.split(' ')[0]} />
-      <TodayHero chartId={primary.id} />
+      <TodayCard chartId={primary.id} />
       <AstroCard chartId={primary.id} />
-      <AheadCard chartId={primary.id} />
+      <ComingUpCard chartId={primary.id} />
       <ChartStrip chartId={primary.id} />
     </div>
   );

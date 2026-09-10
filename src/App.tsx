@@ -345,21 +345,15 @@ function Shell() {
       >
         <OfflineBanner />
         <AnnouncementBanner />
-        <AnimatePresence mode="popLayout" initial={false}>
+        {/* "wait": the old screen leaves before the new one arrives, so the
+            two never overlap. Both legs are short tweens (≤150ms) — a spring
+            here read as the app lagging behind the tap. */}
+        <AnimatePresence mode="wait" initial={false}>
           <motion.main
             key={location.pathname}
-            // No `scale` on purpose: animating it forces a relayout every frame,
-            // which shows as jank on weak GPUs. A translate + fade composites on
-            // the GPU alone. On low-power devices we shorten the slide and use a
-            // quick tween instead of a spring so the frame budget is easy to hit.
-            initial={{ opacity: 0, x: (back ? -1 : 1) * (isLowPowerDevice ? 24 : 64) }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: (back ? 1 : -1) * (isLowPowerDevice ? 24 : 64) }}
-            transition={
-              isLowPowerDevice
-                ? { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
-                : { type: 'spring', stiffness: 420, damping: 38, mass: 0.9 }
-            }
+            initial={{ opacity: 0, x: (back ? -1 : 1) * (isLowPowerDevice ? 8 : 14) }}
+            animate={{ opacity: 1, x: 0, transition: { duration: 0.14, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ opacity: 0, transition: { duration: 0.07, ease: 'easeOut' } }}
             className="app-content px-4 pb-6"
           >
             <AppRoutes location={location} />
