@@ -90,7 +90,9 @@ export default function DayBanner({ chartId }: { chartId: string }) {
       </section>
     ) : null;
   }
-  const t = TONE[d.tone];
+  // An unknown tone must not take Home down with it — Home is the chat's
+  // front door now. Fall back to the neutral look.
+  const t = TONE[d.tone as keyof typeof TONE] ?? TONE.advice;
   const { Icon } = t;
 
   return (
