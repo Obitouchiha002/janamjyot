@@ -2241,6 +2241,7 @@
     function open(id){
       plan = PLANS.filter(function(p){ return p.id===id; })[0];
       if(!plan) return;
+      signInOnly = false;   // they chose a pack — after sign-in, carry on to pay
       banner('');
       $('buyTitle').textContent = plan.id==='trial' ? 'Start for ₹1' : plan.name + ' pack';
       $('pdName').textContent = plan.name;
@@ -2373,8 +2374,15 @@
     /* Header sign-in reuses the same modal as a purchase: signing in there is
        signing in everywhere on this page (and, since it is the same origin and
        the same token key, in the web app too). */
+    /* Signing in and buying shared one path: the header's Sign in reused the
+       purchase sheet with the ₹1 trial pre-selected, so the moment someone
+       verified their email they were looking at "Pay ₹1". To a first-time
+       visitor that reads as "we logged you in so we could charge you". A plain
+       sign-in now ends in a welcome; only choosing a pack leads to payment. */
+    var signInOnly = false;
     function openSignIn(){
       plan = PLANS[0];
+      signInOnly = true;
       $('buyTitle').textContent = 'Sign in';
       banner('');
       step('buyStepEmail');
@@ -2459,7 +2467,21 @@
       if(code.length!==6){ banner('Enter the 6-digit code from your email.'); return; }
       banner(''); var btn=this; busy(btn,true,'Verifying…');
       api('/api/auth/otp/verify',{method:'POST',body:JSON.stringify({email:email,code:code})})
-        .then(function(j){ setToken(j.token); refreshChip(); renderAccount(); loadMe(); })
+        .then(function(j){
+          setToken(j.token); refreshChip(); renderAccount();
+          if(signInOnly){
+            var first = String((j.user && j.user.name) || '').split(' ')[0];
+            $('buyTitle').textContent = 'Welcome' + (first ? ', ' + first : '') + ' 🙏';
+            $('buyDoneMsg').innerHTML =
+              'You’re signed in. Your kundli, credits and purchases now follow you here and in the app.' +
+              '<br><br>Everyday astrology — daily guidance, panchang, muhurat — is free. ' +
+              'Pay only if you want the deep readings.';
+            $('buyReceipts').innerHTML = '';
+            step('buyStepDone');
+            return;
+          }
+          loadMe();
+        })
         .catch(function(e){ banner(e.message); })
         .finally(function(){ busy(btn,false); });
     };
