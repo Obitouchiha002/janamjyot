@@ -156,9 +156,6 @@
     <!-- PAY -->
     <div id="payCard" hidden>
       <button class="btn" id="pay">Pay <span id="payAmt"></span></button>
-      <!-- Razorpay files "enter UPI ID" under a row most people never open, so
-           it looked like QR was the only way. This goes straight to it. -->
-      <button class="btn sec" id="payUpi" style="margin-top:10px">Pay with UPI ID</button>
       <div class="methods">
         <span>UPI</span><span>Cards</span><span>Net banking</span><span>Wallets</span>
       </div>
@@ -223,7 +220,6 @@
         $('timerBox').innerHTML = '<span>This checkout expired — nothing was charged.</span>';
         $('pay').disabled = true;
         $('pay').textContent = 'Expired — start again';
-        var upiBtn = $('payUpi'); if(upiBtn) upiBtn.hidden = true;
         $('pay').onclick = function(){ location.reload(); };
         $('pay').disabled = false;
       }
@@ -272,8 +268,12 @@
       /* Card 4111… is a Visa test BIN that reads as international, and the
          account does not take international cards — it fails at the last step.
          UPI collect is the test route that actually completes. */
+      // UPI collect (typing an ID) is not offered on this account, so the test
+      // UPI ID this used to recommend has nowhere to be typed. Test-mode
+      // netbanking always shows a simulated bank page with Success and Failure.
       $('testNote').innerHTML = '<b>Test mode</b> — no real money is charged. ' +
-        'Pick <b>UPI</b> and enter <b>success@razorpay</b> (use <b>failure@razorpay</b> to test a failed payment).';
+        'Choose <b>Netbanking</b>, pick any bank, then press <b>Success</b> on the test page ' +
+        '(or <b>Failure</b> to see a declined payment).';
       $('testNote').hidden = false;
     }
 
@@ -392,15 +392,15 @@
     })();
   }
 
-  /* Two ways in, one order path. "Pay" opens every method; "Pay with UPI ID"
-     opens Razorpay with ONLY the collect flow, so the UPI-ID box is the first
-     and only thing on screen. People could not find it before: Razorpay puts it
-     behind a row under the QR, and a checkout where the method you want seems
-     not to exist is a checkout people leave. */
-  function startPay(mode, btn){
+  /* One way in. A "Pay with UPI ID" button was tried and taken out again: it
+     asked Razorpay for the UPI collect flow alone, and Razorpay answered with a
+     QR — collect (typing a UPI ID to receive a request) is being withdrawn under
+     NPCI's rules and is not offered on this account. A button that promises a
+     UPI-ID box and then shows a QR is exactly what makes a checkout feel fake.
+     On a phone Razorpay offers the UPI apps directly, which is how people pay. */
+  function startPay(btn){
     if(expired) return;
     var label = btn.textContent;
-    var upiOnly = mode === 'upi_id';
     showErr(''); btn.disabled = true; btn.textContent = 'Starting…';
     var before = 0;
     api('/api/credits').catch(function(){ return {balance:0}; })
@@ -409,19 +409,14 @@
       .then(function(order){
         return loadRzp().then(function(){
           btn.disabled = false; btn.textContent = label;
-          var display = upiOnly
-            ? {
-                blocks: { upi: { name: 'Pay with your UPI ID',
-                                 instruments: [{ method: 'upi', flows: ['collect'] }] } },
-                sequence: ['block.upi'],
-                preferences: { show_default_blocks: false }
-              }
-            : {
-                blocks: { upi: { name: 'Pay using UPI',
-                                 instruments: [{ method: 'upi', flows: ['collect', 'qr', 'intent'] }] } },
-                sequence: ['block.upi'],
-                preferences: { show_default_blocks: true }
-              };
+          // UPI first, apps before QR: on a phone that means tapping GPay or
+          // PhonePe, which is how almost everyone pays now.
+          var display = {
+            blocks: { upi: { name: 'Pay using UPI',
+                             instruments: [{ method: 'upi', flows: ['intent', 'qr', 'collect'] }] } },
+            sequence: ['block.upi'],
+            preferences: { show_default_blocks: true }
+          };
           var rzp = new window.Razorpay({
             key: order.key_id, amount: order.amount, currency: order.currency || 'INR',
             order_id: order.order_id,
@@ -431,9 +426,7 @@
                one screen where a stranger decides whether to trust us. */
             image: location.origin + '/icon-512.png',
             theme: { color: '#C07A1E', backdrop_color: '#F7F5F0' },
-            prefill: upiOnly
-              ? { email: signedInEmail || '', method: 'upi' }
-              : { email: signedInEmail || '' },
+            prefill: { email: signedInEmail || '' },
             notes: { pack: packId },
             config: { display: display },
             handler: function(){ if(timerId) clearInterval(timerId); waitForCredits(before); },
@@ -446,8 +439,7 @@
       .catch(function(e){ btn.disabled=false; btn.textContent=label; showErr(e.message); });
   }
 
-  $('pay').onclick = function(){ startPay('all', this); };
-  $('payUpi').onclick = function(){ startPay('upi_id', this); };
+  $('pay').onclick = function(){ startPay(this); };
 
   $('backApp').onclick = function(){ location.href = '/'; };
 
