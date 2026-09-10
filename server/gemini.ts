@@ -639,6 +639,8 @@ export async function answerUniversal(args: {
   /** What the PERSON has confirmed about their life. Outranks the chart. */
   facts?: Record<string, string | number | boolean>;
   isFirst?: boolean;  // their very first question — it decides whether they stay
+  /** A linked person (Rishta): their calculated chart summary and the computed match. */
+  relation?: any;
 }): Promise<{ answer: string; reason: string; next: string[]; action?: string; facts?: Record<string, string | number> }> {
   const packet = buildChartPacket(args.chart, args.category, args.transit);
   /*
@@ -724,7 +726,11 @@ D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet, null, 2)}
 ${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
-The user asks: "${args.question}"
+${args.relation ? `
+THE OTHER PERSON in this question — ${args.relation.name || "they"} (${args.relation.relation}). Their chart and your compatibility were CALCULATED by the app, not guessed:
+${JSON.stringify(args.relation)}
+When the question is about them or the two of you, answer from BOTH charts and this match. Their thoughts and choices are their own — describe what the charts show about the bond and its timing, never claim to know what they secretly feel or will decide, and never promise that someone will come back.
+` : ""}The user asks: "${args.question}"
 
 ${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now
 whether this app knows them or is a horoscope column. PART 1 must contain at

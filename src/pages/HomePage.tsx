@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import {
   Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
@@ -10,6 +9,9 @@ import { useCachedFetch } from '@/lib/useCachedFetch';
 import DayBanner from '@/components/DayBanner';
 import TodayChip from '@/components/TodayChip';
 import { useAuth } from '@/auth';
+import { useNavigate } from 'react-router-dom';
+import { getLang } from '@/lib/prefs';
+import { Send } from 'lucide-react';
 
 /**
  * Rotating zodiac ring behind the hero. Pure SVG geometry — 12 house spokes and
@@ -202,6 +204,102 @@ function HeroGlance({ chartId }: { chartId: string }) {
   );
 }
 
+/**
+ * The first thing on Home: "what's on your mind?"
+ *
+ * People open an astrology app when something is weighing on them — a
+ * relationship, a job, money, today. Home used to lead with a tour of tools;
+ * now it leads with the question, and whatever they type goes straight into
+ * the chat. If they asked about their life before, it asks how that went.
+ */
+function ChatHero({ chartId, firstName }: { chartId: string; firstName: string }) {
+  const navigate = useNavigate();
+  const g = getLang();
+  const L = (g === 'hi' || g === 'hinglish' ? g : 'en') as 'en' | 'hi' | 'hinglish';
+  const [text, setText] = useState('');
+  const [fu, setFu] = useState<{ line: string; chips: string[] } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/chat/followup/${chartId}?lang=${L}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.followup && setFu(d.followup))
+      .catch(() => {});
+  }, [chartId, L]);
+
+  const ask = (q: string) => {
+    const v = q.trim();
+    if (v) navigate(`/chat/${chartId}?q=${encodeURIComponent(v)}`);
+  };
+
+  const T = {
+    title: { en: "What's on your mind?", hi: 'मन में क्या चल रहा है?', hinglish: 'Man mein kya chal raha hai?' },
+    sub: {
+      en: 'Love, work, money or today — ask anything. I read your real kundli and answer plainly.',
+      hi: 'रिश्ता, नौकरी, पैसा या आज का दिन — कुछ भी पूछिए। मैं आपकी असली कुंडली पढ़कर सीधा जवाब देता हूँ।',
+      hinglish: 'Rishta, naukri, paisa ya aaj ka din — kuch bhi poochiye. Main aapki asli kundli padh ke seedha jawab deta hoon.',
+    },
+    ph: { en: 'Type your question…', hi: 'अपना सवाल लिखिए…', hinglish: 'Apna sawaal likhiye…' },
+  };
+  const chips: Record<string, Array<[string, string, string]>> = {
+    en: [['💞', 'My relationship', 'rishta'], ['💼', 'When will my career settle?', ''], ['💰', 'How will money be this year?', ''], ['🌅', 'How is my day today?', '']],
+    hinglish: [['💞', 'Mera rishta', 'rishta'], ['💼', 'Meri career kab set hogi?', ''], ['💰', 'Is saal paisa kaisa rahega?', ''], ['🌅', 'Aaj mera din kaisa rahega?', '']],
+    hi: [['💞', 'मेरा रिश्ता', 'rishta'], ['💼', 'मेरा करियर कब सेट होगा?', ''], ['💰', 'इस साल पैसा कैसा रहेगा?', ''], ['🌅', 'आज मेरा दिन कैसा रहेगा?', '']],
+  };
+
+  return (
+    <div>
+      <h2 className="hero-title mt-1 text-[24px] font-bold leading-[1.2] tracking-tight">
+        <span className="text-accent">{firstName}</span>, {T.title[L].charAt(0).toLowerCase() + T.title[L].slice(1)}
+      </h2>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{T.sub[L]}</p>
+
+      {fu && (
+        <button
+          type="button"
+          onClick={() => navigate(`/chat/${chartId}?from=followup`)}
+          className="m-enter mt-3.5 block w-full rounded-2xl border border-accent/35 bg-accent/8 px-4 py-3 text-left text-[13.5px] font-semibold leading-snug"
+        >
+          💬 {fu.line}
+        </button>
+      )}
+
+      <form
+        className="mt-4 flex items-center gap-2 rounded-full border border-border bg-background/80 py-1.5 pl-4 pr-1.5 shadow-sm focus-within:border-accent"
+        onSubmit={(e) => { e.preventDefault(); ask(text); }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={T.ph[L]}
+          className="min-w-0 flex-1 bg-transparent text-[14.5px] outline-none"
+          enterKeyHint="send"
+        />
+        <button
+          type="submit"
+          aria-label="Ask"
+          disabled={!text.trim()}
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground disabled:opacity-40"
+        >
+          <Send className="h-[17px] w-[17px]" />
+        </button>
+      </form>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(chips[L] ?? chips.en).map(([emoji, label, kind]) => (
+          <Pressable
+            key={label}
+            onClick={() => (kind === 'rishta' ? navigate(`/chat/${chartId}?from=rishta`) : ask(label))}
+            feedback="tap"
+            className="rounded-full border border-border bg-background/70 px-3 py-2 text-[12.5px] font-semibold"
+          >
+            {emoji} {label}
+          </Pressable>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<any[] | null>(profilesCache);
@@ -220,10 +318,7 @@ export default function HomePage() {
   const primary = profiles?.[0];
 
   return (
-    // pb clears the fixed "Talk to Astrologer" FAB (bottom ≈ sab+76px) so the
-    // last card — and the day's "all calculated" note — never sits trapped
-    // behind it.
-    <div className="space-y-7 pt-2 pb-32">
+    <div className="space-y-7 pt-2 pb-10">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
         <ZodiacRing />
@@ -240,36 +335,18 @@ export default function HomePage() {
                     the glance panel, so it's hidden here. */}
                 <span className="chip-mobile"><TodayChip chartId={primary.id} /></span>
               </div>
-              <h2 className="hero-title mt-1 text-[25px] font-bold leading-[1.2] tracking-tight max-w-[80%]">
-                <span className="text-accent">{primary.name.split(' ')[0]}</span>&apos;s stars,<br />
-                ready for today
-              </h2>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground max-w-[80%]">
-                Your kundli is saved. Open today&apos;s personalised guidance.
-              </p>
-              <div className="mt-5 flex flex-wrap items-center gap-2.5">
-                <Pressable
-                  to={`/daily/${primary.id}`}
-                  feedback="medium"
-                  className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
-                >
-                  <Sparkles className="w-[17px] h-[17px]" /> Today&apos;s Guidance
+              <ChatHero chartId={primary.id} firstName={primary.name.split(' ')[0]} />
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] font-semibold text-muted-foreground">
+                <Pressable to={`/daily/${primary.id}`} subtle className="inline-flex items-center gap-1">
+                  <Sparkles className="h-[14px] w-[14px]" /> Today&apos;s Guidance
                 </Pressable>
-                <Pressable
-                  to={`/dashboard/${primary.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-3 text-[13.5px] font-bold"
-                >
+                <Pressable to={`/dashboard/${primary.id}`} subtle className="inline-flex items-center gap-1">
                   Open Kundli
                 </Pressable>
+                <Pressable to="/create-chart" subtle className="hero-newkundli inline-flex items-center gap-1">
+                  <Plus className="h-[14px] w-[14px]" strokeWidth={2.6} /> New Kundli
+                </Pressable>
               </div>
-              {/* Redundant on desktop (the navbar owns "New Kundli") — phone only. */}
-              <Pressable
-                to="/create-chart"
-                subtle
-                className="hero-newkundli mt-3.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-muted-foreground"
-              >
-                <Plus className="w-[14px] h-[14px]" strokeWidth={2.6} /> New Kundli
-              </Pressable>
             </div>
             <HeroGlance chartId={primary.id} />
           </div>
@@ -390,26 +467,6 @@ export default function HomePage() {
           ))}
         </div>
       </section>
-
-      {/* ── Floating "Talk to Astrologer" ────────────────────────────────
-          Rendered through a PORTAL to <body>. The screen it lives on sits
-          inside a framer-motion element that animates `transform`, and a
-          transformed ancestor becomes the containing block for
-          `position: fixed` — so without the portal the button anchored to the
-          page instead of the viewport and drifted over the cards. */}
-      {primary && createPortal(
-        <Pressable
-          to={`/chat/${primary.id}`}
-          feedback="medium"
-          aria-label="Talk to an Astrologer"
-          className="home-fab fixed right-4 z-40 flex items-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-xl shadow-accent/35"
-          style={{ bottom: 'calc(var(--sab) + 76px)' }}
-        >
-          <MessageCircleQuestion className="h-[19px] w-[19px]" strokeWidth={2.3} />
-          Talk to Astrologer
-        </Pressable>,
-        document.body,
-      )}
 
       {/* ── Deep links for the primary chart ─────────────────────────────── */}
       {primary && (

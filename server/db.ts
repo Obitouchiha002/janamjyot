@@ -593,7 +593,7 @@ export const PLANS: Record<PlanId, Quotas> = {
   // judge the app, not enough to live in it. Daily readings stay per-day and
   // generous, because they are the habit worth building and cost us almost
   // nothing to serve.
-  free: { chart: 2, report: 2, ask: 15, match: 3, daily: 40 },
+  free: { chart: 2, report: 2, ask: 5, match: 3, daily: 40 },
   pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
   unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
 };
@@ -844,6 +844,21 @@ export async function mergeChartFacts(chartId: string, patch: ChartFacts): Promi
   (fileData as any).chart_facts[chartId] = merged;
   saveFile();
   return merged;
+}
+
+/** Forget facts by key — used when a linked person (Rishta) is unlinked. */
+export async function removeChartFacts(chartId: string, keys: string[]): Promise<void> {
+  if (USE_PG) {
+    await pool!.query(
+      `UPDATE chart_facts SET facts = facts - $2::text[], updated_at = now() WHERE chart_id = $1`,
+      [chartId, keys],
+    );
+    return;
+  }
+  const cur = (fileData as any).chart_facts?.[chartId];
+  if (!cur) return;
+  for (const k of keys) delete cur[k];
+  saveFile();
 }
 
 export async function saveChatMemory(chartId: string, notes: string): Promise<void> {

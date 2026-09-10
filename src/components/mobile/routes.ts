@@ -7,7 +7,7 @@
  * when to show the back chevron.
  */
 import {
-  Home, Users, CalendarDays, Wand2, LayoutGrid,
+  Home, Users, MessageCircle, Wand2, LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -15,13 +15,16 @@ export interface TabDef {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** The raised middle tab — the chat, which is the app's centre. */
+  center?: boolean;
 }
 
 /** The five root destinations. Everything else is a pushed screen. */
 export const TABS: TabDef[] = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/profiles', label: 'Kundli', icon: Users },
-  { to: '/panchang', label: 'Panchang', icon: CalendarDays },
+  // Panchang stays one tap away from Home (quick actions + the day chip) and More.
+  { to: '/chat', label: 'Chat', icon: MessageCircle, center: true },
   { to: '/tools', label: 'Tools', icon: Wand2 },
   { to: '/more', label: 'More', icon: LayoutGrid },
 ];
@@ -55,6 +58,7 @@ const TITLES: Array<[RegExp, string]> = [
   [/^\/reports\/[^/]+\/[^/]+$/, 'Report'],
   [/^\/reports\//, 'Reports'],
   [/^\/report\//, 'Life Report'],
+  [/^\/chat$/, 'Jyotish'],
   [/^\/chat\//, 'Jyotish'],
   [/^\/match$/, 'Kundli Matching'],
   [/^\/muhurat$/, 'Muhurat'],
@@ -103,7 +107,9 @@ export function hidesTabBar(pathname: string): boolean {
  * the screen this one sits under, rather than the app's front door.
  */
 export function parentOf(pathname: string): string {
-  const owner = pathname.match(/^\/(?:chat|report|timeline|daily|right-now|reports)\/([^/]+)/)?.[1]
+  // The chat is the app's centre, so it sits under Home, not under a kundli.
+  if (/^\/chat\//.test(pathname)) return "/";
+  const owner = pathname.match(/^\/(?:report|timeline|daily|right-now|reports)\/([^/]+)/)?.[1]
     ?? pathname.match(/^\/chart\/([^/]+)\//)?.[1];
   if (owner) return `/dashboard/${owner}`;
   if (/^\/dashboard\//.test(pathname)) return "/profiles";

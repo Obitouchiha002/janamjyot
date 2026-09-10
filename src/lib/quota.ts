@@ -45,7 +45,9 @@ function installQuotaInterceptor() {
     // the same sheet answers both, so it must not slip through as a raw error.
     if (res.status === 429 || res.status === 402) {
       const url = typeof input === "string" ? input : input?.url ?? "";
-      if (typeof url === "string" && url.includes("/api")) {
+      // `quota=inline`: the calling screen answers this refusal itself (the
+      // chat does, inside the conversation), so the sheet must not stack on it.
+      if (typeof url === "string" && url.includes("/api") && !url.includes("quota=inline")) {
         res
           .clone()
           .json()

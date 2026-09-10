@@ -518,3 +518,14 @@ html.low-power .spin-slow { animation: none !important; }
 html.low-power .m-card { box-shadow: none; }
 html.low-power [style*="blur"],
 html.low-power .skeleton::after { will-change: auto; }
+
+/* The centre tab is the app's heart — the chat — so it sits raised and filled.
+   Specificity beats the icon's w-/h- utilities without !important. */
+.tab-item.tab-center .tab-ico {
+  width: 46px; height: 46px; padding: 12px; margin-top: -20px;
+  border-radius: 999px;
+  background: var(--color-accent); color: var(--color-accent-foreground);
+  box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.35);
+}
+.tab-item.tab-center.active::before { display: none; }
+.tab-item.tab-center span { color: var(--color-accent); font-weight: 700; }

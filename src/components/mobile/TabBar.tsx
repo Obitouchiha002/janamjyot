@@ -20,12 +20,12 @@ export default function TabBar() {
 
   return (
     <nav className="app-tabbar">
-      {TABS.map(({ to, label, icon: Icon }) => {
+      {TABS.map(({ to, label, icon: Icon, center }) => {
         const active = pathname === to;
         return (
           <button
             key={to}
-            className={`tab-item ${active ? 'active' : ''}`}
+            className={`tab-item ${active ? 'active' : ''} ${center ? 'tab-center' : ''}`}
             aria-label={label}
             aria-current={active ? 'page' : undefined}
             onPointerDown={(e) => { if (e.pointerType !== 'mouse') haptic.select(); }}

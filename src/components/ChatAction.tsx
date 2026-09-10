@@ -55,7 +55,7 @@ const SIMPLE: Record<string, { label: Tri; to: (c: string) => string }> = {
   marriage:    { label: { en: "Open my marriage report",  hi: "मेरी विवाह रिपोर्ट खोलें",    hinglish: "Meri marriage report kholein" }, to: (c) => `/reports/${c}/marriage` },
   // A chart holds one life. When the question is about someone else's, saying
   // so is only half an answer — this is the other half.
-  add_person:  { label: { en: "Make their kundli",         hi: "उनकी कुंडली बनाएँ",           hinglish: "Unki kundli banayein" },        to: () => `/create-chart` },
+  add_person:  { label: { en: "Make their kundli",         hi: "उनकी कुंडली बनाएँ",           hinglish: "Unki kundli banayein" },        to: (c) => `/create-chart?return=${encodeURIComponent(`/chat/${c}`)}` },
 };
 
 export default function ChatAction({ action, chartId }: { action: string; chartId: string }) {

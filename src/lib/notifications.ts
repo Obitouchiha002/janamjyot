@@ -26,9 +26,10 @@ export interface NotifPrefs {
   remedy: boolean;
   monthly: boolean;
   dasha: boolean;
+  followup: boolean; // "how did it go?" the day after a topical question
 }
 
-const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, night: true, alert: true, remedy: false, monthly: true, dasha: true };
+const DEFAULTS: NotifPrefs = { daily: true, dailyHour: 8, dailyMin: 0, night: true, alert: true, remedy: false, monthly: true, dasha: true, followup: true };
 
 // Stable ids so re-scheduling replaces (never duplicates) each reminder.
 const ID = { daily: 1001, remedy: 1002, monthly: 1003, dasha: 1004, window: 1005 };
@@ -237,7 +238,8 @@ async function scheduleDayPlanQueue(
         title: `☀️ ${greet}aaj ka din`.trim(),
         body: p.summary.join("\n"),
         schedule: { at: morning, allowWhileIdle: true },
-        extra: { route: route(`/daily/${chartId}`) },
+        // Into the chat, where the day can be asked about — not a page to read.
+        extra: { route: route(`/chat/${chartId}?from=today`) },
       });
     }
     // 🌙 night recap
@@ -249,7 +251,7 @@ async function scheduleDayPlanQueue(
           title: `🌙 ${greet}aaj ka din kaisa tha`.trim(),
           body: p.nightRecap,
           schedule: { at: night, allowWhileIdle: true },
-          extra: { route: route(`/daily/${chartId}`) },
+          extra: { route: route(`/chat/${chartId}?from=night`) },
         });
       }
     }
@@ -274,5 +276,58 @@ async function scheduleDayPlanQueue(
   if (!notifications.length) return;
   try {
     await LocalNotifications.schedule({ notifications });
+  } catch { /* ignore */ }
+}
+
+/*
+ * "Kal aapne naukri ke baare mein poocha tha — kya hua?"
+ *
+ * The next evening, after a question about their life. It is the app asking,
+ * in the chat's own voice — never dressed up as a person — and it uses one
+ * slot, so a new question replaces the old nudge instead of stacking them.
+ * Kept out of the fixed-id list, which is cleared on every launch.
+ */
+const FOLLOWUP_ID = 1006;
+const FU_TOPIC: Record<string, Record<string, string>> = {
+  career: { en: "your work", hi: "नौकरी", hinglish: "naukri" },
+  wealth: { en: "money", hi: "पैसे", hinglish: "paise" },
+  health: { en: "your health", hi: "सेहत", hinglish: "sehat" },
+  marriage: { en: "marriage", hi: "शादी", hinglish: "shaadi" },
+  relationship: { en: "your relationship", hi: "रिश्ते", hinglish: "rishte" },
+  business: { en: "your business", hi: "बिज़नेस", hinglish: "business" },
+  foreign: { en: "going abroad", hi: "विदेश", hinglish: "videsh" },
+  education: { en: "your studies", hi: "पढ़ाई", hinglish: "padhai" },
+};
+
+export async function scheduleFollowUp(o: { chartId: string; topic: string; name?: string }): Promise<void> {
+  if (!isNative) return;
+  const prefs = getNotifPrefs();
+  if (!prefs.daily || !prefs.followup) return;
+  const t = FU_TOPIC[o.topic];
+  if (!t) return;
+  const g = getLang();
+  const L = g === "hi" || g === "hinglish" ? g : "en";
+  const at = new Date();
+  at.setDate(at.getDate() + 1);
+  at.setHours(19, 0, 0, 0);
+  const who = o.name ? (L === "en" ? `${o.name}, ` : `${o.name} ji, `) : "";
+  const title = L === "en" ? `${who}how did it go?` : L === "hi" ? `${who}क्या हुआ?` : `${who}kya hua?`;
+  const body =
+    L === "en" ? `Yesterday you asked about ${t.en}. Tell me what happened — I'll read what comes next from your chart.`
+    : L === "hi" ? `कल आपने ${t.hi} के बारे में पूछा था। बताइए क्या हुआ — आगे का हाल आपकी कुंडली से बताऊँगा।`
+    : `Kal aapne ${t.hinglish} ke baare mein poocha tha. Batao kya hua — aage ka haal kundli se bataunga.`;
+  try {
+    // Never raise the permission prompt from here — a nudge is not worth
+    // interrupting a conversation with a system dialog.
+    const p = await LocalNotifications.checkPermissions();
+    if (p.display !== "granted") return;
+    await LocalNotifications.cancel({ notifications: [{ id: FOLLOWUP_ID }] });
+    await LocalNotifications.schedule({
+      notifications: [{
+        id: FOLLOWUP_ID, title, body,
+        schedule: { at, allowWhileIdle: true },
+        extra: { route: `/chat/${o.chartId}?from=followup` },
+      }],
+    });
   } catch { /* ignore */ }
 }

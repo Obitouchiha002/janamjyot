@@ -260,7 +260,14 @@ export default function CreateChartPage() {
         haptic.success();
         invalidateProfiles(); // else Home shows a stale list without the new chart
         // `replace` on edit so Back doesn't drop the user into the form again.
-        navigate(`/dashboard/${data.id}`, { replace: editing });
+        // Made from the chat's Rishta flow: go back there with the new kundli
+        // ready to link. Same-app paths only — never an open redirect.
+        const ret = !editing ? new URLSearchParams(window.location.search).get('return') : null;
+        if (ret && ret.startsWith('/') && !ret.startsWith('//')) {
+          navigate(`${ret}${ret.includes('?') ? '&' : '?'}relate=${data.id}`, { replace: true });
+        } else {
+          navigate(`/dashboard/${data.id}`, { replace: editing });
+        }
         // Deliberately NOT asking for a rating here. It used to fire 1.4s after
         // the very first kundli — covering the dashboard before the user had
         // read a single line of their own chart, which is the worst possible

@@ -44,6 +44,7 @@ import LifeReportPage from './pages/LifeReportPage';
 // files stay in the repo for now, but every old path redirects into ChatPage so
 // existing links, buttons and notification deep-links all still land somewhere.
 import ChatPage from './pages/ChatPage';
+import ChatHome from './pages/ChatHome';
 import ProfilesPage from './pages/ProfilesPage';
 import SettingsPage from './pages/SettingsPage';
 import AIStatusPage from './pages/AIStatusPage';
@@ -153,6 +154,7 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/reports/:chartId" element={<ReportsPage />} />
       <Route path="/reports/:chartId/:type" element={<ReportViewPage />} />
       {/* The one chat. */}
+      <Route path="/chat" element={<ChatHome />} />
       <Route path="/chat/:chartId" element={<ChatPage />} />
       {/* Old chat paths → the one chat (keeps every existing link working). */}
       <Route path="/ask/:chartId" element={<ToChat />} />

@@ -119,7 +119,9 @@ import {
   type QuotaAction,
   type PlanId,
   type AccountStatus,
+  removeChartFacts,
 } from "./server/db";
+import { followupFor } from "./server/followup";
 import {
   hashPassword, verifyPassword, signToken, verifyToken, requireAuth, optionalAuth, requireAdmin, ADMIN_EMAIL,
   normalizeEmail,
@@ -3532,6 +3534,40 @@ app.post("/api/chat/universal", async (req, res) => {
     const knownFacts = await getChartFacts(chartId).catch(() => ({}));
 
     /*
+     * Rishta: when the question is about the two of them, the linked person's
+     * REAL chart and the computed match go in with it, so "kya wo mujhse shaadi
+     * karega?" is read from both kundlis instead of guessed from one. Their
+     * birth details never reach the model — only the calculated summary.
+     * The link itself is bookkeeping, not a fact about their life, so it is
+     * kept out of the fact list the model sees.
+     */
+    const { partner_chart_id: relId, partner_relation: relKind, partner_name: relName, ...lifeFacts } = knownFacts as any;
+    let relation: any = undefined;
+    const qLower = String(question).toLowerCase();
+    const aboutThem = category === "marriage" || category === "relationship"
+      || (relName && qLower.includes(String(relName).toLowerCase()))
+      || /(partner|pati|patni|husband|wife|boyfriend|girlfriend|\bbf\b|\bgf\b|crush|\bex\b|shaadi|shadi|rishta|rishte|pyaar|pyar|love|marriage|relationship)/i.test(qLower);
+    if (relId && aboutThem) {
+      try {
+        const other = await getNormalizedChart(String(relId));
+        if (other && canAccessChart(req as any, other)) {
+          const a = validateBirthInput(chart.birth_details);
+          const b = validateBirthInput(other.birth_details);
+          const match = a.ok && a.value && b.ok && b.value
+            ? matchKundli(personMoon(a.value, AYANAMSA), personMoon(b.value, AYANAMSA))
+            : null;
+          const s = other.summary ?? {};
+          relation = {
+            relation: relKind || "partner",
+            name: relName || String(other.birth_details?.name || "").trim().split(/\s+/)[0],
+            their_chart: { lagna: s.lagna, moon_sign: s.rashi, nakshatra: s.nakshatra, mahadasha: s.current_mahadasha, antardasha: s.current_antardasha },
+            match,
+          };
+        }
+      } catch (e: any) { console.warn("[chat-u] relation skipped:", e?.message); }
+    }
+
+    /*
      * Some questions cannot be answered honestly without one more fact, and
      * whether to ask is decided HERE rather than by the model. Three separate
      * prompt instructions — a rule in the list, the age on its own line above
@@ -3560,7 +3596,7 @@ app.post("/api/chat/universal", async (req, res) => {
     const { answer, reason, next, action, facts } = await answerUniversal({
       chart, question, language, category, transit, dayContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history, userName, memory, isFirst, suggested, facts: knownFacts,
+      history, userName, memory, isFirst, suggested, facts: lifeFacts, relation,
     });
 
     // A low-distress message still gets its real answer — it is their chart and
@@ -3610,6 +3646,60 @@ app.post("/api/chat/universal", async (req, res) => {
     console.error("[chat-u] error:", err?.message);
     const quota = /429|quota|rate limit/i.test(err?.message ?? "");
     res.status(quota ? 429 : 500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/*
+ * Rishta — one other person linked to this chart, so the chat can answer about
+ * the two of them from BOTH real charts. Stored as facts on the person's own
+ * chart; the other kundli must be one of their own saved charts, so ownership
+ * is checked on both (the :chartId guard covers the first).
+ */
+const RELATIONS = ["partner", "spouse", "crush", "ex", "friend", "family"];
+
+app.get("/api/chat/relation/:chartId", async (req: any, res) => {
+  const facts: any = await getChartFacts(req.params.chartId).catch(() => ({}));
+  const otherId = String(facts.partner_chart_id || "");
+  if (!otherId) return res.json({ linked: false });
+  const other = await getNormalizedChart(otherId).catch(() => null);
+  if (!other || !canAccessChart(req, other)) return res.json({ linked: false });
+  res.json({
+    linked: true, chartId: otherId, relation: facts.partner_relation || "partner",
+    name: String(other.birth_details?.name || "").trim().split(/\s+/)[0] || "",
+  });
+});
+
+app.post("/api/chat/relation", async (req: any, res) => {
+  const chartId = String(req.body?.chartId ?? "");
+  const otherId = String(req.body?.otherChartId ?? "");
+  const relation = RELATIONS.includes(req.body?.relation) ? req.body.relation : "partner";
+  if (!chartId || !otherId || chartId === otherId) return res.status(400).json({ error: "Choose someone other than yourself." });
+  const [mine, other] = await Promise.all([getNormalizedChart(chartId), getNormalizedChart(otherId)]);
+  if (!mine || !other) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, mine) || !canAccessChart(req, other)) {
+    return res.status(403).json({ error: "This chart is not available on this account/device." });
+  }
+  const name = String(other.birth_details?.name || "").trim().split(/\s+/)[0] || "";
+  await mergeChartFacts(chartId, { partner_chart_id: otherId, partner_relation: relation, partner_name: name });
+  res.json({ linked: true, chartId: otherId, relation, name });
+});
+
+app.delete("/api/chat/relation/:chartId", async (req, res) => {
+  await removeChartFacts(req.params.chartId, ["partner_chart_id", "partner_relation", "partner_name"]);
+  res.json({ linked: false });
+});
+
+/** GET /api/chat/followup/:chartId — asks after their last topic. No AI, no credit. */
+app.get("/api/chat/followup/:chartId", async (req: any, res) => {
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.json({ followup: null });
+    const rows = await getChatHistory(req.params.chartId, "chat");
+    const lang = typeof req.query.lang === "string" ? req.query.lang : "en";
+    const name = String(chart.birth_details?.name || "").trim().split(/\s+/)[0] || undefined;
+    res.json({ followup: followupFor(rows as any[], lang, name) });
+  } catch {
+    res.json({ followup: null });
   }
 });
 
