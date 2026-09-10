@@ -2,6 +2,7 @@ import "./server/env"; // must be first: loads .env.local before anything reads 
 import { distressLevel, severeReply, lowNote } from "./server/distress";
 import { isGreetingOnly, greetingReply } from "./server/greeting";
 import { whatToAsk, clarifyReply } from "./server/clarify";
+import { aiCostStats } from "./server/ai-log";
 import express from "express";
 
 /** Turn raw provider errors into a clean, user-facing message. */
@@ -895,8 +896,13 @@ app.get("/api/admin/users", requireAdmin, async (req, res) =>
 app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
-    const [funnel, money] = await Promise.all([funnelStats(days), moneyStats(days)]);
-    res.json({ ...funnel, money });
+    // AI cost was being recorded on every call and shown nowhere. It sits here
+    // beside revenue because the only question it answers is a ratio: does a
+    // chat cost more than the thirty paise a ₹49 pack can afford?
+    const [funnel, money, ai] = await Promise.all([
+      funnelStats(days), moneyStats(days), aiCostStats(days).catch(() => null),
+    ]);
+    res.json({ ...funnel, money, ai });
   } catch (err: any) {
     fail(res, 500, "Could not load the funnel.", err, "admin-funnel");
   }

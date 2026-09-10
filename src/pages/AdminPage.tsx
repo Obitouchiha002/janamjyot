@@ -264,13 +264,14 @@ function Funnel() {
   const [days, setDays] = useState(30);
   const [d, setD] = useState<{
     signups: number;
-    steps: Array<{ key: string; label: string; users: number }>;
+    steps: Array<{ key: string; label: string; users: number; target?: { pct: number; base: string } }>;
     money?: {
       cohort: number; back_7d: number; back_30d: number;
       payers: number; purchases: number; revenue_rupees: number; revenue_per_payer: number;
       credits_bought: number; credits_spent: number;
       subjects: Array<{ subject: string; uses: number; credits: number }>;
     } | null;
+    ai?: { calls: number; rupees: number; paise_per_chat: number; failures: number; fallbacks: number } | null;
   } | null>(null);
 
   useEffect(() => {
@@ -310,6 +311,11 @@ function Funnel() {
             // The drop from the step before is the number that tells you what to
             // fix; the share of the whole cohort only tells you where you are.
             const dropped = prev !== null && prev > 0 ? prev - s.users : 0;
+            // Locked threshold, if this step has one: conversion from its own
+            // base step, judged against the goal set before any data came in.
+            const baseStep = s.target ? d.steps.find((x) => x.key === s.target!.base) : undefined;
+            const conv = baseStep && baseStep.users > 0 ? Math.round((s.users / baseStep.users) * 100) : null;
+            const hit = s.target && conv !== null ? conv >= s.target.pct : null;
             return (
               <div key={s.key}>
                 <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
@@ -325,6 +331,16 @@ function Funnel() {
                     style={{ width: `${Math.max(pct, 1)}%`, background: i === d.steps.length - 1 ? "#34D399" : "var(--color-accent)" }}
                   />
                 </div>
+                {s.target && (
+                  <p
+                    className="mt-0.5 text-[10.5px] font-semibold"
+                    style={{ color: hit === null ? undefined : hit ? "#15803D" : "#B91C1C" }}
+                  >
+                    {conv === null
+                      ? `goal ${s.target.pct}% of ${baseStep?.label.toLowerCase() ?? s.target.base} — not enough data yet`
+                      : `${conv}% of ${baseStep!.label.toLowerCase()} · goal ${s.target.pct}% ${hit ? "✓" : "✗"}`}
+                  </p>
+                )}
               </div>
             );
           })}
@@ -335,8 +351,8 @@ function Funnel() {
         <>
           <div className="mt-4 grid grid-cols-4 gap-2 border-t border-border pt-3.5">
             {([
-              ["Back 7d", d.money.cohort ? `${Math.round((d.money.back_7d / d.money.cohort) * 100)}%` : "—"],
-              ["Back 30d", d.money.cohort ? `${Math.round((d.money.back_30d / d.money.cohort) * 100)}%` : "—"],
+              ["Back 7d · goal 15%", d.money.cohort ? `${Math.round((d.money.back_7d / d.money.cohort) * 100)}%` : "—"],
+              ["Back 30d · goal 8%", d.money.cohort ? `${Math.round((d.money.back_30d / d.money.cohort) * 100)}%` : "—"],
               ["Revenue", `₹${d.money.revenue_rupees.toLocaleString("en-IN")}`],
               ["Per payer", `₹${d.money.revenue_per_payer}`],
             ] as const).map(([k, v]) => (
@@ -360,6 +376,32 @@ function Funnel() {
               )}
             </span>
           </div>
+
+          {/* Paid-equivalent AI cost — free calls costed at list price, because a
+              free tier is a discount and not a business model. Two alarms: a
+              chat above 30 paise, and AI above 30% of revenue. */}
+          {d.ai && (
+            <div className="mt-2.5 space-y-1.5 rounded-2xl bg-muted px-3.5 py-2.5 text-[12.5px]">
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">AI cost per chat · alarm ₹0.30</span>
+                <b className="tabular-nums" style={{ color: d.ai.paise_per_chat > 30 ? "#B91C1C" : "#15803D" }}>
+                  ₹{(d.ai.paise_per_chat / 100).toFixed(2)}
+                </b>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">AI vs revenue · goal under 30%</span>
+                <b className="tabular-nums">
+                  {d.money.revenue_rupees > 0
+                    ? `${Math.round((d.ai.rupees / d.money.revenue_rupees) * 100)}%`
+                    : `₹${d.ai.rupees} · no revenue yet`}
+                </b>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-muted-foreground">AI calls · failed · fell back</span>
+                <span className="tabular-nums">{d.ai.calls} · {d.ai.failures} · {d.ai.fallbacks}</span>
+              </div>
+            </div>
+          )}
 
           {/* The question that decides the product's direction. */}
           <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">

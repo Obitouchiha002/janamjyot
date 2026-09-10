@@ -1372,7 +1372,11 @@ const CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXYZ2346789";
  * Counted over a signup cohort: "of the people who joined in this window, how
  * far did they get" — not "how many events happened", which flatters itself.
  */
-export interface FunnelStep { key: string; label: string; users: number }
+export interface FunnelStep {
+  key: string; label: string; users: number;
+  /** A locked decision threshold: `pct` of the users at step `base`. */
+  target?: { pct: number; base: string };
+}
 
 export async function funnelStats(days = 30): Promise<{ days: number; signups: number; steps: FunnelStep[] }> {
   if (!USE_PG) return { days, signups: 0, steps: [] };
@@ -1400,6 +1404,7 @@ export async function funnelStats(days = 30): Promise<{ days: number; signups: n
             (SELECT count(*) FROM acts WHERE charts > 0)::int                         AS kundli_created,
             (SELECT count(*) FROM acts WHERE asks   > 0)::int                         AS first_chat,
             (SELECT count(*) FROM acts WHERE asks   > 1)::int                         AS second_chat,
+            (SELECT count(*) FROM acts WHERE asks   > 2)::int                         AS third_chat,
             (SELECT count(*) FROM acts WHERE active_days > 1)::int                    AS returned,
             (SELECT count(*) FROM pays)::int                                          AS paid`,
     [days],
@@ -1408,13 +1413,22 @@ export async function funnelStats(days = 30): Promise<{ days: number; signups: n
   return {
     days,
     signups: r.signups ?? 0,
+    /*
+     * Decision thresholds for the first hundred strangers, LOCKED here before
+     * the data arrives. They are the founder's own numbers, not industry
+     * benchmarks, and they live in code on purpose: once results come in there
+     * is a strong pull to decide the targets were always whatever was hit.
+     * Changing one now takes a commit with a reason attached — which is the
+     * point.
+     */
     steps: [
       { key: "signup",   label: "Signed up",        users: r.signups ?? 0 },
-      { key: "kundli",   label: "Made a kundli",    users: r.kundli_created ?? 0 },
-      { key: "chat1",    label: "Asked once",       users: r.first_chat ?? 0 },
+      { key: "kundli",   label: "Made a kundli",    users: r.kundli_created ?? 0, target: { pct: 60, base: "signup" } },
+      { key: "chat1",    label: "Asked once",       users: r.first_chat ?? 0,     target: { pct: 40, base: "kundli" } },
       { key: "chat2",    label: "Asked again",      users: r.second_chat ?? 0 },
+      { key: "chat3",    label: "Asked 3+ times",   users: r.third_chat ?? 0,     target: { pct: 25, base: "chat1" } },
       { key: "returned", label: "Came back",        users: r.returned ?? 0 },
-      { key: "paid",     label: "Paid",             users: r.paid ?? 0 },
+      { key: "paid",     label: "Paid",             users: r.paid ?? 0,           target: { pct: 5,  base: "signup" } },
     ],
   };
 }
