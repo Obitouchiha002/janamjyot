@@ -3436,8 +3436,11 @@ app.post("/api/chat/universal", async (req, res) => {
 
     const auth = await charge(req, res, "ask", "chat");
     if (!auth) return;
+    // Counted against the free allowance only once a real answer is delivered
+    // (below, beside the charge). Recorded here, a "hi", a distress reply or a
+    // one-tap clarifying question each used up one of five free questions
+    // while costing nothing and answering nothing.
     const asker = identityOf(req as any);
-    recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
 
     const language = typeof req.body?.language === "string" && req.body.language.trim() ? req.body.language.trim() : "en";
     const category = detectCategory(question);
@@ -3626,6 +3629,7 @@ app.post("/api/chat/universal", async (req, res) => {
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
+    recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
     await settleCharge(req, auth.charge, "chat", chartId, { category });
     res.json({ answer: finalAnswer, reason, category, next: fresh, action: action || undefined });
 
