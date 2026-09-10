@@ -209,7 +209,29 @@ function compactDivisional(c: any) {
  * Used for all predictions so the AI cross-references all divisional charts
  * together for maximum accuracy, instead of looking at only one chart.
  */
-export function buildFullChartContext(chart: any) {
+/**
+ * The chart, as much of it as the question actually needs.
+ *
+ * Every divisional was sent on every call — D9, D10, D6 and D11, about 650
+ * tokens each — so a question about marriage carried the career, health and
+ * gains charts along with it. That is 2,000 tokens of context the model was
+ * told to ignore, on every message.
+ *
+ * It cost three ways. Money, since a free tier is a discount and not a
+ * business model. Attention, because a constraint that has to survive ten
+ * thousand tokens of JSON is a constraint that sometimes does not — the
+ * instructions this file kept "ignoring" were competing with charts nobody
+ * asked for. And availability: Groq's free tier caps a request at 8,000
+ * tokens, so the privacy-safe provider was rejecting every chat with a 413
+ * and leaving Gemini as the only one able to answer.
+ *
+ * PACKET_CONFIG already knows which vargas each topic needs. It is now
+ * believed. D9 stays wherever the topic marks it useful, since navamsa reads
+ * on almost everything.
+ */
+export function buildFullChartContext(chart: any, cfg?: PacketConfig) {
+  const wants = (d: "D6" | "D10" | "D11") => !cfg || cfg.divisionals.includes(d);
+  const wantsD9 = !cfg || cfg.includeD9;
   return {
     birth_summary: chart.summary,
     settings: chart.settings,
@@ -226,10 +248,10 @@ export function buildFullChartContext(chart: any) {
         retrograde: p.retrograde,
       })),
     },
-    d9_navamsa: compactDivisional(chart.d9_chart),
-    d10_dasamsa_career: compactDivisional(chart.divisional_charts?.D10),
-    d6_shashtamsa_health: compactDivisional(chart.divisional_charts?.D6),
-    d11_ekadasamsa_gains: compactDivisional(chart.divisional_charts?.D11),
+    d9_navamsa: wantsD9 ? compactDivisional(chart.d9_chart) : undefined,
+    d10_dasamsa_career: wants("D10") ? compactDivisional(chart.divisional_charts?.D10) : undefined,
+    d6_shashtamsa_health: wants("D6") ? compactDivisional(chart.divisional_charts?.D6) : undefined,
+    d11_ekadasamsa_gains: wants("D11") ? compactDivisional(chart.divisional_charts?.D11) : undefined,
     dasha: {
       current: chart.dasha?.current ?? null,
       next_7_years: chart.dasha?.next_7_years ?? [],
@@ -329,13 +351,17 @@ export function buildChartPacket(chart: any, category: Category, transit?: any) 
     };
   });
 
-  const focusPlanetNames =
+  /*
+   * For a general question this listed EVERY planet — which is exactly what
+   * all_charts.d1_rasi.planets already holds, sent again under another key a
+   * few lines later. A focus block that highlights everything highlights
+   * nothing, and it duplicated several hundred tokens on the commonest kind of
+   * question.
+   */
+  const focusPlanets =
     category === "general"
-      ? (chart.planet_positions ?? []).map((p: any) => p.planet)
-      : cfg.planets;
-  const focusPlanets = focusPlanetNames
-    .map((name: string) => getPlanet(chart, name))
-    .filter(Boolean);
+      ? []
+      : cfg.planets.map((name: string) => getPlanet(chart, name)).filter(Boolean);
 
   /*
    * Today, and how old this person is today — computed here, never left to the
@@ -362,7 +388,7 @@ export function buildChartPacket(chart: any, category: Category, transit?: any) 
     // Everything below is relative to THIS date. Anything earlier has happened.
     today: today.toISOString().slice(0, 10),
     age_years: ageYears,
-    all_charts: buildFullChartContext(chart),
+    all_charts: buildFullChartContext(chart, cfg),
     live_transit: transit ?? null,
     focus: {
       note: `Most relevant for "${category}" — but still cross-check all charts above.`,
