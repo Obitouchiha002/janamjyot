@@ -30,7 +30,7 @@ type Tri = { en: string; hi: string; hinglish: string };
 const t = (x: Tri, l: Lang) => x[l] ?? x.en;
 
 const WHAT: Record<string, Tri> = {
-  chart: { en: "saved kundli slots", hi: "सेव कुंडली की जगह", hinglish: "saved kundli slots" },
+  chart: { en: "free kundlis", hi: "मुफ़्त कुंडली", hinglish: "free kundli" },
   report: { en: "free reports", hi: "मुफ़्त रिपोर्ट", hinglish: "free reports" },
   ask: { en: "free questions", hi: "मुफ़्त सवाल", hinglish: "free sawaal" },
   match: { en: "free matchings", hi: "मुफ़्त मिलान", hinglish: "free matching" },

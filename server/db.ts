@@ -593,7 +593,7 @@ export const PLANS: Record<PlanId, Quotas> = {
   // judge the app, not enough to live in it. Daily readings stay per-day and
   // generous, because they are the habit worth building and cost us almost
   // nothing to serve.
-  free: { chart: 3, report: 2, ask: 15, match: 3, daily: 40 },
+  free: { chart: 2, report: 2, ask: 15, match: 3, daily: 40 },
   pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
   unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
 };
@@ -1122,7 +1122,10 @@ export async function deleteUserAndData(id: string) {
     // birth_profiles cascades to chart_calculations, which cascades to reports
     // and chat, so removing the profiles removes everything downstream.
     await pool!.query(`DELETE FROM birth_profiles WHERE owner_id = $1`, [id]);
-    await pool!.query(`DELETE FROM usage_events WHERE user_id = $1`, [id]);
+    // Usage rows are ANONYMISED, not deleted: the account link and the detail
+    // go, and only "this phone did N of X at time T" stays. Deleting them made
+    // "delete my account, sign up again" a way to reset every free limit.
+    await pool!.query(`UPDATE usage_events SET user_id = NULL, meta = NULL WHERE user_id = $1`, [id]);
     // Feedback carries their name + free-text comment (and may be published as a
     // testimonial), so it must go too — otherwise "delete my account" would
     // leave their words and name on the public site.
@@ -2135,9 +2138,16 @@ export async function downloadStats(): Promise<{ total: number; today: number; w
 /**
  * How many times an identity has performed an action inside its quota window.
  *
- * `chart` counts saved charts rather than usage rows: a chart the user deleted
- * should free up their slot, otherwise the lifetime cap would be a cap on
- * creations, not on what they actually hold.
+ * `chart` is a cap on kundlis CREATED, not kundlis held. It used to count the
+ * saved rows, so deleting one handed the slot straight back: create, delete,
+ * create again — an unlimited free plan in three taps. Creations are counted
+ * from usage rows, which deleting a kundli never touches. The saved count is
+ * kept as a floor for kundlis made before creations were recorded.
+ *
+ * A signed-in user is counted together with the phone they are using. Counted
+ * by account alone, a second e-mail on the same phone started a fresh free
+ * allowance, and so did deleting the account and signing up again. A shared
+ * family phone now shares one free allowance — credits still work for anyone.
  */
 export async function usageCount(
   who: { userId?: string | null; deviceId?: string | null; plan?: PlanId },
@@ -2146,11 +2156,18 @@ export async function usageCount(
   if (!USE_PG) return 0;
   const window = windowFor(action, who.plan ?? "free");
 
+  // Rows belonging to this account, or made from this phone.
+  const mine = `(($1::uuid IS NOT NULL AND user_id = $1::uuid)
+              OR ($2::text IS NOT NULL AND device_id = $2))`;
+
   if (action === "chart") {
     const { rows } = await pool!.query(
-      `SELECT count(*)::int AS n FROM chart_calculations
-        WHERE ($1::uuid IS NOT NULL AND owner_id = $1::uuid)
-           OR ($1::uuid IS NULL AND device_id = $2)`,
+      `SELECT GREATEST(
+          (SELECT count(*) FROM usage_events WHERE action = 'chart' AND ${mine}),
+          (SELECT count(*) FROM chart_calculations
+            WHERE ($1::uuid IS NOT NULL AND owner_id = $1::uuid)
+               OR ($2::text IS NOT NULL AND device_id = $2))
+        )::int AS n`,
       [who.userId ?? null, who.deviceId ?? null]
     );
     return rows[0]?.n ?? 0;
@@ -2161,8 +2178,7 @@ export async function usageCount(
     `SELECT count(*)::int AS n FROM usage_events
       WHERE action = $3
         AND created_at > now() - $4::interval
-        AND (($1::uuid IS NOT NULL AND user_id = $1::uuid)
-          OR ($1::uuid IS NULL AND device_id = $2))`,
+        AND ${mine}`,
     [who.userId ?? null, who.deviceId ?? null, action, interval]
   );
   return rows[0]?.n ?? 0;

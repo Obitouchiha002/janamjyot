@@ -1823,10 +1823,10 @@ async function checkQuota(
     window === "day" ? "Your limit resets tomorrow."
     : window === "week" ? "Your limit resets 7 days after each use."
     : window === "month" ? "Your limit resets 30 days after each use."
-    : "Delete a saved kundli to free up a slot.";
+    : "Deleting a kundli does not give the slot back.";
 
   const what: Record<QuotaAction, string> = {
-    chart: `You can keep ${limit} saved kundli${limit === 1 ? "" : "s"} on this plan.`,
+    chart: `Your plan includes ${limit} kundli${limit === 1 ? "" : "s"}, and you have made ${used}.`,
     report: `You can generate ${limit} report${limit === 1 ? "" : "s"} per month on this plan.`,  // report stays monthly on every plan
     ask: `You can ask ${limit} question${limit === 1 ? "" : "s"} ${per} on this plan.`,
     match: `You can run ${limit} kundli match${limit === 1 ? "" : "es"} ${per} on this plan.`,
