@@ -265,13 +265,17 @@
       sw = document.createElement('div'); sw.id = 'packSwitch'; sw.className = 'switch';
       var host = $('getsCard'); host.parentNode.insertBefore(sw, host);
     }
-    var others = (cfg.packs || []).filter(function(p){ return p.id !== packId; });
+    var others = (cfg.packs || []).filter(function(p){ return p.id !== packId; })
+      .map(function(p){ return { id:p.id, text:'₹' + p.rupees + ' · ' + p.credits + ' credits' }; });
+    if(cfg.trial && !isTrial){
+      others.push({ id:'trial', text:'₹' + cfg.trial.rupees + ' · ' + cfg.trial.days + '-day full access' });
+    }
     if(!others.length){ sw.hidden = true; }
     else {
-      sw.innerHTML = '<span class="sw-k">Other packs</span>' + others.map(function(p){
-        return '<a href="?pack=' + encodeURIComponent(p.id) +
+      sw.innerHTML = '<span class="sw-k">Other packs</span>' + others.map(function(o){
+        return '<a href="?pack=' + encodeURIComponent(o.id) +
                (prefill ? '&email=' + encodeURIComponent(prefill) : '') +
-               '">₹' + p.rupees + ' · ' + p.credits + ' credits</a>';
+               '">' + o.text + '</a>';
       }).join('');
     }
 
