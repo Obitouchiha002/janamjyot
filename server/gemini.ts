@@ -234,7 +234,25 @@ export function buildFullChartContext(chart: any, cfg?: PacketConfig) {
   const wantsD9 = !cfg || cfg.includeD9;
   return {
     birth_summary: chart.summary,
-    settings: chart.settings,
+    /*
+     * The calculation basis, WITHOUT the birth datetime.
+     *
+     * `settings.datetime` is the exact date and time of birth, and it was going
+     * to every AI provider on every call — while the privacy policy told people
+     * "Never sent: date of birth, time of birth". A policy that claims
+     * something untrue is worse than one that discloses plainly, and this was
+     * live.
+     *
+     * Nothing needed it. The model reads the chart, the dasha dates, `today`
+     * and `age_years`; the raw moment of birth adds nothing to an answer. So it
+     * is not weakened here, it is removed — which is what "send the minimum the
+     * reading needs" actually means.
+     */
+    settings: {
+      zodiac: chart.settings?.zodiac,
+      ayanamsa: chart.settings?.ayanamsa,
+      house_system: chart.settings?.house_system,
+    },
     ascendant: chart.ascendant,
     // D1 planets (house+sign+nakshatra) — the house layout is derivable from this,
     // so we don't also send the verbose houses[] array (keeps the prompt lean).
