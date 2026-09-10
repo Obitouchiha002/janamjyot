@@ -196,7 +196,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <p className="mt-3 text-[12px] text-muted-foreground">
-          {data.dashas.current_period.from} → {data.dashas.current_period.to}
+          {fmtBirth(data.dashas.current_period.from)} → {fmtBirth(data.dashas.current_period.to)}
         </p>
       </section>
 
