@@ -101,17 +101,64 @@
     .done .big{font-size:46px}
     .done h3{font-size:23px}
   }
-  /* Other packs, switchable from right here. */
-  .switch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-4px 0 16px}
-  .switch .sw-k{font-size:12px;font-weight:700;color:var(--ink2);margin-right:2px}
-  .switch a{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;
-    font-weight:700;color:var(--ink);text-decoration:none;background:var(--card)}
-  .switch a:hover{border-color:var(--gold)}
+  /* ── Back button ── */
+  .lft{display:flex;align-items:center;gap:10px}
+  .back{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);font:inherit;font-size:18px;line-height:1;cursor:pointer;display:grid;place-items:center;
+    transition:background .15s,transform .15s}
+  .back:hover{background:var(--gold-soft);transform:translateX(-2px)}
+
+  /* ── Pack picker: every pack as a tile, the chosen one unmistakable ── */
+  .packs{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:4px 0 18px}
+  .pk{position:relative;text-align:left;border:1.5px solid var(--line);background:var(--card);border-radius:14px;
+    padding:16px 12px 12px;cursor:pointer;font:inherit;color:var(--ink);
+    transition:transform .18s,border-color .18s,box-shadow .18s,background .18s;animation:rise .45s cubic-bezier(.2,.8,.2,1) both}
+  .pk:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(22,24,29,.08)}
+  .pk:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .pk.on{border-color:var(--gold);background:var(--gold-soft);box-shadow:0 0 0 3px rgba(192,122,30,.16)}
+  .pk .nm{font-size:13px;font-weight:700;color:var(--ink2)}
+  .pk .pr{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:1px 0}
+  .pk .cr{font-size:12.5px;color:var(--ink2);line-height:1.35}
+  .pk .tag{position:absolute;top:-9px;left:10px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:800;
+    padding:2px 8px;border-radius:999px;letter-spacing:.02em}
+  .pk .tag.alt{background:var(--ok)}
+  .pk .ck{position:absolute;top:11px;right:11px;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);
+    display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;transition:background .18s,border-color .18s}
+  .pk.on .ck{background:var(--gold);border-color:var(--gold)}
+  .pk.on .ck::after{content:'✓';animation:tick .22s ease both}
+
+  /* ── Motion ── */
+  @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.1)}100%{transform:scale(1)}}
+  @keyframes tick{from{transform:scale(0)}to{transform:scale(1)}}
+  @keyframes sheen{from{background-position:200% 0}to{background-position:-200% 0}}
+  #stage>*,#doneStage,.err,.warn{animation:rise .45s cubic-bezier(.2,.8,.2,1) both}
+  #stage>:nth-child(2){animation-delay:.04s} #stage>:nth-child(4){animation-delay:.1s}
+  #stage>:nth-child(5){animation-delay:.16s} #stage>:nth-child(6){animation-delay:.22s}
+  #stage>:nth-child(7){animation-delay:.28s} #stage>:nth-child(8){animation-delay:.34s}
+  .pop{display:inline-block;animation:pop .35s ease}
+  .btn{transition:transform .15s,box-shadow .15s}
+  .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px rgba(192,122,30,.28)}
+  .btn:active:not(:disabled){transform:scale(.98)}
+  #pay:not(:disabled){background:linear-gradient(100deg,var(--gold) 30%,#E0A64E 50%,var(--gold) 70%);
+    background-size:250% 100%;animation:sheen 3.2s linear infinite}
+  @media (min-width: 820px){
+    .packs{grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+    .pk{padding:20px 16px 15px;border-radius:16px}
+    .pk .nm{font-size:14px}
+    .pk .pr{font-size:30px}
+    .pk .cr{font-size:13.5px}
+    .back{width:40px;height:40px}
+  }
+  @media (prefers-reduced-motion: reduce){ *,*::after{animation:none !important;transition:none !important} }
 </style>
 </head>
 <body>
 <div class="top"><div class="in">
-  <a class="brand" href="/">Janam<span>Jyot</span></a>
+  <div class="lft">
+    <button class="back" id="goBack" type="button" aria-label="Go back">←</button>
+    <a class="brand" href="/">Janam<span>Jyot</span></a>
+  </div>
   <span class="lock">🔒 Secure checkout</span>
 </div></div>
 
@@ -123,6 +170,8 @@
   <div id="stage">
     <h1 id="hTitle">Loading…</h1>
     <p class="sub" id="hSub"></p>
+
+    <div class="packs" id="packs" role="radiogroup" aria-label="Choose a pack"></div>
 
     <div class="timer" id="timerBox" hidden>
       <span>Complete your payment in</span><b id="timer">05:00</b>
@@ -232,20 +281,43 @@
     }, 1000);
   }
 
-  function render(){
+  var NICE = { starter:'Starter', popular:'Popular', value:'Value' };
+  var TAGS = { popular:'Most popular', value:'Best value', trial:'Try it' };
+
+  /* Every pack on one screen, chosen by tapping. It used to be one pack fixed
+     by the link with a row of small chips underneath, and people could not
+     see what they were choosing between. The order is only created when Pay
+     is pressed, so switching here needs no reload and no new order. */
+  function options(){
+    var o = (cfg.packs || []).map(function(p){
+      return { id:p.id, name:NICE[p.id] || 'Credits', price:p.rupees,
+               sub:p.credits + ' credits' + (p.bonus ? ' (+' + p.bonus + ' free)' : '') };
+    });
+    if(cfg.trial) o.push({ id:'trial', name:'Trial', price:cfg.trial.rupees, sub:cfg.trial.days + '-day full access' });
+    return o;
+  }
+  function drawPicker(){
+    $('packs').innerHTML = options().map(function(o, i){
+      var on = o.id === packId;
+      return '<button type="button" class="pk' + (on ? ' on' : '') + '" role="radio" aria-checked="' + on +
+        '" data-id="' + o.id + '" style="animation-delay:' + (60 + i*60) + 'ms">' +
+        (TAGS[o.id] ? '<span class="tag' + (o.id === 'trial' ? ' alt' : '') + '">' + TAGS[o.id] + '</span>' : '') +
+        '<span class="ck"></span><div class="nm">' + o.name + '</div><div class="pr">₹' + o.price + '</div>' +
+        '<div class="cr">' + o.sub + '</div></button>';
+    }).join('');
+  }
+
+  function renderPack(){
     var isTrial = packId === 'trial';
     pack = isTrial
       ? { id:'trial', rupees: cfg.trial.rupees, credits: 0, label: cfg.trial.days + '-day full access' }
       : (cfg.packs.filter(function(p){ return p.id===packId; })[0]);
 
-    if(!pack){ showErr('That pack was not found. Please pick one from the pricing page.'); $('stage').hidden = true; return; }
-
     $('hTitle').textContent = isTrial ? 'Start your ' + cfg.trial.days + '-day access' : 'Buy credits';
     $('hSub').textContent = isTrial
       ? 'Everything unlocked for ' + cfg.trial.days + ' days. It ends on its own — nothing renews.'
       : 'One-time purchase. Credits never expire and nothing renews.';
-    var nice = { starter:'Starter pack', popular:'Popular pack', value:'Value pack' };
-    $('packName').textContent = isTrial ? cfg.trial.days + '-day full access' : (nice[pack.id] || 'Credit pack');
+    $('packName').textContent = isTrial ? cfg.trial.days + '-day full access' : (NICE[pack.id] || 'Credit') + ' pack';
     $('packCredits').textContent = isTrial ? 'One time per account' : pack.credits + ' credits';
     /* A trial that says "never expires" is the opposite of the truth, and it
        is the one line a buyer checks before paying. */
@@ -255,32 +327,8 @@
     $('amount').textContent = '₹' + pack.rupees;
     $('payAmt').textContent = '₹' + pack.rupees + ' securely';
 
-    /* Every pack, from wherever you arrived. The wallet and the app both link
-       here with one pack fixed in the URL, so this is the place choosing has to
-       be possible — otherwise a person who wanted the ₹49 top-up was shown ₹149
-       and a Pay button. Switching reloads with the new pack, which also starts
-       a fresh order and a fresh timer rather than repricing one mid-flight. */
-    var sw = $('packSwitch');
-    if(!sw){
-      sw = document.createElement('div'); sw.id = 'packSwitch'; sw.className = 'switch';
-      var host = $('getsCard'); host.parentNode.insertBefore(sw, host);
-    }
-    var others = (cfg.packs || []).filter(function(p){ return p.id !== packId; })
-      .map(function(p){ return { id:p.id, text:'₹' + p.rupees + ' · ' + p.credits + ' credits' }; });
-    if(cfg.trial && !isTrial){
-      others.push({ id:'trial', text:'₹' + cfg.trial.rupees + ' · ' + cfg.trial.days + '-day full access' });
-    }
-    if(!others.length){ sw.hidden = true; }
-    else {
-      sw.innerHTML = '<span class="sw-k">Other packs</span>' + others.map(function(o){
-        return '<a href="?pack=' + encodeURIComponent(o.id) +
-               (prefill ? '&email=' + encodeURIComponent(prefill) : '') +
-               '">' + o.text + '</a>';
-      }).join('');
-    }
-
-    if(isTrial || !pack.credits){ $('getsCard').hidden = true; }
-    else {
+    $('getsCard').hidden = isTrial || !pack.credits;
+    if(!$('getsCard').hidden){
       var P = cfg.prices, rows = [
         ['Astrologer questions', P.chat, 'ask anything about your chart'],
         ['Focused reports', P.report, 'career, wealth or marriage'],
@@ -293,6 +341,19 @@
         return '<li><span><b>' + n + '</b> ' + r[0] + '</span><s>' + r[2] + '</s></li>';
       }).join('');
     }
+  }
+
+  function render(){
+    /* An unknown pack in the link falls back to a real one instead of a dead
+       page — the picker is right there to change it. */
+    var known = packId === 'trial' ? !!cfg.trial : (cfg.packs || []).some(function(p){ return p.id === packId; });
+    if(!known){
+      var d = (cfg.packs || [])[1] || (cfg.packs || [])[0];
+      if(!d){ showErr('No packs are available right now. Please try again shortly.'); $('stage').hidden = true; return; }
+      packId = d.id;
+    }
+    drawPicker();
+    renderPack();
 
     if(cfg.test_mode){
       /* Card 4111… is a Visa test BIN that reads as international, and the
@@ -470,6 +531,31 @@
   }
 
   $('pay').onclick = function(){ startPay(this); };
+
+  $('packs').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('.pk') : null;
+    if(!b) return;
+    var id = b.getAttribute('data-id');
+    if(id === packId) return;
+    packId = id;
+    showErr('');
+    try { history.replaceState(null, '', location.pathname + '?pack=' + encodeURIComponent(id) +
+          (prefill ? '&email=' + encodeURIComponent(prefill) : '')); } catch(err){}
+    [].forEach.call($('packs').children, function(c){
+      var on = c.getAttribute('data-id') === id;
+      c.classList.toggle('on', on); c.setAttribute('aria-checked', String(on));
+    });
+    renderPack();
+    var a = $('amount'); a.classList.remove('pop'); void a.offsetWidth; a.classList.add('pop');
+  });
+
+  /* Back to wherever they came from on this site; from the app's browser
+     there is no page behind this one, so it goes to the plans instead. */
+  $('goBack').onclick = function(){
+    var ref = document.referrer || '';
+    if(ref.indexOf(location.origin) === 0 && ref.indexOf('/checkout.html') < 0 && history.length > 1) history.back();
+    else location.href = '/#pricing';
+  };
 
   $('backApp').onclick = function(){ location.href = '/'; };
 
