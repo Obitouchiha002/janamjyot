@@ -165,7 +165,19 @@ function openAICompatProvider(
         throw new Error(`${res.status} ${t.slice(0, 200)}`);
       }
       const j: any = await res.json();
-      return j.choices?.[0]?.message?.content ?? "";
+      /*
+       * Strip any reasoning the model left in the reply.
+       *
+       * Groq's whole lineup is reasoning models now — the llama pair we were
+       * pinned to is gone — and one of them (qwen3.6) returns its entire
+       * thinking inside <think> tags in `content` rather than a separate
+       * field. Sent straight through, a user would open the chat and read the
+       * model talking to itself about them.
+       *
+       * Cheap, and harmless for a model that never emits them.
+       */
+      const content = String(j.choices?.[0]?.message?.content ?? "");
+      return content.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/^\s*<think>[\s\S]*$/i, "").trim();
     },
   };
 }
@@ -319,7 +331,17 @@ function buildProviders(): Provider[] {
   if (env("GROQ_API_KEY")) {
     // Multiple Groq models: if the big model is rate-limited, fall to a lighter,
     // higher-limit one. All free and very generous.
-    const groqModels = (env("GROQ_MODELS") || env("GROQ_MODEL") || "llama-3.3-70b-versatile,llama-3.1-8b-instant")
+    /*
+     * Groq retired the llama pair this was pinned to — both returned 404 in
+     * production, which is what left Gemini as the only provider able to answer
+     * and quietly broke the privacy routing. Checked against Groq's live list
+     * and each one actually generated before being put here.
+     *
+     * qwen3.6-27b is deliberately absent: it returns its own <think> reasoning
+     * inside the reply. The stripper above catches it, but a model that needs
+     * catching is not the one to lead with.
+     */
+    const groqModels = (env("GROQ_MODELS") || env("GROQ_MODEL") || "openai/gpt-oss-120b,qwen/qwen3.8-27b,openai/gpt-oss-20b")
       .split(",").map((m) => m.trim()).filter(Boolean);
     for (const m of groqModels) {
       byName.groq.push(
