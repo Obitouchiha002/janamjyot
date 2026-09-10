@@ -156,6 +156,9 @@
     <!-- PAY -->
     <div id="payCard" hidden>
       <button class="btn" id="pay">Pay <span id="payAmt"></span></button>
+      <!-- Razorpay files "enter UPI ID" under a row most people never open, so
+           it looked like QR was the only way. This goes straight to it. -->
+      <button class="btn sec" id="payUpi" style="margin-top:10px">Pay with UPI ID</button>
       <div class="methods">
         <span>UPI</span><span>Cards</span><span>Net banking</span><span>Wallets</span>
       </div>
@@ -220,6 +223,7 @@
         $('timerBox').innerHTML = '<span>This checkout expired — nothing was charged.</span>';
         $('pay').disabled = true;
         $('pay').textContent = 'Expired — start again';
+        var upiBtn = $('payUpi'); if(upiBtn) upiBtn.hidden = true;
         $('pay').onclick = function(){ location.reload(); };
         $('pay').disabled = false;
       }
@@ -388,16 +392,36 @@
     })();
   }
 
-  $('pay').onclick = function(){
+  /* Two ways in, one order path. "Pay" opens every method; "Pay with UPI ID"
+     opens Razorpay with ONLY the collect flow, so the UPI-ID box is the first
+     and only thing on screen. People could not find it before: Razorpay puts it
+     behind a row under the QR, and a checkout where the method you want seems
+     not to exist is a checkout people leave. */
+  function startPay(mode, btn){
     if(expired) return;
-    showErr(''); var btn = this; btn.disabled = true; btn.textContent = 'Starting…';
+    var label = btn.textContent;
+    var upiOnly = mode === 'upi_id';
+    showErr(''); btn.disabled = true; btn.textContent = 'Starting…';
     var before = 0;
     api('/api/credits').catch(function(){ return {balance:0}; })
       .then(function(c){ before = c.balance || 0;
         return api('/api/billing/order',{method:'POST',body:JSON.stringify({pack:packId})}); })
       .then(function(order){
         return loadRzp().then(function(){
-          btn.disabled = false; btn.textContent = 'Pay ₹' + pack.rupees + ' securely';
+          btn.disabled = false; btn.textContent = label;
+          var display = upiOnly
+            ? {
+                blocks: { upi: { name: 'Pay with your UPI ID',
+                                 instruments: [{ method: 'upi', flows: ['collect'] }] } },
+                sequence: ['block.upi'],
+                preferences: { show_default_blocks: false }
+              }
+            : {
+                blocks: { upi: { name: 'Pay using UPI',
+                                 instruments: [{ method: 'upi', flows: ['collect', 'qr', 'intent'] }] } },
+                sequence: ['block.upi'],
+                preferences: { show_default_blocks: true }
+              };
           var rzp = new window.Razorpay({
             key: order.key_id, amount: order.amount, currency: order.currency || 'INR',
             order_id: order.order_id,
@@ -407,23 +431,11 @@
                one screen where a stranger decides whether to trust us. */
             image: location.origin + '/icon-512.png',
             theme: { color: '#C07A1E', backdrop_color: '#F7F5F0' },
-            prefill: { email: signedInEmail || '' },
+            prefill: upiOnly
+              ? { email: signedInEmail || '', method: 'upi' }
+              : { email: signedInEmail || '' },
             notes: { pack: packId },
-            /* Left to itself the desktop modal offers a QR and nothing else, so
-               anyone without a phone in hand is stuck. Asking for the `collect`
-               flow puts the "enter your UPI ID" field back alongside it. */
-            config: {
-              display: {
-                blocks: {
-                  upi: {
-                    name: 'Pay using UPI',
-                    instruments: [{ method: 'upi', flows: ['collect', 'qr', 'intent'] }]
-                  }
-                },
-                sequence: ['block.upi'],
-                preferences: { show_default_blocks: true }
-              }
-            },
+            config: { display: display },
             handler: function(){ if(timerId) clearInterval(timerId); waitForCredits(before); },
             modal: { ondismiss: function(){ showErr('Payment cancelled — nothing was charged.'); } }
           });
@@ -431,8 +443,11 @@
           rzp.open();
         });
       })
-      .catch(function(e){ btn.disabled=false; btn.textContent='Pay ₹'+(pack?pack.rupees:'')+' securely'; showErr(e.message); });
-  };
+      .catch(function(e){ btn.disabled=false; btn.textContent=label; showErr(e.message); });
+  }
+
+  $('pay').onclick = function(){ startPay('all', this); };
+  $('payUpi').onclick = function(){ startPay('upi_id', this); };
 
   $('backApp').onclick = function(){ location.href = '/'; };
 
