@@ -1,9 +1,8 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  Plus, ChevronRight, ArrowRight, Clock, MessageCircle, HeartHandshake, Sparkles, Info,
-  Moon, Sun, Sunrise, Flame, CalendarDays,
+  Plus, ChevronRight, ArrowRight, Clock, MessageCircle, HeartHandshake, Sparkles, Info, Moon, Sun, Sunrise, Flame, CalendarDays,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useCachedFetch } from '@/lib/useCachedFetch';
@@ -203,85 +202,64 @@ function usePlace(chartId: string) {
   };
 }
 
-/**
- * The "right now" verdict in the reader's language. The endpoint's own line is
- * English-only, and it sat in the middle of a Hinglish card.
- */
-function nowLine(n: any, l: L3): string {
-  const next = n?.next_good?.start as string | undefined;
-  if (n?.verdict === 'go') return tr({ en: 'Good time right now — go ahead', hi: 'अभी अच्छा समय है — आगे बढ़िए', hinglish: 'Abhi accha samay hai — aage badhiye' }, l);
-  if (n?.verdict === 'wait') {
-    return next
-      ? tr({ en: `Better to wait — next good window ${next}`, hi: `थोड़ा रुकिए — अगला अच्छा समय ${next}`, hinglish: `Thoda ruk jaiye — agla accha samay ${next}` }, l)
-      : tr({ en: 'Better to wait a little', hi: 'थोड़ा रुकिए', hinglish: 'Thoda ruk jaiye' }, l);
-  }
-  return next
-    ? tr({ en: `Don't start anything new now — next good window ${next}`, hi: `अभी नया काम शुरू न करें — अगला अच्छा समय ${next}`, hinglish: `Abhi naya kaam shuru mat kariye — agla accha samay ${next}` }, l)
-    : tr({ en: "Don't start anything new now", hi: 'अभी नया काम शुरू न करें', hinglish: 'Abhi naya kaam shuru mat kariye' }, l);
-}
 
 /* ── Mini kundli ─────────────────────────────────────────────────────────
-   Their own D1, beside the greeting — the one thing that says "astrology"
-   before a word is read. Gold lines, the Lagna house lit, planets in their
-   houses. Tap for the full chart. */
+   A 64px thumbnail of their own D1: gold lines, the Lagna house lit, a dot in
+   every house that holds a planet. Tap for the full kundli. */
 const MINI_CENTER: Record<number, [number, number]> = {
   1: [100, 50], 2: [50, 24], 3: [24, 50], 4: [50, 100], 5: [24, 150], 6: [50, 176],
   7: [100, 150], 8: [150, 176], 9: [176, 150], 10: [150, 100], 11: [176, 50], 12: [150, 24],
 };
-const SHORT: Record<string, string> = { Sun: 'Su', Moon: 'Mo', Mars: 'Ma', Mercury: 'Me', Jupiter: 'Ju', Venus: 'Ve', Saturn: 'Sa', Rahu: 'Ra', Ketu: 'Ke' };
 
 function MiniKundli({ chartId }: { chartId: string }) {
   const { data } = useCachedFetch<any>(`/api/chart/${chartId}`);
-  const byHouse: Record<number, string[]> = {};
-  for (const p of data?.planets ?? []) {
-    if (!SHORT[p.planet] || !p.house) continue;
-    (byHouse[p.house] ||= []).push(SHORT[p.planet]);
-  }
+  const count: Record<number, number> = {};
+  for (const p of data?.planets ?? []) if (p.house) count[p.house] = (count[p.house] ?? 0) + 1;
   return (
-    <Pressable to={`/dashboard/${chartId}`} feedback="tap" aria-label={`Your birth chart${data?.ascendant?.sign ? `, Lagna ${data.ascendant.sign}` : ''} — open`}
-      className="hm-press hm-lift hm-rise block shrink-0 rounded-[18px] p-1.5"
-      style={{ background: 'var(--hm-card)', border: '1px solid rgba(120,90,40,.14)', boxShadow: '0 10px 30px rgba(60,40,10,.08)', animationDelay: '60ms' }}>
-      <svg viewBox="0 0 200 200" className="block h-[104px] w-[104px] md:h-[150px] md:w-[150px]" aria-hidden>
-        <polygon points="100,3 148,51 100,99 52,51" fill="rgba(201,146,60,.16)" />
-        <g stroke="rgba(201,146,60,.7)" strokeWidth="1.6" fill="none" strokeLinejoin="round">
-          <rect x="2" y="2" width="196" height="196" rx="10" />
-          <line x1="2" y1="2" x2="198" y2="198" /><line x1="198" y1="2" x2="2" y2="198" />
-          <polygon points="100,2 198,100 100,198 2,100" />
+    <Pressable to={`/dashboard/${chartId}`} feedback="tap" aria-label={`Your kundli${data?.ascendant?.sign ? `, Lagna ${data.ascendant.sign}` : ''} — open`}
+      className="hm-press hm-lift block shrink-0 rounded-[14px] p-1"
+      style={{ background: 'var(--hm-card)', border: '1px solid rgba(120,90,40,.14)', boxShadow: '0 6px 18px rgba(60,40,10,.07)' }}>
+      <svg viewBox="0 0 200 200" className="block h-[56px] w-[56px]" aria-hidden>
+        <polygon points="100,3 148,51 100,99 52,51" fill="rgba(201,146,60,.18)" />
+        <g stroke="rgba(201,146,60,.75)" strokeWidth="3" fill="none" strokeLinejoin="round">
+          <rect x="3" y="3" width="194" height="194" rx="12" />
+          <line x1="3" y1="3" x2="197" y2="197" /><line x1="197" y1="3" x2="3" y2="197" />
+          <polygon points="100,3 197,100 100,197 3,100" />
         </g>
-        {data ? Object.entries(byHouse).map(([h, ps]) => {
+        {Object.entries(count).map(([h, n]) => {
           const [x, y] = MINI_CENTER[Number(h)] ?? [100, 100];
-          return ps.slice(0, 3).map((s, i) => (
-            <text key={h + s} x={x} y={y + 6 + (i - (Math.min(ps.length, 3) - 1) / 2) * 17} textAnchor="middle"
-              fontSize="16" fontWeight="600" fill="#3A3326">{s}</text>
+          return Array.from({ length: Math.min(n, 3) }, (_, i) => (
+            <circle key={h + i} cx={x + (i - (Math.min(n, 3) - 1) / 2) * 20} cy={y} r="8" fill="#C9923C" />
           ));
-        }) : null}
+        })}
       </svg>
     </Pressable>
   );
 }
 
-/** Tithi, the greeting in Fraunces, and today's festival — beside their chart. */
+/** Tithi and the greeting on one line each; festival and the kundli link below. */
 function HomeHeader({ chartId, name }: { chartId: string; name: string }) {
   const l = lang3();
   const { q } = usePlace(chartId);
   const { data: p } = useCachedFetch<any>(q ? `/api/panchang-today?${q}&lang=${l}` : null);
+  // "ji" goes first when the name is long — the greeting must stay on one line.
+  const who = l === 'en' || name.length > 9 ? name : `${name} ji`;
   return (
-    <header className="flex items-start justify-between gap-3 px-1 pt-1">
-      <div className="hm-rise min-w-0 flex-1">
-        <p className="hm-eyebrow" style={{ color: 'var(--hm-eyebrow-warm)' }}>{p?.tithi ? [p.tithi, p.masa].filter(Boolean).join(' · ') : ' '}</p>
-        <h1 className="hm-display hm-greeting mt-2" style={{ color: 'var(--hm-text)' }}>
-          {tr(T.hello, l)}, {name}{l === 'en' ? '' : ' ji'}
-        </h1>
-        {p?.special && (
-          <Pressable to="/panchang" feedback="tap" className="mt-2 inline-flex min-h-[44px] items-center">
-            <span className="hm-pill-gold"><Flame className="h-3.5 w-3.5" /> {tr(T.today, l)} · {p.special.label}</span>
-          </Pressable>
-        )}
-      </div>
-      {/* Their kundli, one tap away — the chart and a plain "view" link. */}
-      <div className="flex shrink-0 flex-col items-center">
+    <header className="hm-rise px-1 pt-1">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="hm-eyebrow truncate" style={{ color: 'var(--hm-eyebrow-warm)' }}>{p?.tithi ? [p.tithi, p.masa].filter(Boolean).join(' · ') : ' '}</p>
+          <h1 className="hm-display hm-greeting mt-1" style={{ color: 'var(--hm-text)' }}>{tr(T.hello, l)}, {who}</h1>
+        </div>
         <MiniKundli chartId={chartId} />
-        <Pressable to={`/dashboard/${chartId}`} subtle className="hm-link text-[12.5px]">
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3">
+        {p?.special ? (
+          <Pressable to="/panchang" feedback="tap" className="inline-flex min-h-[40px] min-w-0 items-center">
+            <span className="hm-pill-gold min-w-0"><Flame className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{tr(T.today, l)} · {p.special.label}</span></span>
+          </Pressable>
+        ) : <span />}
+        <Pressable to={`/dashboard/${chartId}`} subtle className="hm-link shrink-0 text-[13px]" style={{ minHeight: 40 }}>
           {tr(T.viewKundli, l)} <ArrowRight className="h-3.5 w-3.5" />
         </Pressable>
       </div>
@@ -295,7 +273,7 @@ function seeded(a: number) {
 }
 const STARS = (() => {
   const r = seeded(20260910);
-  return Array.from({ length: 34 }, () => ({ x: r() * 100, y: r() * 100, s: r() < 0.72 ? 1 : 2, o: 0.2 + r() * 0.4, d: 3 + r() * 3, delay: r() * 5 }));
+  return Array.from({ length: 16 }, () => ({ x: r() * 100, y: r() * 100, s: r() < 0.8 ? 1 : 2, o: 0.15 + r() * 0.25, d: 3 + r() * 3, delay: r() * 5 }));
 })();
 function Stars() {
   return (
@@ -307,70 +285,43 @@ function Stars() {
   );
 }
 
-/* ── Day arc: sunrise → sunset, with the real windows on it ─────────────── */
-const ARC = { W: 320, H: 124, cx: 160, cy: 100, rx: 146, ry: 82 };
-const arcPt = (f: number) => { const t = Math.PI * (1 - f); return { x: ARC.cx + ARC.rx * Math.cos(t), y: ARC.cy - ARC.ry * Math.sin(t) }; };
-const arcPath = (f1: number, f2: number) => {
-  const a = arcPt(f1), b = arcPt(f2);
-  return `M ${a.x.toFixed(2)} ${a.y.toFixed(2)} A ${ARC.rx} ${ARC.ry} 0 0 1 ${b.x.toFixed(2)} ${b.y.toFixed(2)}`;
-};
-
-function DayArc({ rise, set, best, rahu, now, l }: { rise?: string; set?: string; best?: any; rahu?: any; now?: string; l: L3 }) {
-  const id = useId().replace(/:/g, '');
+/* ── Day bar: sunrise → sunset, the real windows on one slim track ──────── */
+function DayBar({ rise, set, best, rahu, now }: { rise?: string; set?: string; best?: any; rahu?: any; now?: string }) {
   const reduce = useReducedMotion();
   const R = toMin(rise), S = toMin(set), N = toMin(now);
   const valid = R != null && S != null && S > R;
-  const frac = (m: number | null) => (!valid || m == null ? null : Math.min(1, Math.max(0, (m - (R as number)) / ((S as number) - (R as number)))));
-  const seg = (w: any) => { if (!w) return null; const a = frac(toMin(w.start)), b = frac(toMin(w.end)); return a == null || b == null || b <= a ? null : { a, b }; };
-  const bs = seg(best), rk = seg(rahu);
-  const isDay = valid && N != null && N >= (R as number) && N <= (S as number);
-  const target = isDay ? (frac(N) as number) : 0;
-
-  // The sun waits for the arc to draw, then glides; later minutes just move it.
-  const fv = useMotionValue(reduce ? target : 0);
-  const first = useRef(true);
-  useEffect(() => {
-    if (reduce) { fv.set(target); return; }
-    const c = animate(fv, target, { duration: first.current ? 1.1 : 0.6, delay: first.current ? 0.9 : 0, ease: [0.2, 0.8, 0.2, 1] });
-    first.current = false;
-    return () => c.stop();
-  }, [target, reduce, fv]);
-  const sx = useTransform(fv, (f) => arcPt(f).x);
-  const sy = useTransform(fv, (f) => arcPt(f).y);
   if (!valid) return null;
-  const moonAt = arcPt(N != null && N < (R as number) ? 0 : 1);
-
+  const f = (m: number | null) => (m == null ? null : Math.min(1, Math.max(0, (m - (R as number)) / ((S as number) - (R as number)))));
+  const seg = (w: any) => { if (!w) return null; const a = f(toMin(w.start)), b = f(toMin(w.end)); return a == null || b == null || b <= a ? null : { a, b }; };
+  const bs = seg(best), rk = seg(rahu);
+  const isDay = N != null && N >= (R as number) && N <= (S as number);
+  const at = isDay ? (f(N) as number) : (N != null && N < (R as number) ? 0 : 1);
+  const ease = [0.2, 0.8, 0.2, 1] as const;
+  const bar = (s2: { a: number; b: number }, color: string, name: string) => (
+    <motion.span data-seg={name} data-f1={s2.a.toFixed(4)} data-f2={s2.b.toFixed(4)} className="absolute inset-y-0 rounded-[3px]"
+      style={{ left: `${s2.a * 100}%`, width: `${(s2.b - s2.a) * 100}%`, background: color, transformOrigin: 'left center' }}
+      initial={{ scaleX: reduce ? 1 : 0 }} animate={{ scaleX: 1 }} transition={{ duration: reduce ? 0 : 0.5, ease }} />
+  );
   return (
-    <svg viewBox={`0 0 ${ARC.W} ${ARC.H}`} className="mt-4 block h-auto w-full" role="img"
-      aria-label={`${tr({ en: 'Sunrise', hi: 'सूर्योदय', hinglish: 'Sunrise' }, l)} ${fmtClock(rise)}, ${tr({ en: 'sunset', hi: 'सूर्यास्त', hinglish: 'sunset' }, l)} ${fmtClock(set)}`}
-      data-rise={R} data-set={S}>
-      <defs>
-        <radialGradient id={`${id}g`}><stop offset="0%" stopColor="#E8B866" stopOpacity=".55" /><stop offset="100%" stopColor="#E8B866" stopOpacity="0" /></radialGradient>
-        <mask id={`${id}m`} maskUnits="userSpaceOnUse" x="0" y="0" width={ARC.W} height={ARC.H}>
-          <motion.path d={arcPath(0, 1)} stroke="#fff" strokeWidth="18" fill="none" strokeLinecap="round"
-            initial={{ pathLength: reduce ? 1 : 0 }} animate={{ pathLength: 1 }} transition={{ duration: reduce ? 0 : 0.9, ease: [0.2, 0.8, 0.2, 1] }} />
-        </mask>
-      </defs>
-      <g mask={`url(#${id}m)`}>
-        <path d={arcPath(0, 1)} stroke="rgba(255,255,255,.18)" strokeWidth="2" strokeDasharray="2 6" strokeLinecap="round" fill="none" />
-        {bs && <path d={arcPath(bs.a, bs.b)} data-seg="best" data-f1={bs.a.toFixed(4)} data-f2={bs.b.toFixed(4)} stroke="#5FD08E" strokeWidth="4" strokeLinecap="round" fill="none" />}
-        {rk && <path d={arcPath(rk.a, rk.b)} data-seg="rahu" data-f1={rk.a.toFixed(4)} data-f2={rk.b.toFixed(4)} stroke="#FF7A6B" strokeWidth="4" strokeLinecap="round" fill="none" />}
-      </g>
-      {isDay ? (
-        <g data-marker="sun" data-f={target.toFixed(4)}>
-          <motion.circle cx={sx} cy={sy} r="16" fill={`url(#${id}g)`} />
-          <motion.circle cx={sx} cy={sy} r="6" fill="#E8B866" />
-        </g>
-      ) : (
-        <g data-marker="moon">
-          <circle cx={moonAt.x} cy={moonAt.y} r="14" fill={`url(#${id}g)`} opacity=".6" />
-          <circle cx={moonAt.x} cy={moonAt.y} r="6" fill="#F5EFE6" />
-          <circle cx={moonAt.x + 2.6} cy={moonAt.y - 2} r="5" fill="#2B2160" />
-        </g>
-      )}
-      <text x={arcPt(0).x} y={ARC.H - 3} textAnchor="start" fontSize="12" fill="rgba(245,239,230,.65)" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtClock(rise)}</text>
-      <text x={arcPt(1).x} y={ARC.H - 3} textAnchor="end" fontSize="12" fill="rgba(245,239,230,.65)" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtClock(set)}</text>
-    </svg>
+    <div className="mt-2" data-rise={R} data-set={S}>
+      <div className="relative h-[6px] rounded-[3px]" style={{ background: 'rgba(255,255,255,.14)' }}>
+        {bs && bar(bs, '#5FD08E', 'best')}
+        {rk && bar(rk, '#FF7A6B', 'rahu')}
+        {isDay ? (
+          <motion.span data-marker="sun" data-f={at.toFixed(4)} className="absolute top-1/2 h-[10px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ background: '#E8B866', boxShadow: '0 0 10px 3px rgba(232,184,102,.5)' }}
+            initial={{ left: reduce ? `${at * 100}%` : '0%' }} animate={{ left: `${at * 100}%` }}
+            transition={{ duration: reduce ? 0 : 0.8, delay: reduce ? 0 : 0.35, ease }} />
+        ) : (
+          <span data-marker="moon" className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: `${at * 100}%`, color: '#F5EFE6' }}>
+            <Moon className="h-3 w-3" fill="currentColor" />
+          </span>
+        )}
+      </div>
+      <div className="hm-sub hm-num mt-1 flex justify-between text-[11px] font-medium leading-[14px]">
+        <span>{fmtClock(rise)}</span><span>{fmtClock(set)}</span>
+      </div>
+    </div>
   );
 }
 
@@ -414,16 +365,24 @@ const NIGHT_PILL = {
 
 function TodaySkeleton() {
   return (
-    <section className="hm-night p-5 md:p-6" aria-hidden>
-      <div className="flex items-center justify-between"><div className="skeleton h-3 w-28" /><div className="skeleton h-6 w-24 rounded-full" /></div>
-      <div className="skeleton mt-4 h-6 w-full" /><div className="skeleton mt-2 h-6 w-2/3" />
-      <div className="skeleton mt-5 h-24 w-full rounded-2xl" />
-      <div className="mt-5 grid grid-cols-2 gap-4"><div className="skeleton h-12" /><div className="skeleton h-12" /></div>
+    <section className="hm-night p-4" aria-hidden>
+      <div className="flex items-center justify-between"><div className="skeleton h-3 w-24" /><div className="skeleton h-6 w-20 rounded-full" /></div>
+      <div className="skeleton mt-3 h-4 w-full" /><div className="skeleton mt-2 h-4 w-2/3" />
+      <div className="skeleton mt-4 h-[6px] w-full rounded" />
+      <div className="mt-4 grid grid-cols-2 gap-4"><div className="skeleton h-9" /><div className="skeleton h-9" /></div>
+      <div className="skeleton mt-4 h-5 w-full" />
     </section>
   );
 }
 
-/** The day, as a night sky — the one big thing on Home. */
+/** The verdict in two words, for the one-line "right now". */
+function nowShort(n: any, l: L3): string {
+  if (n?.verdict === 'go') return tr({ en: 'Good time', hi: 'अच्छा समय', hinglish: 'Accha samay' }, l);
+  if (n?.verdict === 'wait') return tr({ en: 'Wait a bit', hi: 'थोड़ा रुकें', hinglish: 'Thoda rukein' }, l);
+  return tr({ en: 'Avoid for now', hi: 'अभी नहीं', hinglish: 'Abhi nahi' }, l);
+}
+
+/** The day, as a compact night sky. */
 function TodayCard({ chartId }: { chartId: string }) {
   const l = lang3();
   const [why, setWhy] = useState(false);
@@ -439,57 +398,57 @@ function TodayCard({ chartId }: { chartId: string }) {
   const nowDot = now?.verdict === 'go' ? '#5FD08E' : now?.verdict === 'wait' ? '#E8B866' : '#FF7A6B';
 
   return (
-    <section className="hm-night hm-rise p-5 md:p-6" style={{ animationDelay: '60ms' }}>
+    <section className="hm-night hm-rise p-4" style={{ animationDelay: '60ms' }}>
       <Stars />
       <div className="flex items-center justify-between gap-3">
         <p className="hm-eyebrow hm-num hm-sub">{todayEyebrow(l)}</p>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold" style={{ background: pill.bg, color: pill.ink }}>
+        <span className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-semibold" style={{ background: pill.bg, color: pill.ink }}>
           <span className="hm-dot" style={{ background: pill.dot }} /> {d.label}
         </span>
       </div>
 
-      <div className="mt-3 flex items-start gap-1">
-        <p className="hm-display hm-headline min-w-0 flex-1">{shortHeadline(d.headline, l)}</p>
+      <div className="mt-1.5 flex items-start gap-1">
+        <p className="line-clamp-2 min-w-0 flex-1 text-[16px] font-semibold leading-[1.4]" style={{ color: '#F5EFE6' }}>{shortHeadline(d.headline, l)}</p>
         <button type="button" onClick={() => { haptic.tap(); setWhy(true); }} aria-label={tr(T.why, l)}
-          className="hm-sub -mr-2.5 -mt-2 grid h-11 w-11 shrink-0 place-items-center rounded-full">
-          <Info className="h-[18px] w-[18px]" />
+          className="hm-sub -mr-2.5 -mt-2.5 grid h-10 w-10 shrink-0 place-items-center rounded-full">
+          <Info className="h-[17px] w-[17px]" />
         </button>
       </div>
 
-      <DayArc rise={pc?.sunrise} set={pc?.sunset} best={d.best_time} rahu={d.caution_time} now={now?.now} l={l} />
+      <DayBar rise={pc?.sunrise} set={pc?.sunset} best={d.best_time} rahu={d.caution_time} now={now?.now} />
 
       {(d.best_time || d.caution_time) && (
-        <div className="mt-3 grid grid-cols-2">
+        <div className="mt-2 grid grid-cols-2">
           {d.best_time && (
             <div className="min-w-0 pr-3">
-              <p className="hm-caption hm-sub flex items-center gap-1.5"><span className="hm-dot" style={{ background: '#5FD08E' }} /> {tr(T.best, l)}</p>
-              <p className="hm-num hm-fit mt-1 font-semibold" style={{ color: '#F5EFE6' }}>{fmtRange(d.best_time.start, d.best_time.end)}</p>
+              <p className="hm-sub flex items-center gap-1.5 text-[12px] font-medium leading-[14px]"><span className="hm-dot" style={{ background: '#5FD08E' }} /> {tr(T.best, l)}</p>
+              <p className="hm-num text-[17px] font-semibold leading-[20px]" style={{ color: '#F5EFE6' }}>{fmtRange(d.best_time.start, d.best_time.end)}</p>
             </div>
           )}
           {d.caution_time && (
             <div className={`min-w-0 ${d.best_time ? 'border-l pl-3' : ''}`} style={{ borderColor: 'rgba(255,255,255,.12)' }}>
-              <p className="hm-caption hm-sub flex items-center gap-1.5"><span className="hm-dot" style={{ background: '#FF7A6B' }} /> {d.caution_time.name}</p>
-              <p className="hm-num hm-fit mt-1 font-semibold" style={{ color: '#F5EFE6' }}>{fmtRange(d.caution_time.start, d.caution_time.end)}</p>
+              <p className="hm-sub flex items-center gap-1.5 text-[12px] font-medium leading-[14px]"><span className="hm-dot" style={{ background: '#FF7A6B' }} /> {d.caution_time.name}</p>
+              <p className="hm-num text-[17px] font-semibold leading-[20px]" style={{ color: '#F5EFE6' }}>{fmtRange(d.caution_time.start, d.caution_time.end)}</p>
             </div>
           )}
         </div>
       )}
 
-      {now?.verdict && (
-        <>
-          <div className="hm-rule mt-4" />
-          <Pressable to={`/right-now/${chartId}`} feedback="select" className="hm-press -mx-2 mt-1 flex min-h-[56px] w-[calc(100%+16px)] items-center gap-3 rounded-xl px-2 py-2 text-left">
+      {/* Right now and the way into the full day, on one line. */}
+      <div className="hm-rule mt-2" />
+      <div className="flex items-center justify-between gap-2">
+        {now?.verdict ? (
+          <Pressable to={`/right-now/${chartId}`} feedback="select" className="hm-press -ml-1.5 flex min-h-[36px] min-w-0 items-center gap-2 rounded-lg px-1.5 text-left">
             <span className="hm-live-dot" style={{ ['--c' as any]: nowDot }} />
-            <span className="min-w-0 flex-1">
-              <span className="hm-caption hm-sub hm-num block">{tr(T.rightNow, l)}{now.now ? ` · ${fmtClock(now.now)}` : ''}</span>
-              <span className="mt-0.5 block text-[15px] leading-[21px]" style={{ color: '#F5EFE6' }}>{nowLine(now, l)}</span>
+            <span className="hm-num min-w-0 truncate text-[13px]" style={{ color: '#F5EFE6' }}>
+              <span className="hm-sub">{tr(T.rightNow, l)}{now.now ? ` · ${fmtClock(now.now)}` : ''} — </span>{nowShort(now, l)}
             </span>
-            <ChevronRight className="hm-sub h-[18px] w-[18px] shrink-0" />
           </Pressable>
-        </>
-      )}
-
-      <FooterLink to={`/daily/${chartId}`} color="#E8B866">{tr(T.fullDay, l)}</FooterLink>
+        ) : <span />}
+        <Pressable to={`/daily/${chartId}`} subtle className="flex min-h-[36px] shrink-0 items-center gap-1 text-[13px] font-semibold" style={{ color: '#E8B866' }}>
+          {tr({ en: 'Full day', hi: 'पूरा दिन', hinglish: 'Poora din' }, l)} <ArrowRight className="h-3.5 w-3.5" />
+        </Pressable>
+      </div>
       <WhySheet open={why} onClose={() => setWhy(false)} headline={d.headline} factors={d.factors ?? []} l={l} />
     </section>
   );

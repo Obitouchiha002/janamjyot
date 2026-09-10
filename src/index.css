@@ -280,7 +280,9 @@ html.app-native .app-scroll { transform: translateZ(0); }
   scrollbar-width: none;
   /* Clear the fixed chrome at both ends. */
   padding-top: calc(var(--sat) + var(--topbar-h));
-  padding-bottom: calc(var(--sab) + var(--tabbar-h) + 16px);
+  /* The tab bar, the Chat button raised ~20px above it, and a 24px gap —
+     the last card must never sit behind the button. */
+  padding-bottom: calc(var(--sab) + var(--tabbar-h) + 44px);
 }
 .app-scroll::-webkit-scrollbar { display: none; }
 
@@ -632,3 +634,7 @@ html.low-power .skeleton::after { will-change: auto; }
   .hm-press, .hm-lift { transition: none !important; }
   .hm-press:active, .hm-lift:hover { transform: none !important; }
 }
+
+/* Compact header: the greeting is one line (Fraunces 26px), never wrapped. */
+.hm-greeting { font-size: 26px !important; line-height: 32px; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 768px) { .hm-greeting { font-size: 30px !important; line-height: 36px; } }
