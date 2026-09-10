@@ -21,9 +21,8 @@ import {
 import { Pressable } from "@/components/mobile/Pressable";
 import ReferCard from "@/components/ReferCard";
 import { useAuth } from "@/auth";
+import { openCheckout, packWhy } from "@/lib/checkout";
 import { getLang } from "@/lib/prefs";
-import { API_BASE } from "@/lib/api";
-import { isNative } from "@/lib/native";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -141,39 +140,6 @@ function timeLeft(iso: string, l: Lang): string {
   if (d > 0) return `${d} ${t(L.days, l)} ${h} ${t(L.hours, l)}`;
   if (h > 0) return `${h} ${t(L.hours, l)} ${m} ${t(L.minutes, l)}`;
   return `${m} ${t(L.minutes, l)}`;
-}
-
-/**
- * Open the checkout, carrying the signed-in session across.
- *
- * The app is a WebView with its own storage; the browser it opens has none. So
- * buying from inside the app used to mean signing in again by emailed code at
- * the payment step — which is both the worst possible moment to add friction
- * and exactly what people are taught to treat as a scam.
- *
- * The handoff is fetched first and expires in five minutes; if it cannot be
- * had, checkout still opens and asks for the code as before. A failure to
- * smooth the path must never become a failure to buy.
- */
-async function openCheckout(pack: string, email?: string) {
-  const q = new URLSearchParams({ pack });
-  if (email) q.set("email", email);
-  try {
-    const r = await fetch("/api/billing/handoff", { method: "POST" });
-    if (r.ok) {
-      const d = await r.json();
-      if (d?.token) q.set("ct", d.token);
-    }
-  } catch { /* open without it — they can still sign in */ }
-
-  const url = `${API_BASE}/checkout.html?${q.toString()}`;
-  if (isNative) {
-    import("@capacitor/browser")
-      .then(({ Browser }) => Browser.open({ url }))
-      .catch(() => window.open(url, "_blank"));
-  } else {
-    window.location.href = url;
-  }
 }
 
 function Card({ children }: { children: React.ReactNode }) {
@@ -411,6 +377,9 @@ export default function PlanPage() {
                           </span>
                         )}
                       </span>
+                      <span className="mt-0.5 block text-[12.5px] font-semibold text-foreground/85">
+                        {packWhy(p.id, lang)}
+                      </span>
                       <span className="mt-0.5 block text-[12px] text-muted-foreground">
                         {p.credits} {t(L.credits, lang).toLowerCase()}
                         {bonus > 0 ? ` · +${bonus} ${t(L.bonusFree, lang)}` : ""}
@@ -437,6 +406,7 @@ export default function PlanPage() {
             className="mt-2 block w-full rounded-xl border border-border py-3 text-center text-[14px] font-bold"
           >
             {t(L.startTrial, lang)} — ₹{trial.rupees} / {trial.days} {t(L.days, lang)}
+            <span className="mt-0.5 block text-[11.5px] font-medium text-muted-foreground">{packWhy("trial", lang, trial.days)}</span>
           </Pressable>
         )}
 

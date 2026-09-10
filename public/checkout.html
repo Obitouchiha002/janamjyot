@@ -119,6 +119,7 @@
   .pk .nm{font-size:13px;font-weight:700;color:var(--ink2)}
   .pk .pr{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:1px 0}
   .pk .cr{font-size:12.5px;color:var(--ink2);line-height:1.35}
+  .pk .wy{font-size:11.5px;font-weight:600;color:var(--ink);line-height:1.3;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
   .pk .tag{position:absolute;top:-9px;left:10px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:800;
     padding:2px 8px;border-radius:999px;letter-spacing:.02em}
   .pk .tag.alt{background:var(--ok)}
@@ -283,6 +284,9 @@
 
   var NICE = { starter:'Starter', popular:'Popular', value:'Value' };
   var TAGS = { popular:'Most popular', value:'Best value', trial:'Try it' };
+  /* Who each pack is for — "165 credits" says what you get, not why you'd want it. */
+  var WHY = { starter:'A few specific questions', popular:'Regular guidance: career, marriage, money',
+              value:'Whole family: matching + full reports' };
 
   /* Every pack on one screen, chosen by tapping. It used to be one pack fixed
      by the link with a row of small chips underneath, and people could not
@@ -291,9 +295,10 @@
   function options(){
     var o = (cfg.packs || []).map(function(p){
       return { id:p.id, name:NICE[p.id] || 'Credits', price:p.rupees,
-               sub:p.credits + ' credits' + (p.bonus ? ' (+' + p.bonus + ' free)' : '') };
+               sub:p.credits + ' credits' + (p.bonus ? ' (+' + p.bonus + ' free)' : ''), why:WHY[p.id] || '' };
     });
-    if(cfg.trial) o.push({ id:'trial', name:'Trial', price:cfg.trial.rupees, sub:cfg.trial.days + '-day full access' });
+    if(cfg.trial) o.push({ id:'trial', name:'Trial', price:cfg.trial.rupees, sub:cfg.trial.days + '-day full access',
+                           why:'Try everything for ' + cfg.trial.days + ' days' });
     return o;
   }
   function drawPicker(){
@@ -303,7 +308,7 @@
         '" data-id="' + o.id + '" style="animation-delay:' + (60 + i*60) + 'ms">' +
         (TAGS[o.id] ? '<span class="tag' + (o.id === 'trial' ? ' alt' : '') + '">' + TAGS[o.id] + '</span>' : '') +
         '<span class="ck"></span><div class="nm">' + o.name + '</div><div class="pr">₹' + o.price + '</div>' +
-        '<div class="cr">' + o.sub + '</div></button>';
+        '<div class="cr">' + o.sub + '</div>' + (o.why ? '<div class="wy">' + o.why + '</div>' : '') + '</button>';
     }).join('');
   }
 
