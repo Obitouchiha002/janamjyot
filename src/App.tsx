@@ -155,6 +155,8 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/reports/:chartId" element={<ReportsPage />} />
       <Route path="/reports/:chartId/:type" element={<ReportViewPage />} />
       {/* The one chat. */}
+      {/* The website links here; it is the app's front door, not a screen. */}
+      <Route path="/app" element={<Navigate to="/" replace />} />
       <Route path="/chat" element={<ChatHome />} />
       <Route path="/chat/:chartId" element={<ChatPage />} />
       {/* Old chat paths → the one chat (keeps every existing link working). */}

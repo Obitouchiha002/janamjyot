@@ -729,7 +729,7 @@ ${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use
 ${args.relation ? `
 THE OTHER PERSON in this question — ${args.relation.name || "they"} (${args.relation.relation}). Their chart and your compatibility were CALCULATED by the app, not guessed:
 ${JSON.stringify(args.relation)}
-When the question is about them or the two of you, answer from BOTH charts and this match. Their thoughts and choices are their own — describe what the charts show about the bond and its timing, never claim to know what they secretly feel or will decide, and never promise that someone will come back.
+When the question is about them or the two of you, answer from BOTH charts and this match, and call them by their name (${args.relation.name || "them"}) — "aap dono" alone reads as a reply that forgot who they asked about. Their thoughts and choices are their own — describe what the charts show about the bond and its timing, never claim to know what they secretly feel or will decide, and never promise that someone will come back.
 ` : ""}The user asks: "${args.question}"
 
 ${args.isFirst ? `\nThis is the FIRST thing they have ever asked you. They are deciding right now

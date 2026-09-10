@@ -1,3 +1,4 @@
+import { pickPrimary } from "@/lib/primary";
 import { useEffect, useState } from "react";
 import { User } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
@@ -23,7 +24,7 @@ export default function ProfilePicker({ value, onPick }: { value: string; onPick
         const list: Profile[] = Array.isArray(d) ? d : [];
         setProfiles(list);
         setLoaded(true);
-        if (list.length && !value) onPick(list[0].id);
+        if (list.length && !value) onPick(pickPrimary(list)!.id); // theirs, not the newest
       })
       .catch(() => { setFailed(true); setLoaded(true); });
   }, [reload]); // eslint-disable-line

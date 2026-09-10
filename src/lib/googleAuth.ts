@@ -33,7 +33,11 @@ export const GOOGLE_CLIENT_ID: string =
 export const googleConfigured = !!GOOGLE_CLIENT_ID;
 
 /** Return the (statically bundled) native plugin. */
-async function loadGoogleAuth(): Promise<any | null> {
+// Synchronous on purpose. Returning a Capacitor plugin from an async function
+// (or awaiting it) makes the Promise probe its `.then` — which the native
+// bridge answers with "GoogleAuth.then() is not implemented on android",
+// an unhandled rejection on every launch.
+function loadGoogleAuth(): any | null {
   return GoogleAuth ?? null;
 }
 
@@ -46,7 +50,7 @@ let initPromise: Promise<void> | null = null;
 export function initGoogleAuth(): void {
   if (!isNative || !googleConfigured || initPromise) return;
   initPromise = (async () => {
-    const GoogleAuth = await loadGoogleAuth();
+    const GoogleAuth = loadGoogleAuth();
     if (!GoogleAuth) return;
     try {
       // On Android the plugin already has `serverClientId` from
@@ -111,7 +115,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => T | never): 
 
 /** Native flow → returns a Google **ID token** to POST to `/api/auth/google`. */
 async function nativeIdToken(): Promise<string> {
-  const GoogleAuth = await loadGoogleAuth();
+  const GoogleAuth = loadGoogleAuth();
   if (!GoogleAuth) throw new Error("Google Sign-In isn't available in this build.");
   // Don't block on init — if it stalls, proceed anyway (the native side reads
   // its config from capacitor.config / strings.xml regardless).

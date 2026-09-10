@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Settings, Share2, Coins, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { getLang } from '@/lib/prefs';
 import { Pressable } from './Pressable';
 import { titleFor, isRootTab, parentOf } from './routes';
 import { shareText } from '@/lib/native';
@@ -127,7 +128,12 @@ function WalletChip() {
     const ms = Date.parse(trialEnds) - Date.now();
     if (ms > 0) {
       const hours = Math.floor(ms / 3_600_000);
-      const left = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${Math.max(1, hours)}h`;
+      // "2d 18h" alone read as a mystery number; say it is the trial.
+      const days = Math.floor(hours / 24);
+      const lg = getLang();
+      const left = days >= 1
+        ? (lg === 'hi' ? `ट्रायल · ${days} दिन` : lg === 'hinglish' ? `Trial · ${days} din` : `Trial · ${days}d left`)
+        : (lg === 'hi' ? `ट्रायल · ${Math.max(1, hours)} घंटे` : lg === 'hinglish' ? `Trial · ${Math.max(1, hours)} ghante` : `Trial · ${Math.max(1, hours)}h left`);
       return (
         <Pressable
           to="/plan"

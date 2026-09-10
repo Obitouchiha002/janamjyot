@@ -1,3 +1,4 @@
+import { pickPrimary } from "@/lib/primary";
 import { useEffect, useState } from "react";
 import { Sparkles, Gem, CalendarClock, Orbit, Check } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
@@ -33,7 +34,7 @@ export default function NotificationsPage() {
     fetch("/api/profiles")
       .then((r) => r.json())
       .then((d) => {
-        const id = Array.isArray(d) && d[0]?.id;
+        const id = pickPrimary(Array.isArray(d) ? d : [])?.id;
         if (id) {
           setChartId(id);
           fetch(`/api/chart/${id}`).then((r) => r.json()).then((c) => setDasha(c?.dasha?.current ?? null)).catch(() => {});

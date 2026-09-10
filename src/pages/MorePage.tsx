@@ -1,33 +1,44 @@
 import {
-  HeartHandshake, LifeBuoy, CalendarDays, Wand2, ChevronRight,
-  Settings, Cpu, Share2, Star, LogOut, LogIn, Shield, Code2, Bell, Coins,
+  LifeBuoy, ChevronRight, Settings, Cpu, Share2, Star, LogOut, LogIn, Shield, Code2, Bell, Coins,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useAuth } from '@/auth';
 import { shareText, haptic } from '@/lib/native';
 import { openFeedback } from '@/lib/feedback';
+import { getLang } from '@/lib/prefs';
+
+/*
+ * More is the account and the app — nothing else.
+ *
+ * It used to open with the Admin Panel and repeat Matching, Panchang and the
+ * tools that already have their own tab, so the same feature lived in three
+ * places. Features live under Tools and inside the kundli now; admin rows are
+ * shown only to the admin, at the very bottom.
+ */
+type Tri = { en: string; hi: string; hinglish: string };
+const pick = (x: Tri) => { const g = getLang(); return (x as any)[g] ?? x.en; };
 
 interface Row {
-  title: string;
-  desc: string;
+  title: Tri;
+  desc: Tri | string;
   icon: any;
   to?: string;
   onClick?: () => void;
   tint: string;
 }
 
-function RowList({ rows, label }: { rows: Row[]; label: string }) {
+function RowList({ rows, label }: { rows: Row[]; label: Tri }) {
   return (
     <section>
       <h3 className="mb-2.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-        {label}
+        {pick(label)}
       </h3>
       <div className="m-card divide-y divide-border">
         {rows.map((r) => {
           const Icon = r.icon;
           return (
             <Pressable
-              key={r.title}
+              key={r.title.en}
               to={r.to}
               onClick={r.onClick}
               subtle
@@ -40,8 +51,10 @@ function RowList({ rows, label }: { rows: Row[]; label: string }) {
                 <Icon className="h-[19px] w-[19px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[14.5px] font-bold leading-tight">{r.title}</span>
-                <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{r.desc}</span>
+                <span className="block text-[14.5px] font-bold leading-tight">{pick(r.title)}</span>
+                <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+                  {typeof r.desc === 'string' ? r.desc : pick(r.desc)}
+                </span>
               </span>
               <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
             </Pressable>
@@ -55,58 +68,51 @@ function RowList({ rows, label }: { rows: Row[]; label: string }) {
 export default function MorePage() {
   const { user, logout } = useAuth();
 
-  const features: Row[] = [
-    { title: 'Kundli Matching', desc: 'Ashtakoot Guna Milan — 36 points', icon: HeartHandshake, to: '/match', tint: '#F26D9B' },
-    { title: 'Daily Panchang', desc: 'Tithi, Nakshatra, Rahu Kaal', icon: CalendarDays, to: '/panchang', tint: '#E8B44A' },
-    { title: 'Advanced Tools', desc: 'Muhurat, Yogas, Ashtakavarga, Alerts', icon: Wand2, to: '/tools', tint: '#A78BFA' },
-  ];
-
   const app: Row[] = [
-    { title: 'My Plan & Credits', desc: 'Current plan, trial expiry, credits and receipts', icon: Coins, to: '/plan', tint: '#C07A1E' },
-    { title: 'Settings', desc: 'Theme, language and preferences', icon: Settings, to: '/settings', tint: '#7DD3C0' },
-    { title: 'Notifications', desc: 'Daily guidance & reminders', icon: Bell, to: '/notifications', tint: '#E8B44A' },
-    // AI provider/model health is internal — admins only (see /api/ai-status).
-    ...(user?.role === 'admin'
-      ? [{ title: 'AI Status', desc: 'Provider health & limits (admin)', icon: Cpu, to: '/ai-status', tint: '#60A5FA' } as Row]
-      : []),
-    { title: 'Help & Support', desc: 'Report a problem or read the FAQ', icon: LifeBuoy, to: '/help', tint: '#34D399' },
-    {
-      title: 'Rate & Review',
-      desc: 'Share your experience — 5-star rating',
-      icon: Star,
-      tint: '#F26D9B',
-      onClick: () => { haptic.tap(); openFeedback('more'); },
-    },
-    {
-      title: 'Share JanamJyot',
-      desc: 'Send the app to your friends',
-      icon: Share2,
-      tint: '#E8B44A',
-      // No hardcoded site — share whatever download URL the build was given
-      // (VITE_APP_DOWNLOAD_URL), else just the app name.
+    { title: { en: 'My Plan & Credits', hi: 'मेरा प्लान और क्रेडिट', hinglish: 'Mera plan aur credits' },
+      desc: { en: 'Plan, trial, credits and receipts', hi: 'प्लान, ट्रायल, क्रेडिट और रसीदें', hinglish: 'Plan, trial, credits aur receipts' },
+      icon: Coins, to: '/plan', tint: '#C07A1E' },
+    { title: { en: 'Settings', hi: 'सेटिंग्स', hinglish: 'Settings' },
+      desc: { en: 'Theme, language and preferences', hi: 'थीम, भाषा और पसंद', hinglish: 'Theme, bhasha aur pasand' },
+      icon: Settings, to: '/settings', tint: '#7DD3C0' },
+    { title: { en: 'Notifications', hi: 'सूचनाएँ', hinglish: 'Notifications' },
+      desc: { en: 'Your day each morning, reminders', hi: 'हर सुबह आपका दिन, रिमाइंडर', hinglish: 'Har subah aapka din, reminders' },
+      icon: Bell, to: '/notifications', tint: '#E8B44A' },
+    { title: { en: 'Help & Support', hi: 'मदद और सहायता', hinglish: 'Help & support' },
+      desc: { en: 'Report a problem or read the FAQ', hi: 'समस्या बताएँ या सवाल-जवाब पढ़ें', hinglish: 'Problem batayein ya FAQ padhein' },
+      icon: LifeBuoy, to: '/help', tint: '#34D399' },
+    { title: { en: 'Rate & Review', hi: 'रेटिंग दें', hinglish: 'Rating dein' },
+      desc: { en: 'Tell us how it is going', hi: 'बताइए कैसा लग रहा है', hinglish: 'Batayein kaisa lag raha hai' },
+      icon: Star, tint: '#F26D9B', onClick: () => { haptic.tap(); openFeedback('more'); } },
+    { title: { en: 'Share JanamJyot', hi: 'JanamJyot शेयर करें', hinglish: 'JanamJyot share karein' },
+      desc: { en: 'Send the app to your friends', hi: 'दोस्तों को भेजें', hinglish: 'Doston ko bhejein' },
+      icon: Share2, tint: '#E8B44A',
+      // No hardcoded site — share whatever download URL the build was given.
       onClick: () => shareText(
         'JanamJyot',
         'Try JanamJyot — accurate Vedic astrology, charts and AI guidance.',
         (import.meta as any).env?.VITE_APP_DOWNLOAD_URL || undefined,
-      ),
-    },
-    { title: 'Developer', desc: 'About the developer & contact', icon: Code2, to: '/developer', tint: '#60A5FA' },
+      ) },
+    { title: { en: 'Developer', hi: 'डेवलपर', hinglish: 'Developer' },
+      desc: { en: 'About the developer & contact', hi: 'डेवलपर और संपर्क', hinglish: 'Developer aur contact' },
+      icon: Code2, to: '/developer', tint: '#60A5FA' },
   ];
 
   const account: Row[] = user
-    ? [{ title: 'Sign out', desc: user.email, icon: LogOut, tint: '#F87171', onClick: () => { haptic.warning(); logout(); } }]
-    : [{ title: 'Sign in', desc: 'Sync your kundlis across all devices', icon: LogIn, to: '/login', tint: '#60A5FA' }];
+    ? [{ title: { en: 'Sign out', hi: 'साइन आउट', hinglish: 'Sign out' }, desc: user.email, icon: LogOut, tint: '#F87171', onClick: () => { haptic.warning(); logout(); } }]
+    : [{ title: { en: 'Sign in', hi: 'साइन इन', hinglish: 'Sign in' }, desc: { en: 'Sync your kundlis across devices', hi: 'सभी डिवाइस पर कुंडली', hinglish: 'Sab devices par kundli' }, icon: LogIn, to: '/login', tint: '#60A5FA' }];
 
+  // Internal tools — the admin only, and last.
   const adminRows: Row[] = [
-    { title: 'Admin Panel', desc: 'Users, limits, analytics, API keys', icon: Shield, to: '/admin', tint: '#D97706' },
+    { title: { en: 'Admin Panel', hi: 'एडमिन पैनल', hinglish: 'Admin panel' }, desc: 'Users, limits, analytics, API keys', icon: Shield, to: '/admin', tint: '#D97706' },
+    { title: { en: 'AI Status', hi: 'AI स्टेटस', hinglish: 'AI status' }, desc: 'Provider health & limits', icon: Cpu, to: '/ai-status', tint: '#60A5FA' },
   ];
 
   return (
     <div className="space-y-6 pt-2">
-      {user?.role === 'admin' && <RowList label="Admin" rows={adminRows} />}
-      <RowList label="Features" rows={features} />
-      <RowList label="App" rows={app} />
-      <RowList label="Account" rows={account} />
+      <RowList label={{ en: 'App', hi: 'ऐप', hinglish: 'App' }} rows={app} />
+      <RowList label={{ en: 'Account', hi: 'अकाउंट', hinglish: 'Account' }} rows={account} />
+      {user?.role === 'admin' && <RowList label={{ en: 'Admin', hi: 'एडमिन', hinglish: 'Admin' }} rows={adminRows} />}
 
       <div className="flex flex-col items-center gap-1 pb-2 pt-2 text-center">
         <Star className="h-4 w-4 text-accent" />

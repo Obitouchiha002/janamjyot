@@ -1,3 +1,4 @@
+import { pickPrimary } from './primary';
 /**
  * Feedback / rating flow — state + triggering.
  *
@@ -87,7 +88,9 @@ export async function submitFeedback(args: {
   if (!name) {
     try {
       const list = await (await fetch('/api/profiles')).json();
-      if (Array.isArray(list) && list[0]?.name) name = String(list[0].name);
+      // Their own kundli's name — not the newest one, which may be a partner's.
+      const own = Array.isArray(list) ? pickPrimary(list) : undefined;
+      if (own?.name) name = String(own.name);
     } catch { /* fall back to whatever the server can infer */ }
   }
   try {

@@ -151,7 +151,7 @@ export default function RelationSheet({
               <X className="h-[18px] w-[18px]" strokeWidth={2.4} />
             </Pressable>
 
-            <h2 className="pr-8 text-[19px] font-bold leading-tight">💞 {t(L.title, lang)}</h2>
+            <h2 className="pr-8 text-[19px] font-bold leading-tight">{t(L.title, lang)}</h2>
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{t(L.sub, lang)}</p>
 
             <div className="mt-4 space-y-2">

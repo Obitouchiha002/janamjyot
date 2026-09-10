@@ -3629,7 +3629,9 @@ app.post("/api/chat/universal", async (req, res) => {
 
     // Charged only now, with the answer in hand — an AI call that failed
     // returned above, so a failure never costs anyone a credit.
-    recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
+    // Awaited, so the app's "N free questions left" re-read right after this
+    // reply already sees it — fire-and-forget left the meter one behind.
+    await recordUsage({ userId: asker.userId, deviceId: asker.deviceId, action: "ask", meta: { chartId, surface: "universal" } }).catch(() => {});
     await settleCharge(req, auth.charge, "chat", chartId, { category });
     res.json({ answer: finalAnswer, reason, category, next: fresh, action: action || undefined });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import {
-  Plus, HeartHandshake, CalendarDays, MessageCircleQuestion, Orbit, ScrollText,
+  Plus, MessageCircleQuestion,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useCachedFetch } from '@/lib/useCachedFetch';
@@ -11,7 +11,7 @@ import { useAuth } from '@/auth';
 import { pickPrimary } from '@/lib/primary';
 import { useNavigate } from 'react-router-dom';
 import { getLang } from '@/lib/prefs';
-import { Send } from 'lucide-react';
+import { Send, Heart, Briefcase, Sun, MessageCircle } from 'lucide-react';
 
 /**
  * Rotating zodiac ring behind the hero. Pure SVG geometry — 12 house spokes and
@@ -69,14 +69,6 @@ function greeting(): string {
   return 'Good evening';
 }
 
-/** The three doors Home keeps. Everything else is one tab away. */
-const SHORTCUTS = (chartId?: string) => [
-  { label: 'Kundli Milan', to: '/match', icon: HeartHandshake, tint: '#F26D9B' },
-  { label: 'Panchang', to: '/panchang', icon: CalendarDays, tint: '#E8B44A' },
-  chartId
-    ? { label: 'Reports', to: `/reports/${chartId}`, icon: ScrollText, tint: '#A78BFA' }
-    : { label: 'Muhurat', to: '/muhurat', icon: Orbit, tint: '#A78BFA' },
-];
 
 /**
  * Profiles survive tab switches in memory. Without this the Home tab refetched
@@ -178,10 +170,10 @@ function ChatHero({ chartId }: { chartId: string }) {
     title: { en: "What's on your mind?", hi: 'मन में क्या चल रहा है?', hinglish: 'Man mein kya chal raha hai?' },
     ph: { en: 'Type your question…', hi: 'अपना सवाल लिखिए…', hinglish: 'Apna sawaal likhiye…' },
   };
-  const chips: Record<string, Array<[string, string, string]>> = {
-    en: [['💞', 'My relationship', 'rishta'], ['💼', 'When will my career settle?', ''], ['🌅', 'How is my day today?', '']],
-    hinglish: [['💞', 'Mera rishta', 'rishta'], ['💼', 'Meri career kab set hogi?', ''], ['🌅', 'Aaj mera din kaisa rahega?', '']],
-    hi: [['💞', 'मेरा रिश्ता', 'rishta'], ['💼', 'मेरा करियर कब सेट होगा?', ''], ['🌅', 'आज मेरा दिन कैसा रहेगा?', '']],
+  const chips: Record<string, Array<[any, string, string]>> = {
+    en: [[Heart, 'My relationship', 'rishta'], [Briefcase, 'When will my career settle?', ''], [Sun, 'How is my day today?', '']],
+    hinglish: [[Heart, 'Mera rishta', 'rishta'], [Briefcase, 'Meri career kab set hogi?', ''], [Sun, 'Aaj mera din kaisa rahega?', '']],
+    hi: [[Heart, 'मेरा रिश्ता', 'rishta'], [Briefcase, 'मेरा करियर कब सेट होगा?', ''], [Sun, 'आज मेरा दिन कैसा रहेगा?', '']],
   };
 
   return (
@@ -196,7 +188,7 @@ function ChatHero({ chartId }: { chartId: string }) {
           onClick={() => navigate(`/chat/${chartId}?from=followup`)}
           className="m-enter mt-3.5 block w-full rounded-2xl border border-accent/35 bg-accent/8 px-4 py-3 text-left text-[13.5px] font-semibold leading-snug"
         >
-          💬 {fu.line}
+          <MessageCircle className="mr-1.5 inline h-[15px] w-[15px] text-accent" />{fu.line}
         </button>
       )}
 
@@ -215,25 +207,56 @@ function ChatHero({ chartId }: { chartId: string }) {
           type="submit"
           aria-label="Ask"
           disabled={!text.trim()}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground disabled:opacity-40"
+          className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition-colors ${
+            text.trim() ? 'bg-accent text-accent-foreground shadow-md shadow-accent/30' : 'bg-muted text-muted-foreground'
+          }`}
         >
           <Send className="h-[17px] w-[17px]" />
         </button>
       </form>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {(chips[L] ?? chips.en).map(([emoji, label, kind]) => (
+        {(chips[L] ?? chips.en).map(([Icon, label, kind]) => (
           <Pressable
             key={label}
             onClick={() => (kind === 'rishta' ? navigate(`/chat/${chartId}?from=rishta`) : ask(label))}
             feedback="tap"
-            className="rounded-full bg-muted/80 px-3.5 py-2 text-[12.5px] font-semibold"
+            className="inline-flex items-center gap-1.5 rounded-full bg-muted/80 px-3.5 py-2 text-[12.5px] font-semibold"
           >
-            {emoji} {label}
+            <Icon className="h-[14px] w-[14px] shrink-0 text-accent" /> {label}
           </Pressable>
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Their chart in one line — Lagna, Moon, running dasha.
+ *
+ * The most personal thing in the app was only on the desktop panel; a phone
+ * showed nothing of it on Home. Taps through to the full kundli.
+ */
+function ChartStrip({ chartId }: { chartId: string }) {
+  const { data } = useCachedFetch<any>(`/api/chart/${chartId}`);
+  const g = getLang();
+  const K = (g === 'hi' ? ['लग्न', 'चंद्र', 'दशा'] : g === 'hinglish' ? ['Lagna', 'Chandra', 'Dasha'] : ['Lagna', 'Moon', 'Dasha']);
+  const moon = data?.planets?.find((p: any) => p.planet === 'Moon')?.sign;
+  const vals = data
+    ? [data.ascendant?.sign ?? '—', moon ?? '—',
+       data.dashas?.current_mahadasha ? `${data.dashas.current_mahadasha}–${data.dashas.current_antardasha}` : '—']
+    : null;
+  return (
+    <Pressable to={`/dashboard/${chartId}`} className="chart-strip m-card m-enter flex w-full items-stretch divide-x divide-border overflow-hidden text-left">
+      {K.map((k, i) => (
+        <span key={k} className="min-w-0 flex-1 px-3 py-3 text-center">
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{k}</span>
+          {vals
+            ? <span className="mt-0.5 block truncate text-[13.5px] font-bold">{vals[i]}</span>
+            : <span className="skeleton mx-auto mt-1 block h-4 w-14" />}
+        </span>
+      ))}
+    </Pressable>
   );
 }
 
@@ -259,7 +282,13 @@ export default function HomePage() {
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
         <ZodiacRing />
-        {primary ? (
+        {profiles === null ? (
+          <div className="relative z-10 space-y-3 py-1" aria-hidden>
+            <div className="skeleton h-4 w-40" />
+            <div className="skeleton h-8 w-60" />
+            <div className="skeleton h-12 w-full rounded-full" />
+          </div>
+        ) : primary ? (
           // Desktop: two columns — words + actions on the left, a "chart at a
           // glance" panel filling what used to be dead space on the right.
           <div className="hero-grid">
@@ -310,25 +339,9 @@ export default function HomePage() {
           only where it isn't competing: the full daily page and the dashboard. */}
       {/* Today's glance, then the live "good moment?" strip — both full-width.
           RightNow is a horizontal strip, so it reads well at any width. */}
+      {primary && <ChartStrip chartId={primary.id} />}
       {primary && <DayBanner chartId={primary.id} />}
 
-      {/* ── Three doors, not a menu ───────────────────────────────────────
-          Home used to stack a live strip, four tool tiles, the kundli list
-          and two more links under the question — a tour, not a front door.
-          The chat and the day are the point; everything else is one tab away. */}
-      <section className="m-enter grid grid-cols-3 gap-2.5" style={{ animationDelay: '0.08s' }}>
-        {SHORTCUTS(primary?.id).map((sc) => {
-          const Icon = sc.icon;
-          return (
-            <Pressable key={sc.to} to={sc.to} className="m-card flex flex-col items-center gap-2 px-2 py-4 text-center">
-              <span className="grid h-10 w-10 place-items-center rounded-full" style={{ background: `${sc.tint}1f`, color: sc.tint }}>
-                <Icon className="h-[19px] w-[19px]" />
-              </span>
-              <span className="text-[12.5px] font-bold leading-tight">{sc.label}</span>
-            </Pressable>
-          );
-        })}
-      </section>
     </div>
   );
 }

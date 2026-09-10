@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Send, ChevronDown, ShieldCheck, Plus, RotateCw, Mic, Square, ChevronRight } from "lucide-react";
+import { Send, ChevronDown, ShieldCheck, Plus, RotateCw, Mic, Square, ChevronRight, HeartHandshake } from "lucide-react";
 import AskMeter from "@/components/AskMeter";
 import ChatAction from "@/components/ChatAction";
 import AnswerText from "@/components/AnswerText";
@@ -48,6 +48,13 @@ type Turn = {
 };
 
 const REASON_MARK = "\n<<REASON>>\n";
+
+/**
+ * The thread as last seen, per kundli, for this session. Coming back to the
+ * chat sat on a blank "•••" while the history refetched; now it shows at once
+ * and refreshes underneath. Memory only — chat is never written to storage.
+ */
+const historyCache = new Map<string, Turn[]>();
 
 /** Split a stored/received assistant message into its answer and hidden reason. */
 function splitReason(raw: string): { answer: string; reason?: string } {
@@ -306,6 +313,8 @@ export default function ChatPage() {
   useEffect(() => {
     if (!chartId) return;
     let alive = true;
+    const cached = historyCache.get(chartId);
+    if (cached) { setTurns(cached); setHistoryLoaded(true); scrollToEnd(); }
     fetch(`/api/chat-history/${chartId}?context=chat`)
       .then((r) => r.json())
       .then((rows: Array<{ role: string; message: string; response_json?: any }>) => {
@@ -455,6 +464,11 @@ export default function ChatPage() {
     try { await fetch(`/api/chat-history/${chartId}?context=chat`, { method: "DELETE" }); } catch { /* ignore */ }
   };
 
+  // Keep the session cache in step with what is on screen.
+  useEffect(() => {
+    if (chartId && historyLoaded) historyCache.set(chartId, turns.filter((t) => !t.paywall));
+  }, [chartId, historyLoaded, turns]);
+
   const switchLang = (k: string) => {
     if (k === lang) return;
     haptic.select();
@@ -510,7 +524,7 @@ export default function ChatPage() {
               rel ? "bg-rose-500/12 text-rose-600" : "border border-border text-muted-foreground"
             }`}
           >
-            💞 {rel?.name || tr(rishtaWord, lang)}
+            <span className="inline-flex items-center gap-1"><HeartHandshake className="h-[14px] w-[14px] shrink-0" /> {rel?.name || tr(rishtaWord, lang)}</span>
           </button>
           <button
             type="button"
@@ -525,7 +539,17 @@ export default function ChatPage() {
 
       {/* messages */}
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
-        {turns.length === 0 && (() => {
+        {/* Loading the thread: quiet placeholders, not typing dots — dots say
+            someone is writing to you, and nobody is yet. */}
+        {!historyLoaded && (
+          <div className="space-y-3" aria-hidden>
+            <div className="skeleton h-12 w-2/3 rounded-2xl" />
+            <div className="skeleton ml-auto h-10 w-1/2 rounded-2xl" />
+            <div className="skeleton h-16 w-3/4 rounded-2xl" />
+          </div>
+        )}
+
+        {historyLoaded && turns.length === 0 && (() => {
           const who = intro?.name ? `${intro.name} ji` : null;
           const bubble = "max-w-[86%] rounded-[20px] rounded-bl-md border border-border bg-card px-4 py-3 shadow-sm";
           return (
@@ -738,7 +762,9 @@ export default function ChatPage() {
             onClick={() => send(question)}
             disabled={busy || !question.trim()}
             aria-label="Send"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground disabled:opacity-40"
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition-colors ${
+              question.trim() && !busy ? "bg-accent text-accent-foreground shadow-md shadow-accent/30" : "bg-muted text-muted-foreground"
+            }`}
           >
             <Send className="h-[19px] w-[19px]" />
           </button>

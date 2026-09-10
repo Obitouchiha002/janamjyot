@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { NorthIndianChart } from "@/components/NorthIndianChart";
+import { NorthIndianChart, PLANET_COLOR } from "@/components/NorthIndianChart";
 import { Pressable } from "@/components/mobile/Pressable";
 import { LoadError } from "@/components/ErrorState";
 
@@ -93,6 +93,7 @@ export default function D1ChartPage() {
             <div key={p.planet} className="px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="flex items-center gap-1.5 text-[14.5px] font-bold">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: PLANET_COLOR[p.planet] ?? "currentColor" }} />
                   {p.planet}
                   {p.retrograde && (
                     <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[9.5px] font-bold text-accent">

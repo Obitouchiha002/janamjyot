@@ -5,18 +5,28 @@ import { haptic } from '@/lib/native';
 import { useParams } from 'react-router-dom';
 import {
   FileText, LayoutGrid, Clock, CircleDot, Heart, Globe2, Layers, Gem,
-  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2, Compass,} from 'lucide-react';
+  MessageCircle, User, MapPin, CalendarDays, Sparkles, ChevronRight, TrendingUp, Share2, Compass, Bell, BarChart3,} from 'lucide-react';
 import TodayCard from '@/components/TodayCard';
 import YouCard from '@/components/YouCard';
 import { Pressable } from '@/components/mobile/Pressable';
+
+/** "2005-01-16", "17:00:00" → "16 Jan 2005 · 5:00 PM" — a birth, not a database row. */
+function fmtBirth(date?: string, time?: string): string {
+  const d = date ? new Date(`${String(date).slice(0, 10)}T00:00:00`) : null;
+  const ds = d && !isNaN(d.getTime()) ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : (date ?? '');
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(time ?? ''));
+  const ts = m ? `${((Number(m[1]) + 11) % 12) + 1}:${m[2]} ${Number(m[1]) < 12 ? 'AM' : 'PM'}` : (time ?? '');
+  return [ds, ts].filter(Boolean).join(' · ');
+}
+import { getLang } from '@/lib/prefs';
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="m-card px-3.5 py-3">
       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate text-[16px] font-bold leading-tight">
+      <p className="mt-1 break-words text-[16px] font-bold leading-tight">
         {value}
-        {sub && <span className="ml-1 text-[12px] font-medium text-accent">{sub}</span>}
+        {sub && <span className="mt-0.5 block text-[12px] font-medium text-accent">{sub}</span>}
       </p>
     </div>
   );
@@ -54,21 +64,19 @@ export default function DashboardPage() {
   const moon = data.planets.find((p: any) => p.planet === 'Moon')?.sign ?? 'N/A';
   const sun = data.planets.find((p: any) => p.planet === 'Sun')?.sign ?? 'N/A';
 
+  // Everything tied to THIS chart lives here — including Ashtakavarga and
+  // transits, which used to be repeated under Tools and More as well.
   const tools = [
-    // Right Now lives here as well as on Home. On Home it is a live card that
-    // renders null until /api/right-now answers — so if that call was slow or
-    // failed, an entire feature (including its reminder flow) simply did not
-    // exist for the user. A tool tile is unconditional.
-    { to: `/right-now/${chartId}`, icon: Compass, label: 'Abhi Sahi Hai?', sub: 'Is now a good time?' },
-    // Live Transit and Life Sectors used to be separate chats; they now live
-    // inside the one Jyotish chat (ask "aaj ke transit" or "career kaisa hai").
-    { to: `/chart/${chartId}/d1`, icon: CircleDot, label: 'D1 Chart', sub: 'Lagna kundli' },
-    { to: `/chart/${chartId}/d9`, icon: Heart, label: 'D9 Navamsa', sub: 'Marriage & dharma' },
-    { to: `/chart/${chartId}/divisional`, icon: LayoutGrid, label: 'Divisional', sub: 'D10, D6, D11' },
-    { to: `/timeline/${chartId}`, icon: TrendingUp, label: 'Life Timeline', sub: '30d · 1y · 5y forecast' },
-    { to: `/chart/${chartId}/dasha`, icon: Clock, label: 'Dashas', sub: 'Mahadasha periods' },
-    { to: `/chart/${chartId}/remedies`, icon: Gem, label: 'Remedies', sub: 'Ratna, mantra' },
-    { to: `/reports/${chartId}`, icon: FileText, label: 'Reports', sub: 'Career, wealth, PDF' },
+    { to: `/chart/${chartId}/d1`, icon: CircleDot, label: 'D1 Chart', sub: 'Lagna kundli', tint: '#E8B44A' },
+    { to: `/chart/${chartId}/d9`, icon: Heart, label: 'D9 Navamsa', sub: 'Marriage & dharma', tint: '#F26D9B' },
+    { to: `/chart/${chartId}/dasha`, icon: Clock, label: 'Dasha periods', sub: 'Mahadasha timeline', tint: '#7DD3C0' },
+    { to: '/alerts', icon: Bell, label: 'Transit alerts', sub: 'What is running now', tint: '#60A5FA' },
+    { to: `/chart/${chartId}/divisional`, icon: LayoutGrid, label: 'Divisional', sub: 'D10, D6, D11', tint: '#A78BFA' },
+    { to: '/ashtakavarga', icon: BarChart3, label: 'Ashtakavarga', sub: 'Strength of every sign', tint: '#C9A24B' },
+    { to: `/timeline/${chartId}`, icon: TrendingUp, label: 'Life Timeline', sub: '30d · 1y · 5y forecast', tint: '#34D399' },
+    { to: `/right-now/${chartId}`, icon: Compass, label: 'Abhi Sahi Hai?', sub: 'Is now a good time?', tint: '#F59E0B' },
+    { to: `/chart/${chartId}/remedies`, icon: Gem, label: 'Remedies', sub: 'Ratna, mantra', tint: '#EC4899' },
+    { to: `/reports/${chartId}`, icon: FileText, label: 'Reports', sub: 'Career, wealth, PDF', tint: '#C07A1E' },
   ];
 
   return (
@@ -83,10 +91,11 @@ export default function DashboardPage() {
             <h2 className="truncate text-[19px] font-bold leading-tight">{b.name}</h2>
             <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-muted-foreground">
               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-              {b.date_of_birth} · {b.time_of_birth}
+              {fmtBirth(b.date_of_birth, b.time_of_birth)}
             </p>
-            <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
+            {/* The whole place, on two lines if it needs them — it was cut to "Mum…". */}
+            <p className="mt-0.5 flex items-start gap-1 text-[12px] leading-snug text-muted-foreground">
+              <MapPin className="mt-[1px] h-3.5 w-3.5 shrink-0" />
               {b.place_of_birth}
             </p>
           </div>
@@ -148,7 +157,7 @@ export default function DashboardPage() {
         </span>
         <span className="min-w-0 flex-1 text-left">
           <span className="block text-[14.5px] font-bold leading-tight">See your full day</span>
-          <span className="mt-0.5 block truncate text-[12px] leading-snug text-muted-foreground">
+          <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
             Career · Money · Love · Health · your best hours
           </span>
         </span>
@@ -194,12 +203,14 @@ export default function DashboardPage() {
       {/* tools */}
       <section className="m-enter" style={{ animationDelay: '0.14s' }}>
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Chart tools
+          {({ en: 'Chart tools', hi: 'कुंडली टूल्स', hinglish: 'Kundli tools' } as Record<string, string>)[getLang()] ?? 'Chart tools'}
         </h3>
         <div className="grid grid-cols-2 gap-3">
-          {tools.map(({ to, icon: Icon, label, sub }) => (
+          {tools.map(({ to, icon: Icon, label, sub, tint }) => (
             <Pressable key={to} to={to} className="m-card block p-4 text-left">
-              <Icon className="mb-3 h-[22px] w-[22px] text-accent" />
+              <span className="mb-3 grid h-10 w-10 place-items-center rounded-xl" style={{ background: `${tint}22`, color: tint }}>
+                <Icon className="h-[20px] w-[20px]" />
+              </span>
               <p className="text-[14.5px] font-bold leading-tight">{label}</p>
               <p className="mt-0.5 text-[11.5px] text-muted-foreground">{sub}</p>
             </Pressable>
