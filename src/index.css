@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -579,3 +579,56 @@ html.low-power .skeleton::after { will-change: auto; }
    side by side only fit a little smaller — never wrapped. */
 .hm-fit { font-size: clamp(15px, 4.4vw, 20px); line-height: 1.3; }
 .hm-fit-sm { font-size: clamp(14px, 3.9vw, 16px); line-height: 1.3; }
+
+/* ── Home v3: warm page, night-sky Today card, one motion language ─────────
+   Brand accents are gold #E8B866 / saffron #C9923C; green #5FD08E and red
+   #FF7A6B mark good and avoid; everything else is neutral. Where a spec
+   colour sits under 4.5:1 as TEXT it has a darker text-safe twin. */
+.hm {
+  --hm-card: #FFFDF9; --hm-border: rgba(120,90,40,.10); --hm-shadow: 0 10px 30px rgba(60,40,10,.06);
+  --hm-accent: #C9923C; --hm-accent-ink: #A35F18; --hm-accent-strong: #A35F18; --hm-gold: #E8B866;
+  --hm-good: #5FD08E; --hm-caution: #FF7A6B; --hm-eyebrow-warm: #7A6A55;
+}
+.hm-card { border-radius: 22px; }
+.hm-eyebrow { letter-spacing: .1em; }
+.hm-value { font-size: 22px; }
+.hm-fit { font-size: clamp(16px, 4.6vw, 22px); }
+.hm-display { font-family: "Fraunces", Georgia, "Times New Roman", serif; font-weight: 500; font-optical-sizing: auto; }
+.hm-greeting { font-size: 32px; line-height: 1.12; letter-spacing: -0.02em; }
+.hm-headline { font-size: 20px; line-height: 1.3; }
+@media (min-width: 768px) { .hm-greeting { font-size: 40px; } .hm-headline { font-size: 22px; } }
+
+.hm-page-bg { position: absolute; z-index: -1; left: 50%; top: -24px; width: 100vw; height: 460px; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(420px 220px at 28% 70px, rgba(232,150,60,.10), transparent 70%), linear-gradient(180deg, #FBF3E6 0px, #F5F1EA 400px, rgba(245,241,234,0) 460px); }
+.dark .hm-page-bg { display: none; }
+.hm-pill-gold { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 500; background: rgba(201,146,60,.12); color: #8A5C14; }
+
+.hm-night { position: relative; isolation: isolate; overflow: hidden; color: #F5EFE6; border-radius: 24px; background: #2B2160; box-shadow: 0 20px 40px rgba(30,20,70,.25); }
+.hm-night::before { content: ""; position: absolute; inset: -30%; z-index: -2; background: linear-gradient(160deg, #1E1A45 0%, #2B2160 55%, #3A2466 100%); animation: hm-drift 12s ease-in-out infinite alternate; }
+.hm-night::after { content: ""; position: absolute; z-index: -1; top: -70px; right: -70px; width: 260px; height: 260px; pointer-events: none; background: radial-gradient(closest-side, rgba(232,184,102,.18), transparent); }
+@keyframes hm-drift { from { transform: translate3d(-4%, -3%, 0); } to { transform: translate3d(4%, 3%, 0); } }
+.hm-night .hm-sub { color: rgba(245,239,230,.65); }
+.hm-night .hm-rule { height: 1px; background: rgba(255,255,255,.12); }
+.hm-night .hm-press:active { background: rgba(255,255,255,.06); }
+@media (hover: hover) { .hm-night .hm-press:hover { background: rgba(255,255,255,.05); } }
+.hm-night .skeleton { background: rgba(255,255,255,.08); }
+.hm-star { position: absolute; border-radius: 999px; background: #fff; opacity: var(--o); pointer-events: none; animation: hm-twinkle var(--d) ease-in-out var(--delay) infinite alternate; }
+@keyframes hm-twinkle { from { opacity: var(--o); } to { opacity: calc(var(--o) * .25); } }
+
+.hm-live-dot { position: relative; display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border-radius: 999px; background: var(--c); }
+.hm-live-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--c); animation: hm-ring 2s ease-out infinite; }
+@keyframes hm-ring { from { transform: scale(1); opacity: .5; } to { transform: scale(2.2); opacity: 0; } }
+
+@keyframes hm-rise-kf { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.hm-rise { animation: hm-rise-kf 400ms cubic-bezier(.2,.8,.2,1) both; }
+.hm-press { transition: background-color 120ms ease, transform 120ms ease; }
+.hm-press:active { transform: scale(.98); }
+@media (hover: hover) {
+  .hm-lift { transition: transform 160ms ease, box-shadow 160ms ease; }
+  .hm-lift:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(60,40,10,.10); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-rise, .hm-star, .hm-night::before, .hm-live-dot::after { animation: none !important; }
+  .hm-press, .hm-lift { transition: none !important; }
+  .hm-press:active, .hm-lift:hover { transform: none !important; }
+}

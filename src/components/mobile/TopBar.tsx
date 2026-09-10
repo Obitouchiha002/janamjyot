@@ -3,7 +3,7 @@ import { ChevronLeft, Settings, Share2, Coins, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getLang } from '@/lib/prefs';
 import { Pressable } from './Pressable';
-import { titleFor, isRootTab, parentOf } from './routes';
+import { titleFor, isRootTab, parentOf, localTitle } from './routes';
 import { shareText } from '@/lib/native';
 
 /**
@@ -17,7 +17,9 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
   const { pathname } = location;
   const navigate = useNavigate();
   const root = isRootTab(pathname);
-  const title = titleFor(pathname);
+  const [, bumpLang] = useState(0);
+  useEffect(() => { const f = () => bumpLang((n) => n + 1); window.addEventListener('jj:lang', f); return () => window.removeEventListener('jj:lang', f); }, []);
+  const title = localTitle(titleFor(pathname));
   const atTop = root && !scrolled;
 
   /*

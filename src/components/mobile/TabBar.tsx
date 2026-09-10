@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { TABS } from './routes';
+import { useEffect, useState } from 'react';
+import { TABS, tabLabel } from './routes';
 import { haptic } from '@/lib/native';
 
 /**
@@ -9,6 +10,9 @@ import { haptic } from '@/lib/native';
 export default function TabBar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  // Re-render when the language changes in Settings.
+  const [, bump] = useState(0);
+  useEffect(() => { const f = () => bump((n) => n + 1); window.addEventListener('jj:lang', f); return () => window.removeEventListener('jj:lang', f); }, []);
 
   const go = (to: string, active: boolean) => {
     if (active) {
@@ -26,13 +30,13 @@ export default function TabBar() {
           <button
             key={to}
             className={`tab-item ${active ? 'active' : ''} ${center ? 'tab-center' : ''}`}
-            aria-label={label}
+            aria-label={tabLabel(to, label)}
             aria-current={active ? 'page' : undefined}
             onPointerDown={(e) => { if (e.pointerType !== 'mouse') haptic.select(); }}
             onClick={() => go(to, active)}
           >
             <Icon className="tab-ico w-[21px] h-[21px]" strokeWidth={active ? 2.4 : 1.9} />
-            <span>{label}</span>
+            <span>{tabLabel(to, label)}</span>
           </button>
         );
       })}

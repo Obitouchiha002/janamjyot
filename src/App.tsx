@@ -28,6 +28,7 @@ import { LoadError } from './components/ErrorState';
 import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
 import UpdateSheet from './components/mobile/UpdateSheet';
+import LanguageGate, { languageChosen } from './components/LanguageGate';
 import { depthOf, hidesTabBar } from './components/mobile/routes';
 
 import LoginPage from './pages/LoginPage';
@@ -206,6 +207,8 @@ function Shell() {
   // it re-locks whenever the app has been in the background (so handing the
   // unlocked phone to someone doesn't expose the chart or chat history).
   const [locked, setLocked] = useState(() => isNative && isLockEnabled());
+  // First launch asks for the language before the app says a word.
+  const [langOk, setLangOk] = useState(languageChosen);
   useEffect(() => {
     if (!isNative) return;
     let handle: any;
@@ -299,6 +302,8 @@ function Shell() {
 
   // App Lock comes before everything — even the auth gate.
   if (locked) return <LockScreen onUnlock={() => setLocked(false)} />;
+
+  if (!langOk) return <LanguageGate onDone={() => setLangOk(true)} />;
 
   // The emailed password-reset link must open even while signed out, so it
   // bypasses the launch auth gate below.

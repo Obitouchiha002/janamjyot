@@ -10,6 +10,7 @@ import {
   Home, Users, MessageCircle, Wand2, LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
+import { getLang } from '@/lib/prefs';
 
 export interface TabDef {
   to: string;
@@ -118,4 +119,57 @@ export function parentOf(pathname: string): string {
   if (/^\/(muhurat|yogas|ashtakavarga|alerts)$/.test(pathname)) return "/tools";
   if (/^\/(create-chart|edit-chart)/.test(pathname)) return "/profiles";
   return "/";
+}
+
+/** Top-bar titles in the chosen language (English is the key). */
+const TITLE_I18N: Record<string, { hi: string; hinglish: string }> = {
+  'My Kundlis': { hi: 'मेरी कुंडलियाँ', hinglish: 'Meri kundliyan' },
+  'Panchang': { hi: 'पंचांग', hinglish: 'Panchang' },
+  'Tools': { hi: 'टूल्स', hinglish: 'Tools' },
+  'More': { hi: 'और', hinglish: 'More' },
+  'New Kundli': { hi: 'नई कुंडली', hinglish: 'Nayi kundli' },
+  'Edit Kundli': { hi: 'कुंडली बदलें', hinglish: 'Kundli badlein' },
+  'Kundli': { hi: 'कुंडली', hinglish: 'Kundli' },
+  'Lagna Chart (D1)': { hi: 'लग्न कुंडली (D1)', hinglish: 'Lagna kundli (D1)' },
+  'Navamsa (D9)': { hi: 'नवांश (D9)', hinglish: 'Navamsa (D9)' },
+  'Divisional Charts': { hi: 'वर्ग कुंडलियाँ', hinglish: 'Varga kundliyan' },
+  'Dasha Timeline': { hi: 'दशा समय-रेखा', hinglish: 'Dasha timeline' },
+  'Remedies': { hi: 'उपाय', hinglish: 'Upay' },
+  'Daily Guidance': { hi: 'आज का मार्गदर्शन', hinglish: 'Aaj ka margdarshan' },
+  'Abhi Sahi Hai?': { hi: 'अभी सही है?', hinglish: 'Abhi sahi hai?' },
+  'Life Timeline': { hi: 'जीवन समय-रेखा', hinglish: 'Life timeline' },
+  'Notifications': { hi: 'सूचनाएँ', hinglish: 'Notifications' },
+  'My Plan': { hi: 'मेरा प्लान', hinglish: 'Mera plan' },
+  'Report': { hi: 'रिपोर्ट', hinglish: 'Report' },
+  'Reports': { hi: 'रिपोर्ट', hinglish: 'Reports' },
+  'Life Report': { hi: 'जीवन रिपोर्ट', hinglish: 'Life report' },
+  'Jyotish': { hi: 'ज्योतिष', hinglish: 'Jyotish' },
+  'Kundli Matching': { hi: 'कुंडली मिलान', hinglish: 'Kundli milan' },
+  'Muhurat': { hi: 'मुहूर्त', hinglish: 'Muhurat' },
+  'Yogas': { hi: 'योग', hinglish: 'Yog' },
+  'Ashtakavarga': { hi: 'अष्टकवर्ग', hinglish: 'Ashtakavarga' },
+  'Alerts': { hi: 'अलर्ट', hinglish: 'Alerts' },
+  'Settings': { hi: 'सेटिंग्स', hinglish: 'Settings' },
+  'Theme': { hi: 'थीम', hinglish: 'Theme' },
+  'Help & Support': { hi: 'मदद और सहायता', hinglish: 'Help & support' },
+  'Sign In': { hi: 'साइन इन', hinglish: 'Sign in' },
+};
+export function localTitle(title: string): string {
+  const l = getLang();
+  if (l !== 'hi' && l !== 'hinglish') return title;
+  return TITLE_I18N[title]?.[l] ?? title;
+}
+
+/** Tab labels in the chosen language. */
+const TAB_I18N: Record<string, { hi: string; hinglish: string }> = {
+  '/': { hi: 'होम', hinglish: 'Home' },
+  '/profiles': { hi: 'कुंडली', hinglish: 'Kundli' },
+  '/chat': { hi: 'चैट', hinglish: 'Chat' },
+  '/tools': { hi: 'टूल्स', hinglish: 'Tools' },
+  '/more': { hi: 'और', hinglish: 'More' },
+};
+export function tabLabel(to: string, fallback: string): string {
+  const l = getLang();
+  if (l !== 'hi' && l !== 'hinglish') return fallback;
+  return TAB_I18N[to]?.[l] ?? fallback;
 }
