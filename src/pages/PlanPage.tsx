@@ -88,6 +88,13 @@ const L = {
     hinglish: "Payment Razorpay se hota hai. Aapka card hum na dekhte hain na save karte hain.",
   },
   refresh: { en: "Refresh", hi: "रिफ्रेश", hinglish: "Refresh" },
+  choosePack: { en: "Choose a pack", hi: "पैक चुनें", hinglish: "Pack chuniye" },
+  mostPopular: { en: "Most popular", hi: "सबसे पसंदीदा", hinglish: "Sabse popular" },
+  bestValue: { en: "Best value", hi: "सबसे फ़ायदेमंद", hinglish: "Best value" },
+  bonusFree: { en: "free", hi: "मुफ़्त", hinglish: "free" },
+  orWord: { en: "or", hi: "या", hinglish: "ya" },
+  questionsWord: { en: "questions", hi: "सवाल", hinglish: "sawaal" },
+  reportsWord: { en: "reports", hi: "रिपोर्ट", hinglish: "reports" },
   perDay: { en: "per day", hi: "प्रति दिन", hinglish: "roz" },
   perMonth: { en: "per month", hi: "प्रति महीना", hinglish: "mahine me" },
   lifetime: { en: "in total", hi: "कुल", hinglish: "total" },
@@ -282,7 +289,6 @@ export default function PlanPage() {
   const trial = credits?.trial;
   const trialActive = !!trial?.active && !!trial.ends_at;
   const balance = credits?.balance ?? 0;
-  const popular = credits?.packs?.find((p) => p.id === "popular") ?? credits?.packs?.[0];
 
   return (
     <div className="space-y-3 pb-8 pt-2">
@@ -369,14 +375,60 @@ export default function PlanPage() {
           <p className="mt-2.5 text-[12.5px] leading-relaxed text-muted-foreground">{t(L.noCredits, lang)}</p>
         )}
 
-        <Pressable
-          onClick={() => openCheckout(popular?.id ?? "popular", user.email)}
-          feedback="medium"
-          className="mt-3.5 block w-full rounded-xl bg-primary py-3 text-center text-[14px] font-bold text-primary-foreground"
-        >
-          {balance > 0 ? t(L.renew, lang) : t(L.buy, lang)}
-          {popular ? ` — ₹${popular.rupees} / ${popular.credits}` : ""}
-        </Pressable>
+        {/* Every pack, not one. The screen used to offer a single fixed button
+            for the popular pack, so someone who wanted the ₹49 top-up or the
+            ₹399 family pack had nowhere to get it inside the app. Each row
+            says what the money actually buys, because "165 credits" means
+            nothing until it is turned into questions and reports. */}
+        {!!credits?.packs?.length && (
+          <div className="mt-3.5 border-t border-border pt-3">
+            <p className="mb-2 text-[11.5px] font-bold uppercase tracking-wider text-muted-foreground">
+              {t(L.choosePack, lang)}
+            </p>
+            <div className="space-y-2">
+              {credits.packs.map((p) => {
+                const name = ({ starter: "Starter", popular: "Popular", value: "Value" } as Record<string, string>)[p.id] ?? p.label;
+                const tag = p.id === "popular" ? t(L.mostPopular, lang) : p.id === "value" ? t(L.bestValue, lang) : "";
+                const bonus = p.credits - p.rupees;
+                const q = credits.prices?.chat ? Math.floor(p.credits / credits.prices.chat) : null;
+                const r = credits.prices?.report ? Math.floor(p.credits / credits.prices.report) : null;
+                const hot = p.id === "popular";
+                return (
+                  <Pressable
+                    key={p.id}
+                    onClick={() => openCheckout(p.id, user.email)}
+                    feedback="medium"
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left ${
+                      hot ? "border-accent bg-accent/10" : "border-border"
+                    }`}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-[14px] font-bold">{name}</span>
+                        {tag && (
+                          <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-accent">
+                            {tag}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-muted-foreground">
+                        {p.credits} {t(L.credits, lang).toLowerCase()}
+                        {bonus > 0 ? ` · +${bonus} ${t(L.bonusFree, lang)}` : ""}
+                      </span>
+                      {q !== null && r !== null && (
+                        <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                          ≈ {q} {t(L.questionsWord, lang)} {t(L.orWord, lang)} {r} {t(L.reportsWord, lang)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-[17px] font-black tabular-nums">₹{p.rupees}</span>
+                    <ChevronRight className="h-[16px] w-[16px] shrink-0 text-muted-foreground" />
+                  </Pressable>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* The ₹1 trial is offered only to accounts that never used it. */}
         {trial && !trial.used && (

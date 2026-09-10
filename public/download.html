@@ -1214,7 +1214,7 @@
         <li>Live AI-astrologer chat with voice</li>
         <li>Hindi · Hinglish · English</li>
       </ul>
-      <p class="as-meta"><span id="asVer">v1.11</span> · <span id="asSize">~7.4 MB</span> · Android 6.0+ · 🇮🇳 Made in India</p>
+      <p class="as-meta"><span id="asVer">v1.12</span> · <span id="asSize">~7.4 MB</span> · Android 6.0+ · 🇮🇳 Made in India</p>
     </section>
   </main>
 
@@ -1818,7 +1818,7 @@
             <a class="btn btn-ghost" href="#preview">Scan to Download</a>
           </div>
           <div class="dl-meta">
-            <span><b id="mVer">v1.11</b> version</span>
+            <span><b id="mVer">v1.12</b> version</span>
             <span><b id="mSize">~7.4 MB</b> file size</span>
             <span><b>Android 6.0+</b></span>
             <span><b>Direct APK</b> · No store needed</span>
@@ -1967,7 +1967,7 @@
     <h3><span id="modalLogo" style="width:30px;height:30px;display:inline-block"></span> Download JanamJyot</h3>
     <div style="margin-top:16px">
       <div class="row"><span>App</span><span>JanamJyot</span></div>
-      <div class="row"><span>Version</span><span id="m2Ver">v1.11</span></div>
+      <div class="row"><span>Version</span><span id="m2Ver">v1.12</span></div>
       <div class="row"><span>File size</span><span id="m2Size">~7.4 MB</span></div>
       <div class="row"><span>Compatibility</span><span>Android 6.0+</span></div>
     </div>
@@ -1994,8 +1994,8 @@
 
   var CONFIG = {
     appName: "JanamJyot",
-    apkUrl: "/JanamJyot-v1.11.apk",
-    version: "v1.11",
+    apkUrl: "/JanamJyot-v1.12.apk",
+    version: "v1.12",
     fileSize: "~7.4 MB",
     supportEmail: "vk1234888i@gmail.com",
     website: "https://janamjyot.lzworth.in"
@@ -2358,8 +2358,12 @@
       }
     }
 
-    document.querySelectorAll('[data-plan]').forEach(function(b){
-      b.addEventListener('click', function(){ open(b.getAttribute('data-plan')); });
+    /* One delegated listener instead of binding each button once at load:
+       the plan grids are drawn after the packs arrive from the server, so a
+       button drawn later had no handler and did nothing when tapped. */
+    document.addEventListener('click', function(e){
+      var b = e.target && e.target.closest ? e.target.closest('[data-plan]') : null;
+      if(b){ e.preventDefault(); open(b.getAttribute('data-plan')); }
     });
 
     /* Header: jump to the Plans tab, and a sign-in entry that reuses the same
@@ -2406,9 +2410,13 @@
       });
       document.addEventListener('keydown', function(e){ if(e.key === 'Escape') navPop.hidden = true; });
       $('wpSignOut').onclick = signOut;
-      /* Straight to the checkout page rather than the in-page sheet: the amount,
-         what it buys and the timer all live there. */
-      $('wpUpgrade').onclick = function(){ location.href = '/checkout.html?pack=popular'; };
+      /* To the plans, not one fixed pack — the wallet used to send everyone to
+         ₹149 with no way to pick the ₹49 top-up or the ₹1 trial. */
+      $('wpUpgrade').onclick = function(){
+        navPop.hidden = true;
+        var a = document.querySelector('a[data-page="pricing"]');
+        if(a) a.click(); else location.hash = 'pricing';
+      };
       navPop.querySelector('[data-page="account"]').onclick = function(){ navPop.hidden = true; };
     }
 
