@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Settings, Share2, Coins } from 'lucide-react';
+import { ChevronLeft, Settings, Share2, Coins, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Pressable } from './Pressable';
 import { titleFor, isRootTab, parentOf } from './routes';
@@ -93,21 +93,54 @@ export default function TopBar({ scrolled }: { scrolled: boolean }) {
  */
 function WalletChip() {
   const [balance, setBalance] = useState<number | null>(null);
+  const [trialEnds, setTrialEnds] = useState<string | null>(null);
+  // Re-render once a minute so "2d left" becomes "1d left" while the app is open.
+  const [, tick] = useState(0);
 
   useEffect(() => {
     let alive = true;
     const read = () =>
       fetch('/api/credits')
         .then((r) => (r.ok ? r.json() : null))
-        .then((d) => { if (alive && d && typeof d.balance === 'number') setBalance(d.balance); })
+        .then((d) => {
+          if (!alive || !d || typeof d.balance !== 'number') return;
+          setBalance(d.balance);
+          setTrialEnds(d.trial?.active && d.trial?.ends_at ? d.trial.ends_at : null);
+        })
         .catch(() => {});
     read();
     // Any charge dispatches this, so the number moves the moment it is spent.
     window.addEventListener('jj:credits', read);
-    return () => { alive = false; window.removeEventListener('jj:credits', read); };
+    const t = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => { alive = false; window.removeEventListener('jj:credits', read); clearInterval(t); };
   }, []);
 
   if (balance === null) return null;
+
+  /*
+   * While the ₹1 trial runs, the chip shows how long is left instead of the
+   * balance. Someone who has just paid needs to see that it worked and when it
+   * ends without going looking under More — a purchase whose effect you cannot
+   * see from the home screen feels like a purchase that did not happen.
+   */
+  if (trialEnds) {
+    const ms = Date.parse(trialEnds) - Date.now();
+    if (ms > 0) {
+      const hours = Math.floor(ms / 3_600_000);
+      const left = hours >= 24 ? `${Math.floor(hours / 24)}d ${hours % 24}h` : `${Math.max(1, hours)}h`;
+      return (
+        <Pressable
+          to="/plan"
+          aria-label={`Full access active, ${left} left — open your plan`}
+          className="flex h-9 items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 text-[12.5px] font-bold text-accent"
+        >
+          <Sparkles className="h-[14px] w-[14px]" />
+          <span className="tabular-nums">{left}</span>
+        </Pressable>
+      );
+    }
+  }
+
   return (
     <Pressable
       to="/plan"
