@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Shield, Users, FileText, MessageSquare, Sparkles, Activity, KeyRound,
   Power, Megaphone, ToggleLeft, Search, X, Ban, ShieldCheck, UserCog,
-  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee,
+  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee, Smartphone,
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import Switch from "@/components/mobile/Switch";
@@ -835,6 +835,36 @@ function Controls() {
 
   const featureOn = (k: string) => features[k] !== false;
 
+  // In-app update. The APK is sideloaded, so the app learns a new build exists
+  // only from this number — and until now the only way to set it was a raw API
+  // call. Publishing checks the matching APK is actually on the site first: the
+  // app links straight to JanamJyot-v<version>.apk, so a number published
+  // ahead of its file would send every user's "Update" tap to a 404.
+  const [appv, setAppv] = useState({ live: "", version: "", notes: "", mandatory: false });
+  const [appvMsg, setAppvMsg] = useState("");
+  useEffect(() => {
+    fetch("/api/config").then((r) => r.json()).then((d) => d?.app && setAppv({
+      live: String(d.app.version || ""), version: String(d.app.version || ""),
+      notes: String(d.app.notes || ""), mandatory: !!d.app.mandatory,
+    })).catch(() => {});
+  }, []);
+  const publishVersion = async () => {
+    const v = appv.version.trim();
+    setAppvMsg(""); setSysError("");
+    if (!/^\d+(\.\d+){0,2}$/.test(v)) { setAppvMsg("Version must look like 1.12"); return; }
+    const head = await fetch(`/JanamJyot-v${v}.apk`, { method: "HEAD" }).catch(() => null);
+    if (!head || !head.ok) { haptic.error(); setAppvMsg(`JanamJyot-v${v}.apk is not on the site yet — upload it first.`); return; }
+    try {
+      await post("/api/admin/app-version", { version: v, notes: appv.notes, mandatory: appv.mandatory });
+      haptic.success();
+      setAppv((a) => ({ ...a, live: v }));
+      setAppvMsg(`Published v${v} — apps on an older version will be offered the update.`);
+    } catch (e: any) {
+      haptic.error();
+      setAppvMsg(`Publishing failed — ${e?.message || "the server rejected it"}. Nothing was changed.`);
+    }
+  };
+
   // These controls gate AI billing and can pause the whole app, so an optimistic
   // update the server rejected must roll back and say so — not sit there
   // looking applied.
@@ -1018,6 +1048,19 @@ function Controls() {
           <Pressable onClick={() => { haptic.success(); const p0 = ann; setAnn((a) => ({ ...a, enabled: true })); commit("Showing the announcement", () => post("/api/admin/announcement", { enabled: true, message: ann.message }), () => setAnn(p0)); }} subtle className="rounded-2xl bg-accent py-3 text-center text-[13.5px] font-bold text-accent-foreground">Show</Pressable>
           <Pressable onClick={() => { haptic.tap(); const p0 = ann; setAnn((a) => ({ ...a, enabled: false })); commit("Hiding the announcement", () => post("/api/admin/announcement", { enabled: false, message: ann.message }), () => setAnn(p0)); }} subtle className="rounded-2xl border border-border py-3 text-center text-[13.5px] font-bold">Hide</Pressable>
         </div>
+      </div>
+
+      <div className="m-card p-4">
+        <h3 className="mb-2 flex items-center gap-2 text-[14px] font-bold"><Smartphone className="h-4 w-4 text-accent" /> App update</h3>
+        <p className="mb-3 text-[12px] text-muted-foreground">Live version: <b>{appv.live ? `v${appv.live}` : "…"}</b>. Apps older than this are offered the download.</p>
+        <input className="mb-2 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" inputMode="decimal" placeholder="Version, e.g. 1.12" value={appv.version} onChange={(e) => setAppv((a) => ({ ...a, version: e.target.value }))} />
+        <input className="mb-3 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" maxLength={300} placeholder="What's new (optional, shown in the update prompt)" value={appv.notes} onChange={(e) => setAppv((a) => ({ ...a, notes: e.target.value }))} />
+        <div className="mb-3 flex items-center justify-between rounded-2xl bg-muted px-4 py-3">
+          <span className="text-[13.5px] font-medium">Ask on every launch (important update)</span>
+          <Switch on={appv.mandatory} onChange={() => setAppv((a) => ({ ...a, mandatory: !a.mandatory }))} label="Toggle important update" />
+        </div>
+        <Pressable onClick={publishVersion} subtle className="block w-full rounded-2xl bg-accent py-3 text-center text-[13.5px] font-bold text-accent-foreground">Publish version</Pressable>
+        {appvMsg && <p className="mt-2 text-[12.5px] text-muted-foreground">{appvMsg}</p>}
       </div>
 
       <ChangePassword />
