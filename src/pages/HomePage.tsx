@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import {
-  Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
-  MessageCircleQuestion, Orbit, ScrollText, Gem, User, CheckCircle2, PauseCircle, XCircle,
+  Plus, HeartHandshake, CalendarDays, MessageCircleQuestion, Orbit, ScrollText,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { useCachedFetch } from '@/lib/useCachedFetch';
 import DayBanner from '@/components/DayBanner';
 import TodayChip from '@/components/TodayChip';
 import { useAuth } from '@/auth';
+import { pickPrimary } from '@/lib/primary';
 import { useNavigate } from 'react-router-dom';
 import { getLang } from '@/lib/prefs';
 import { Send } from 'lucide-react';
@@ -69,19 +69,13 @@ function greeting(): string {
   return 'Good evening';
 }
 
-interface Action {
-  label: string;
-  sub: string;
-  to: string;
-  icon: any;
-  tint: string;
-}
-
-const ACTIONS: Action[] = [
-  { label: 'Matching', sub: 'Guna Milan', to: '/match', icon: HeartHandshake, tint: '#F26D9B' },
-  { label: 'Panchang', sub: 'Today', to: '/panchang', icon: CalendarDays, tint: '#E8B44A' },
-  { label: 'Yogas', sub: 'Chart yogas', to: '/yogas', icon: Gem, tint: '#7DD3C0' },
-  { label: 'Muhurat', sub: 'Auspicious timing', to: '/muhurat', icon: Orbit, tint: '#A78BFA' },
+/** The three doors Home keeps. Everything else is one tab away. */
+const SHORTCUTS = (chartId?: string) => [
+  { label: 'Kundli Milan', to: '/match', icon: HeartHandshake, tint: '#F26D9B' },
+  { label: 'Panchang', to: '/panchang', icon: CalendarDays, tint: '#E8B44A' },
+  chartId
+    ? { label: 'Reports', to: `/reports/${chartId}`, icon: ScrollText, tint: '#A78BFA' }
+    : { label: 'Muhurat', to: '/muhurat', icon: Orbit, tint: '#A78BFA' },
 ];
 
 /**
@@ -102,57 +96,6 @@ let profilesCache: any[] | null = null;
  */
 export function invalidateProfiles() {
   profilesCache = null;
-}
-
-/** Live "is now a good moment?" strip. Tapping it opens the full checker. */
-function RightNowCard({ chartId }: { chartId: string }) {
-  // Cached-first for both hops, so the strip is filled instantly on revisit.
-  const { data: c } = useCachedFetch<any>(`/api/chart/${chartId}`);
-  const b = c?.birth_details;
-  const lat = b?.latitude ?? 28.6139, lon = b?.longitude ?? 77.209;
-  const tz = b?.timezone || 'Asia/Kolkata';
-  const { data: d, refresh } = useCachedFetch<any>(
-    c ? `/api/right-now?lat=${lat}&lon=${lon}&tz=${encodeURIComponent(tz)}` : null,
-  );
-
-  // Windows roll over while you sit here — but only poll while on screen.
-  useVisibleInterval(refresh, 5 * 60_000);
-
-  if (!d) return null;
-  // `tint` marks; `ink` is for text on the card. The tint that works as a rail
-  // is too pale to read at 15px, so they are deliberately different values.
-  const tint = d.verdict === 'go' ? '#22C55E' : d.verdict === 'wait' ? '#E8B44A' : '#F87171';
-  const ink  = d.verdict === 'go' ? '#15803D' : d.verdict === 'wait' ? '#A16207' : '#B91C1C';
-  const Icon = d.verdict === 'go' ? CheckCircle2 : d.verdict === 'wait' ? PauseCircle : XCircle;
-
-  // Matches the day card above it: one clean surface, a tone rail down the
-  // left, and colour only where it means something. The two used to sit
-  // together looking like they came from different apps — one washed amber
-  // with a big alarm icon, the other white.
-  return (
-    <Pressable
-      to={`/right-now/${chartId}`}
-      feedback="select"
-      className="m-card m-enter relative flex items-center gap-3 overflow-hidden py-3.5 pl-[19px] pr-4"
-    >
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-0 w-[3px]"
-        style={{ background: `linear-gradient(180deg, ${tint}, ${tint}22)` }}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.11em]" style={{ color: ink }}>
-          <Icon className="h-[13px] w-[13px]" strokeWidth={2.4} />
-          Right now · {d.now}
-        </span>
-        <span className="mt-1.5 block text-[15px] font-semibold leading-tight text-foreground">{d.headline}</span>
-        <span className="mt-1 block truncate text-[12px] text-muted-foreground">
-          {d.next_good ? `Next good window ${d.next_good.start}` : d.current?.name}
-        </span>
-      </span>
-      <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground/70" />
-    </Pressable>
-  );
 }
 
 /**
@@ -212,7 +155,7 @@ function HeroGlance({ chartId }: { chartId: string }) {
  * now it leads with the question, and whatever they type goes straight into
  * the chat. If they asked about their life before, it asks how that went.
  */
-function ChatHero({ chartId, firstName }: { chartId: string; firstName: string }) {
+function ChatHero({ chartId }: { chartId: string }) {
   const navigate = useNavigate();
   const g = getLang();
   const L = (g === 'hi' || g === 'hinglish' ? g : 'en') as 'en' | 'hi' | 'hinglish';
@@ -233,25 +176,19 @@ function ChatHero({ chartId, firstName }: { chartId: string; firstName: string }
 
   const T = {
     title: { en: "What's on your mind?", hi: 'मन में क्या चल रहा है?', hinglish: 'Man mein kya chal raha hai?' },
-    sub: {
-      en: 'Love, work, money or today — ask anything. I read your real kundli and answer plainly.',
-      hi: 'रिश्ता, नौकरी, पैसा या आज का दिन — कुछ भी पूछिए। मैं आपकी असली कुंडली पढ़कर सीधा जवाब देता हूँ।',
-      hinglish: 'Rishta, naukri, paisa ya aaj ka din — kuch bhi poochiye. Main aapki asli kundli padh ke seedha jawab deta hoon.',
-    },
     ph: { en: 'Type your question…', hi: 'अपना सवाल लिखिए…', hinglish: 'Apna sawaal likhiye…' },
   };
   const chips: Record<string, Array<[string, string, string]>> = {
-    en: [['💞', 'My relationship', 'rishta'], ['💼', 'When will my career settle?', ''], ['💰', 'How will money be this year?', ''], ['🌅', 'How is my day today?', '']],
-    hinglish: [['💞', 'Mera rishta', 'rishta'], ['💼', 'Meri career kab set hogi?', ''], ['💰', 'Is saal paisa kaisa rahega?', ''], ['🌅', 'Aaj mera din kaisa rahega?', '']],
-    hi: [['💞', 'मेरा रिश्ता', 'rishta'], ['💼', 'मेरा करियर कब सेट होगा?', ''], ['💰', 'इस साल पैसा कैसा रहेगा?', ''], ['🌅', 'आज मेरा दिन कैसा रहेगा?', '']],
+    en: [['💞', 'My relationship', 'rishta'], ['💼', 'When will my career settle?', ''], ['🌅', 'How is my day today?', '']],
+    hinglish: [['💞', 'Mera rishta', 'rishta'], ['💼', 'Meri career kab set hogi?', ''], ['🌅', 'Aaj mera din kaisa rahega?', '']],
+    hi: [['💞', 'मेरा रिश्ता', 'rishta'], ['💼', 'मेरा करियर कब सेट होगा?', ''], ['🌅', 'आज मेरा दिन कैसा रहेगा?', '']],
   };
 
   return (
     <div>
-      <h2 className="hero-title mt-1 text-[24px] font-bold leading-[1.2] tracking-tight">
-        <span className="text-accent">{firstName}</span>, {T.title[L].charAt(0).toLowerCase() + T.title[L].slice(1)}
+      <h2 className="hero-title mt-2 text-[27px] font-bold leading-[1.15] tracking-tight">
+        {T.title[L]}
       </h2>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">{T.sub[L]}</p>
 
       {fu && (
         <button
@@ -264,7 +201,7 @@ function ChatHero({ chartId, firstName }: { chartId: string; firstName: string }
       )}
 
       <form
-        className="mt-4 flex items-center gap-2 rounded-full border border-border bg-background/80 py-1.5 pl-4 pr-1.5 shadow-sm focus-within:border-accent"
+        className="mt-5 flex items-center gap-2 rounded-full border border-border bg-background/90 py-2 pl-5 pr-2 shadow-md shadow-black/5 focus-within:border-accent"
         onSubmit={(e) => { e.preventDefault(); ask(text); }}
       >
         <input
@@ -290,7 +227,7 @@ function ChatHero({ chartId, firstName }: { chartId: string; firstName: string }
             key={label}
             onClick={() => (kind === 'rishta' ? navigate(`/chat/${chartId}?from=rishta`) : ask(label))}
             feedback="tap"
-            className="rounded-full border border-border bg-background/70 px-3 py-2 text-[12.5px] font-semibold"
+            className="rounded-full bg-muted/80 px-3.5 py-2 text-[12.5px] font-semibold"
           >
             {emoji} {label}
           </Pressable>
@@ -315,10 +252,10 @@ export default function HomePage() {
       .catch(() => setProfiles((prev) => prev ?? []));
   }, []);
 
-  const primary = profiles?.[0];
+  const primary = pickPrimary(profiles, user?.name);
 
   return (
-    <div className="space-y-7 pt-2 pb-10">
+    <div className="space-y-5 pt-2 pb-10">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
         <ZodiacRing />
@@ -327,26 +264,15 @@ export default function HomePage() {
           // glance" panel filling what used to be dead space on the right.
           <div className="hero-grid">
             <div className="hero-main relative z-10">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[13px] font-medium text-muted-foreground">
+              <div className="flex items-center justify-between gap-3">
+                <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted-foreground">
                   {greeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
                 </p>
                 {/* Calendar chip lives here on a phone; on desktop it moves into
                     the glance panel, so it's hidden here. */}
-                <span className="chip-mobile"><TodayChip chartId={primary.id} /></span>
+                <span className="chip-mobile flex min-w-0 max-w-[62%] shrink-0 justify-end"><TodayChip chartId={primary.id} /></span>
               </div>
-              <ChatHero chartId={primary.id} firstName={primary.name.split(' ')[0]} />
-              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12.5px] font-semibold text-muted-foreground">
-                <Pressable to={`/daily/${primary.id}`} subtle className="inline-flex items-center gap-1">
-                  <Sparkles className="h-[14px] w-[14px]" /> Today&apos;s Guidance
-                </Pressable>
-                <Pressable to={`/dashboard/${primary.id}`} subtle className="inline-flex items-center gap-1">
-                  Open Kundli
-                </Pressable>
-                <Pressable to="/create-chart" subtle className="hero-newkundli inline-flex items-center gap-1">
-                  <Plus className="h-[14px] w-[14px]" strokeWidth={2.6} /> New Kundli
-                </Pressable>
-              </div>
+              <ChatHero chartId={primary.id} />
             </div>
             <HeroGlance chartId={primary.id} />
           </div>
@@ -385,111 +311,24 @@ export default function HomePage() {
       {/* Today's glance, then the live "good moment?" strip — both full-width.
           RightNow is a horizontal strip, so it reads well at any width. */}
       {primary && <DayBanner chartId={primary.id} />}
-      {primary && <RightNowCard chartId={primary.id} />}
 
-      {/* ── Quick actions ────────────────────────────────────────────────── */}
-      <section className="m-enter" style={{ animationDelay: '0.1s' }}>
-        <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Quick actions
-        </h3>
-        <div className="qa-grid grid grid-cols-2 gap-3">
-          {ACTIONS.map((a) => {
-            const Icon = a.icon;
-            return (
-              <Pressable key={a.to} to={a.to} className="m-card block p-4 text-left">
-                <span
-                  className="mb-3 grid h-11 w-11 place-items-center rounded-2xl"
-                  style={{ background: `${a.tint}22`, color: a.tint }}
-                >
-                  <Icon className="h-[21px] w-[21px]" />
-                </span>
-                <p className="text-[15px] font-bold leading-tight">{a.label}</p>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">{a.sub}</p>
-              </Pressable>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── Saved kundlis ────────────────────────────────────────────────── */}
-      <section className="m-enter" style={{ animationDelay: '0.14s' }}>
-        <div className="mb-3 flex items-center justify-between px-1">
-          <h3 className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-            My Kundlis
-          </h3>
-          {!!profiles?.length && (
-            <Pressable to="/profiles" subtle className="flex items-center gap-0.5 text-[13px] font-semibold text-accent">
-              View all <ChevronRight className="h-4 w-4" />
-            </Pressable>
-          )}
-        </div>
-
-        {profiles === null && (
-          <div className="space-y-2.5">
-            <div className="skeleton h-[68px]" />
-            <div className="skeleton h-[68px] opacity-60" />
-          </div>
-        )}
-
-        {profiles?.length === 0 && (
-          <Pressable
-            to="/create-chart"
-            className="m-card flex w-full flex-col items-center gap-2 border-dashed px-5 py-8 text-center"
-          >
-            <Sparkles className="h-7 w-7 text-accent" />
-            <p className="text-[14px] font-semibold">No kundlis yet</p>
-            <p className="text-[12px] text-muted-foreground">Tap to create your first kundli</p>
-          </Pressable>
-        )}
-
-        <div className="space-y-2.5">
-          {profiles?.slice(0, 3).map((p, i) => (
-            <Pressable
-              key={p.id}
-              to={`/dashboard/${p.id}`}
-              subtle
-              className={`m-card flex w-full items-center gap-3 px-4 py-3.5 text-left ${i === 0 ? 'ring-2 ring-accent/40' : ''}`}
-            >
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
-                <User className="h-5 w-5" />
+      {/* ── Three doors, not a menu ───────────────────────────────────────
+          Home used to stack a live strip, four tool tiles, the kundli list
+          and two more links under the question — a tour, not a front door.
+          The chat and the day are the point; everything else is one tab away. */}
+      <section className="m-enter grid grid-cols-3 gap-2.5" style={{ animationDelay: '0.08s' }}>
+        {SHORTCUTS(primary?.id).map((sc) => {
+          const Icon = sc.icon;
+          return (
+            <Pressable key={sc.to} to={sc.to} className="m-card flex flex-col items-center gap-2 px-2 py-4 text-center">
+              <span className="grid h-10 w-10 place-items-center rounded-full" style={{ background: `${sc.tint}1f`, color: sc.tint }}>
+                <Icon className="h-[19px] w-[19px]" />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-[15px] font-bold">{p.name}</span>
-                  {i === 0 && (
-                    <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">Active</span>
-                  )}
-                </span>
-                <span className="block truncate text-[12px] text-muted-foreground">{p.date}</span>
-              </span>
-              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <span className="text-[12.5px] font-bold leading-tight">{sc.label}</span>
             </Pressable>
-          ))}
-        </div>
+          );
+        })}
       </section>
-
-      {/* ── Deep links for the primary chart ─────────────────────────────── */}
-      {primary && (
-        <section className="m-enter grid grid-cols-2 gap-3" style={{ animationDelay: '0.18s' }}>
-          {/* Was a second "Talk to Astrologer" — the floating button above
-              already owns that route. Matching is otherwise unreachable
-              from Home, so it earns the slot. */}
-          <Pressable
-            to="/match"
-            className="m-card flex items-center gap-3 p-4 text-left"
-          >
-            <HeartHandshake className="h-5 w-5 shrink-0 text-accent" />
-            <span className="text-[13.5px] font-bold leading-tight">Kundli Matching</span>
-          </Pressable>
-          <Pressable
-            to={`/reports/${primary.id}`}
-            className="m-card flex items-center gap-3 p-4 text-left"
-          >
-            <ScrollText className="h-5 w-5 shrink-0 text-accent" />
-            <span className="text-[13.5px] font-bold leading-tight">Reports</span>
-          </Pressable>
-        </section>
-      )}
     </div>
   );
 }

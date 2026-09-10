@@ -10,6 +10,8 @@ import { Navigate, useLocation } from "react-router-dom";
 import { MessageCircle, Plus } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import { getLang } from "@/lib/prefs";
+import { pickPrimary } from "@/lib/primary";
+import { useAuth } from "@/auth";
 
 const T = {
   en: ["Your astrologer is waiting", "Make your kundli first — then ask anything on your mind.", "Create my kundli"],
@@ -19,12 +21,13 @@ const T = {
 
 export default function ChatHome() {
   const { search } = useLocation();
+  const { user } = useAuth();
   const [id, setId] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     fetch("/api/profiles")
       .then((r) => r.json())
-      .then((d) => setId(Array.isArray(d) && d[0]?.id ? d[0].id : null))
+      .then((d) => setId(pickPrimary(Array.isArray(d) ? d : [], user?.name)?.id ?? null))
       .catch(() => setId(null));
   }, []);
 

@@ -58,7 +58,7 @@ export default function TodayChip({ chartId }: { chartId?: string }) {
       to="/panchang"
       feedback="select"
       aria-label={`Today: ${label}`}
-      className={`flex max-w-[52%] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+      className={`flex max-w-full shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 ${
         isSpecial
           ? "border-accent/45 bg-accent/15"
           : "border-border bg-muted/60"

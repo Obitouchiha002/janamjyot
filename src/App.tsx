@@ -16,6 +16,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { useTheme, isDarkTheme } from './theme';
 import { isNative, isLowPowerDevice, initNative, hideSplash, setStatusBarForTheme } from './lib/native';
 import { applyNotifications } from './lib/notifications';
+import { pickPrimary } from './lib/primary';
 import { isOnline, onConnectivityChange } from './lib/offline';
 import { isLockEnabled } from './lib/biometric';
 
@@ -275,13 +276,14 @@ function Shell() {
   useEffect(() => {
     if (!isNative) return;
     fetch('/api/profiles').then((r) => r.json()).then((d) => {
-      const id = Array.isArray(d) && d[0]?.id;
+      // Their OWN chart — not whichever kundli was made last (often a partner's).
+      const id = pickPrimary(Array.isArray(d) ? d : [], user?.name)?.id;
       if (!id) return;
       fetch(`/api/chart/${id}`).then((r) => r.json())
         .then((c) => applyNotifications({ chartId: id, dasha: c?.dasha?.current ?? null }))
         .catch(() => applyNotifications({ chartId: id }));
     }).catch(() => {});
-  }, []);
+  }, [user?.id]);
 
   // New screen → start at the top, and reset the app bar's scrolled state.
   useEffect(() => {
