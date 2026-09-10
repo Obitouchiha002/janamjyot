@@ -273,6 +273,26 @@
       $('testNote').hidden = false;
     }
 
+    /* Opened from inside the app, carrying a five-minute handoff. The app is a
+       WebView with its own storage and this browser has none, so without this
+       someone paying from the app was asked to sign in again by emailed code —
+       in the middle of buying, which is exactly what people are taught to treat
+       as a scam. Redeemed once, then wiped from the address bar. */
+    var handoff = qs.get('ct');
+    if(!token() && handoff){
+      $('authCard').hidden = true;
+      api('/api/auth/handoff', { method:'POST', body: JSON.stringify({ token: handoff }) })
+        .then(function(d){
+          if(!d.token) throw new Error('expired');
+          setToken(d.token);
+          signedInEmail = (d.user && d.user.email) || prefill;
+          try { history.replaceState(null, '', location.pathname + '?pack=' + encodeURIComponent(packId)); } catch(e){}
+          showPay();
+        })
+        .catch(function(){ if(prefill) $('em').value = prefill; $('authCard').hidden = false; });
+      return;
+    }
+
     if(token()){
       api('/api/billing/history').then(function(h){ signedInEmail = h.email || ''; }).catch(function(){});
       showPay();

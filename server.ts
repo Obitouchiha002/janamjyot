@@ -120,7 +120,7 @@ import {
   type AccountStatus,
 } from "./server/db";
 import {
-  hashPassword, verifyPassword, signToken, requireAuth, optionalAuth, requireAdmin, ADMIN_EMAIL,
+  hashPassword, verifyPassword, signToken, verifyToken, requireAuth, optionalAuth, requireAdmin, ADMIN_EMAIL,
   normalizeEmail,
 } from "./server/auth";
 import { validateBirthInput, buildIsoDatetime } from "./server/validate";
@@ -626,6 +626,51 @@ async function useReferral(req: any, newUserId: string): Promise<void> {
     console.warn("[referral] attach failed:", e?.message);
   }
 }
+
+/**
+ * Carrying a signed-in session from the app into the checkout page.
+ *
+ * Payment happens on /checkout.html so there is ONE Razorpay flow to get right
+ * rather than two. But the app is a WebView with its own storage, and the
+ * browser it opens has none — so someone paying from inside the app was asked
+ * to sign in again, by emailed code, in the middle of buying. Most people stop
+ * there, and they are right to: being asked to log in again at the payment step
+ * looks exactly like the thing you are told to be careful about.
+ *
+ * So the app asks for a handoff token and puts it in the checkout URL.
+ *
+ * It is deliberately weak on purpose:
+ *   • five minutes, because it only has to survive opening a browser;
+ *   • purpose-scoped — the exchange below refuses anything that is not a
+ *     handoff, so this token cannot be used as a session by itself;
+ *   • and it is only ever minted for a caller who is ALREADY signed in.
+ * A token in a URL is normally a bad idea; a five-minute one that can do
+ * nothing but become a session on the same person's own device is the smaller
+ * risk compared with teaching people to re-enter credentials while paying.
+ */
+app.post("/api/billing/handoff", async (req: any, res) => {
+  // 5 minutes, expressed in the days that signToken takes.
+  res.json({ token: signToken({ sub: req.user.id, purpose: "handoff" }, 5 / 1440) });
+});
+
+/** POST /api/auth/handoff { token } — exchange a handoff for a real session. */
+app.post("/api/auth/handoff", async (req: any, res) => {
+  const payload = verifyToken(String(req.body?.token ?? ""));
+  // A normal session token must NOT be accepted here, and a handoff must not be
+  // usable anywhere else — hence the explicit purpose on both sides.
+  if (!payload?.sub || payload.purpose !== "handoff") {
+    return res.status(401).json({ error: "This link has expired. Please sign in." });
+  }
+  const user = await getUserById(String(payload.sub));
+  if (!user) return res.status(401).json({ error: "Session invalid — sign in again." });
+  if (user.status && user.status !== "active") {
+    return res.status(403).json({ error: user.status_reason || "This account has been suspended." });
+  }
+  res.json({
+    token: signToken({ sub: user.id }),
+    user: { id: user.id, name: user.name, email: user.email, role: user.role },
+  });
+});
 
 /** GET /api/referral — my code, how it is going, and what each side gets. */
 app.get("/api/referral", async (req: any, res) => {

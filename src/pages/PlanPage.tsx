@@ -136,9 +136,29 @@ function timeLeft(iso: string, l: Lang): string {
   return `${m} ${t(L.minutes, l)}`;
 }
 
-function openCheckout(pack: string, email?: string) {
+/**
+ * Open the checkout, carrying the signed-in session across.
+ *
+ * The app is a WebView with its own storage; the browser it opens has none. So
+ * buying from inside the app used to mean signing in again by emailed code at
+ * the payment step — which is both the worst possible moment to add friction
+ * and exactly what people are taught to treat as a scam.
+ *
+ * The handoff is fetched first and expires in five minutes; if it cannot be
+ * had, checkout still opens and asks for the code as before. A failure to
+ * smooth the path must never become a failure to buy.
+ */
+async function openCheckout(pack: string, email?: string) {
   const q = new URLSearchParams({ pack });
   if (email) q.set("email", email);
+  try {
+    const r = await fetch("/api/billing/handoff", { method: "POST" });
+    if (r.ok) {
+      const d = await r.json();
+      if (d?.token) q.set("ct", d.token);
+    }
+  } catch { /* open without it — they can still sign in */ }
+
   const url = `${API_BASE}/checkout.html?${q.toString()}`;
   if (isNative) {
     import("@capacitor/browser")
