@@ -103,13 +103,13 @@ export async function sendContactEmail(args: {
   const safeName = args.name?.trim() || "A user";
 
   await transporter().sendMail({
-    from: `"VedicAstra Help" <${from}>`,
+    from: `"JanamJyot Help" <${from}>`,
     to,
     replyTo: args.email?.trim() || undefined, // reply goes to the user
-    subject: `VedicAstra Support — message from ${safeName}`,
+    subject: `JanamJyot Support — message from ${safeName}`,
     text:
       `Name: ${safeName}\n` +
       `Reply email: ${args.email || "(not provided)"}\n\n` +
-      `Message:\n${args.message}\n\n— Sent from the VedicAstra Help page`,
+      `Message:\n${args.message}\n\n— Sent from the JanamJyot Help page`,
   });
 }
