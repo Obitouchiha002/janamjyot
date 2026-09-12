@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import { useT } from "@/lib/i18n";
 import {
   Briefcase, Wallet, Heart, CalendarRange, Clock, ScrollText, ChevronRight,
 } from "lucide-react";
@@ -23,11 +24,12 @@ const REPORTS: RptCard[] = [
 ];
 
 export default function ReportsPage() {
+  const t = useT();
   const { chartId } = useParams();
   return (
     <div className="space-y-4 pt-2">
       <p className="m-enter px-1 text-[13.5px] leading-relaxed text-muted-foreground">
-        Detailed AI reports, grounded in your real chart — read, listen, download as PDF or share on WhatsApp.
+        {t("Detailed AI reports, grounded in your real chart — read, listen, download as PDF or share on WhatsApp.")}
       </p>
       <div className="space-y-2.5">
         {REPORTS.map((r) => {
@@ -39,8 +41,8 @@ export default function ReportsPage() {
                 <Icon className="h-[21px] w-[21px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[15px] font-bold leading-tight">{r.title}</span>
-                <span className="mt-0.5 block text-[12.5px] text-muted-foreground">{r.desc}</span>
+                <span className="block text-[15px] font-bold leading-tight">{t(r.title)}</span>
+                <span className="mt-0.5 block text-[12.5px] text-muted-foreground">{t(r.desc)}</span>
               </span>
               <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
             </Pressable>

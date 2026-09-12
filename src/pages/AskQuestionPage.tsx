@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { getLang } from "@/lib/prefs";
 import { useParams } from "react-router-dom";
 import { Sparkles, Bot, Send, Mic } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
@@ -58,7 +59,14 @@ export default function AskQuestionPage() {
   const [history, setHistory] = useState<{role: 'user'|'ai', text: string}[]>([]);
   const [loading, setLoading] = useState(false);
   // Chat replies are in English by default; the user can switch any time.
-  const [lang, setLang] = useState("en");
+  /*
+   * Defaults to the language they chose for the app, not to English.
+   *
+   * Someone who picks हिंदी at first launch and then reads an English reading
+   * here has been told the choice applies and found that it does not. The
+   * select still lets them answer in another language for one reading.
+   */
+  const [lang, setLang] = useState(getLang());
   const endRef = useRef<HTMLDivElement>(null);
 
   // --- Voice input (browser Web Speech API) ---

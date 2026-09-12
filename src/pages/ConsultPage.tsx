@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getLang } from '@/lib/prefs';
 import { useParams } from 'react-router-dom';
 import { Send, Languages, ShieldCheck, Plus, Mic } from 'lucide-react';
 import AnswerText from '@/components/AnswerText';
@@ -115,7 +116,17 @@ export default function ConsultPage() {
   const [chart, setChart] = useState<any>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState('');
-  const [lang, setLang] = useState<Lang>('hinglish');
+  /*
+   * Defaults to the language they chose for the app, not to English.
+   *
+   * Someone who picks हिंदी at first launch and then reads an English reading
+   * here has been told the choice applies and found that it does not. The
+   * select still lets them answer in another language for one reading.
+   */
+  const [lang, setLang] = useState<Lang>(() => {
+    const l = getLang();
+    return (l === 'hi' || l === 'hinglish' || l === 'en' ? l : 'hinglish') as Lang;
+  });
   const [phase, setPhase] = useState<Phase>('loading');
   const [connectMsg, setConnectMsg] = useState('Connecting…');
   const [busy, setBusy] = useState(false);

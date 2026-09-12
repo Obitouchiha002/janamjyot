@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { useParams } from "react-router-dom";
 import { Sparkles, Bot } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
@@ -15,6 +16,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 }
 
 export default function RemediesPage() {
+  const t = useT();
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +47,7 @@ export default function RemediesPage() {
   if (failed || !data) {
     return (
       <LoadError
-        title="Couldn't load your remedies"
+        title={t("Couldn't load your remedies")}
         onRetry={() => setReload((n) => n + 1)}
       />
     );
@@ -54,7 +56,7 @@ export default function RemediesPage() {
   return (
     <div className="space-y-6 pt-2">
       <p className="m-enter px-1 text-[13.5px] leading-relaxed text-muted-foreground">
-        Gemstones, mantras and upaay selected from your chart.
+        {t("Gemstones, mantras and upaay selected from your chart.")}
       </p>
 
       {/* how to follow */}
@@ -62,7 +64,7 @@ export default function RemediesPage() {
         <section className="m-card m-enter p-4">
           <div className="mb-2.5 flex items-center justify-between gap-3">
             <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-accent">
-              <Bot className="h-3.5 w-3.5" /> How to follow
+              <Bot className="h-3.5 w-3.5" /> {t("How to follow")}
             </p>
             <SpeakButton text={data.note} />
           </div>
@@ -107,21 +109,21 @@ export default function RemediesPage() {
               )}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {f.gemstone && <Fact label="Gemstone" value={f.gemstone} />}
+                {f.gemstone && <Fact label={t("Gemstone")} value={f.gemstone} />}
                 <Fact label="Day" value={f.day} />
-                <Fact label="Deity" value={f.deity} />
-                <Fact label="Colour" value={f.color} />
+                <Fact label={t("Deity")} value={f.deity} />
+                <Fact label={t("Colour")} value={f.color} />
               </div>
               <div className="mt-2 space-y-2">
                 <div className="rounded-xl bg-muted px-3 py-2">
                   <p className="text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Mantra
+                    {t("Mantra")}
                   </p>
                   <p className="selectable mt-0.5 text-[13px] font-bold leading-snug">{f.mantra}</p>
                 </div>
                 <div className="rounded-xl bg-muted px-3 py-2">
                   <p className="text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Donate
+                    {t("Donate")}
                   </p>
                   <p className="selectable mt-0.5 text-[13px] font-bold leading-snug">{f.donation}</p>
                 </div>
@@ -134,7 +136,7 @@ export default function RemediesPage() {
       {/* general upaay */}
       <section className="m-card m-enter p-4">
         <h3 className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-          General daily upaay
+          {t("General daily upaay")}
         </h3>
         <ul className="space-y-2.5">
           {(data.general ?? []).map((g: string, i: number) => (

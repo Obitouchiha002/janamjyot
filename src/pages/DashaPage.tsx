@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { useParams } from "react-router-dom";
 import { Clock } from "lucide-react";
 import { LoadError } from "@/components/ErrorState";
 
 export default function DashaPage() {
+  const t = useT();
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [failed, setFailed] = useState(false);
@@ -20,7 +22,7 @@ export default function DashaPage() {
   }, [chartId, reload]);
 
   if (failed) {
-    return <LoadError title="Couldn't load your dasha" onRetry={() => setReload(n => n + 1)} />;
+    return <LoadError title={t("Couldn't load your dasha")} onRetry={() => setReload(n => n + 1)} />;
   }
 
   if (!data) {
@@ -35,20 +37,20 @@ export default function DashaPage() {
   return (
     <div className="space-y-6 pt-2">
       <p className="m-enter px-1 text-[13.5px] leading-relaxed text-muted-foreground">
-        Vimshottari Dasha — the timing of events in your life.
+        {t("Vimshottari Dasha — the timing of events in your life.")}
       </p>
 
       {/* current period */}
       <section className="m-card m-enter relative overflow-hidden p-5">
         <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/10 blur-2xl" />
         <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-          <Clock className="h-3.5 w-3.5" /> Current period
+          <Clock className="h-3.5 w-3.5" /> {t("Current period")}
         </p>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-muted p-3.5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Mahadasha
+              {t("Mahadasha")}
             </p>
             <p className="mt-1 text-[22px] font-bold leading-tight text-accent">
               {data.current_mahadasha}
@@ -56,21 +58,21 @@ export default function DashaPage() {
           </div>
           <div className="rounded-2xl bg-muted p-3.5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Antardasha
+              {t("Antardasha")}
             </p>
             <p className="mt-1 text-[22px] font-bold leading-tight">{data.current_antardasha}</p>
           </div>
         </div>
 
         <p className="mt-3 text-[12.5px] text-muted-foreground">
-          Valid until: <span className="font-semibold text-foreground">{data.current_period?.to}</span>
+          {t("Valid until:")} <span className="font-semibold text-foreground">{data.current_period?.to}</span>
         </p>
       </section>
 
       {/* timeline */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Upcoming Antardashas
+          {t("Upcoming Antardashas")}
         </h3>
         <div className="m-card p-4">
           {data.next_7_years?.map((period: any, idx: number) => (

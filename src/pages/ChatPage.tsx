@@ -508,7 +508,10 @@ export default function ChatPage() {
               key={l.key}
               type="button"
               onClick={() => switchLang(l.key)}
-              className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold transition-colors ${
+              /* tap-44: the pill stays small, the TAPPABLE box does not.
+                 At 25px tall these were under every platform's minimum and
+                 people hit the wrong language. */
+              className={`tap-44 relative rounded-full px-2.5 py-1.5 text-[11.5px] font-bold transition-colors ${
                 lang === l.key ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
               }`}
             >

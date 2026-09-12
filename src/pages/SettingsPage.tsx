@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { Check, Star, ChevronRight, Fingerprint, CloudOff, Trash2, Vibrate } from "lucide-react";
 import { biometricAvailable, isLockEnabled, setLockEnabled, authenticate } from "@/lib/biometric";
 import { clearOfflineCache, offlineCacheInfo } from "@/lib/offline";
@@ -31,6 +32,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function SettingsPage() {
+  const t = useT();
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const [theme] = useTheme();
@@ -98,7 +100,7 @@ export default function SettingsPage() {
       {/* appearance — the swatch wall now lives on its own screen */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Appearance
+          {t("Appearance")}
         </h3>
         <Pressable
           to="/theme"
@@ -113,9 +115,9 @@ export default function SettingsPage() {
             </span>
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[14.5px] font-bold leading-tight">Theme</span>
+            <span className="block text-[14.5px] font-bold leading-tight">{t("Theme")}</span>
             <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-              {activeTheme?.label ?? "Choose a look"}
+              {activeTheme?.label ?? t("Choose a look")}
             </span>
           </span>
           <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
@@ -125,47 +127,47 @@ export default function SettingsPage() {
       {/* calculation engine — honest, read-only (these are what the engine really uses) */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Calculation Method
+          {t("Calculation Method")}
         </h3>
         <div className="m-card divide-y divide-border">
-          <InfoRow label="Zodiac System" value="Sidereal (Vedic)" />
-          <InfoRow label="Ayanamsa" value="Lahiri (Chitra Paksha)" />
-          <InfoRow label="House System" value="Whole Sign" />
-          <InfoRow label="Ephemeris" value="High-precision (local)" />
+          <InfoRow label={t("Zodiac System")} value="Sidereal (Vedic)" />
+          <InfoRow label={t("Ayanamsa")} value="Lahiri (Chitra Paksha)" />
+          <InfoRow label={t("House System")} value="Whole Sign" />
+          <InfoRow label={t("Ephemeris")} value="High-precision (local)" />
         </div>
         <p className="mt-2.5 px-1 text-[12px] text-muted-foreground">
-          Every chart in JanamJyot is calculated with these classical methods, validated to sub-degree accuracy.
+          {t("Every chart in JanamJyot is calculated with these classical methods, validated to sub-degree accuracy.")}
         </p>
       </section>
 
       {/* preferences */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Preferences
+          {t("Preferences")}
         </h3>
         <div className="m-card space-y-4 p-4">
           <div className="space-y-1.5">
-            <label className="px-1 text-[13px] font-semibold">Reading Language</label>
+            <label className="px-1 text-[13px] font-semibold">{t("Reading Language")}</label>
             <select className={SELECT_CLS} value={lang} onChange={(e) => setLangState(e.target.value)}>
               <option value="en">English</option>
               <option value="hi">Hindi</option>
               <option value="hinglish">Hinglish</option>
             </select>
             <p className="px-1 text-[12px] text-muted-foreground">
-              Default language for AI answers, reports and voice.
+              {t("Default language for AI answers, reports and voice.")}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <Pressable onClick={reset} className="rounded-full border border-border py-3.5 text-[14px] font-bold">
-              Reset
+              {t("Reset")}
             </Pressable>
             <Pressable
               feedback="medium"
               onClick={save}
               className="flex items-center justify-center gap-1.5 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
             >
-              {saved ? (<><Check className="h-[15px] w-[15px]" strokeWidth={3} /> Saved</>) : "Save"}
+              {saved ? (<><Check className="h-[15px] w-[15px]" strokeWidth={3} /> {t("Saved")}</>) : t("Save")}
             </Pressable>
           </div>
         </div>
@@ -174,7 +176,7 @@ export default function SettingsPage() {
       {/* privacy & offline */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Privacy &amp; data
+          {t("Privacy & data")}
         </h3>
         <div className="m-card divide-y divide-border">
           {lockSupported && (
@@ -183,9 +185,9 @@ export default function SettingsPage() {
                 <Fingerprint className="h-[19px] w-[19px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[14.5px] font-bold leading-tight">App Lock</span>
+                <span className="block text-[14.5px] font-bold leading-tight">{t("App Lock")}</span>
                 <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
-                  Ask for fingerprint or screen lock before opening the app
+                  {t("Ask for fingerprint or screen lock before opening the app")}
                 </span>
               </span>
               <Switch on={lockOn} onChange={toggleLock} label="Toggle app lock" />
@@ -198,9 +200,9 @@ export default function SettingsPage() {
                 <Vibrate className="h-[19px] w-[19px]" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[14.5px] font-bold leading-tight">Vibration</span>
+                <span className="block text-[14.5px] font-bold leading-tight">{t("Vibration")}</span>
                 <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
-                  How strongly the phone buzzes when you tap
+                  {t("How strongly the phone buzzes when you tap")}
                 </span>
                 <span className="mt-2 flex gap-1.5">
                   {HAPTIC_CHOICES.map((c) => (
@@ -231,11 +233,11 @@ export default function SettingsPage() {
               <CloudOff className="h-[19px] w-[19px]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[14.5px] font-bold leading-tight">Offline data</span>
+              <span className="block text-[14.5px] font-bold leading-tight">{t("Offline data")}</span>
               <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
                 {cache.entries > 0
                   ? `${cache.entries} screens saved (${cache.kb} KB) — these open without internet`
-                  : "Screens you open are saved so they work without internet"}
+                  : t("Screens you open are saved so they work without internet")}
               </span>
             </span>
             {cache.entries > 0 && (
@@ -244,7 +246,7 @@ export default function SettingsPage() {
                 subtle
                 className="shrink-0 rounded-full border border-border px-3 py-1.5 text-[12px] font-bold text-muted-foreground"
               >
-                Clear
+                {t("Clear")}
               </Pressable>
             )}
           </div>
@@ -255,15 +257,14 @@ export default function SettingsPage() {
       {user && (
         <section className="m-enter">
           <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-            Account
+            {t("Account")}
           </h3>
           <div className="m-card p-4">
             <h4 className="flex items-center gap-2 text-[14.5px] font-bold text-destructive">
-              <Trash2 className="h-[17px] w-[17px]" /> Delete my account
+              <Trash2 className="h-[17px] w-[17px]" /> {t("Delete my account")}
             </h4>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
-              Permanently erases your account, every saved kundli and chart, your
-              reports, chat history and any feedback you left. This cannot be undone.
+              {t("Permanently erases your account, every saved kundli and chart, your reports, chat history and any feedback you left. This cannot be undone.")}
             </p>
             {delStage === "idle" ? (
               <Pressable
@@ -271,7 +272,7 @@ export default function SettingsPage() {
                 subtle
                 className="mt-3 w-full rounded-full border border-destructive/40 py-3 text-center text-[13.5px] font-bold text-destructive"
               >
-                Delete my account
+                {t("Delete my account")}
               </Pressable>
             ) : (
               <div className="mt-3 space-y-2">
@@ -291,7 +292,7 @@ export default function SettingsPage() {
                     subtle
                     className="rounded-full border border-border py-3 text-center text-[13.5px] font-bold"
                   >
-                    Cancel
+                    {t("Cancel")}
                   </Pressable>
                   <Pressable
                     onClick={deleteAccount}
@@ -299,7 +300,7 @@ export default function SettingsPage() {
                     feedback="medium"
                     className="rounded-full bg-destructive py-3 text-center text-[13.5px] font-bold text-white disabled:opacity-50"
                   >
-                    {delBusy ? "Deleting…" : "Delete forever"}
+                    {delBusy ? t("Deleting…") : t("Delete forever")}
                   </Pressable>
                 </div>
               </div>
@@ -311,7 +312,7 @@ export default function SettingsPage() {
       {/* feedback */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Feedback
+          {t("Feedback")}
         </h3>
         <Pressable
           onClick={() => { haptic.tap(); openFeedback('settings'); }}
@@ -322,9 +323,9 @@ export default function SettingsPage() {
             <Star className="h-[19px] w-[19px]" fill="currentColor" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[14.5px] font-bold leading-tight">Rate & Review</span>
+            <span className="block text-[14.5px] font-bold leading-tight">{t("Rate & Review")}</span>
             <span className="mt-0.5 block text-[12px] text-muted-foreground">
-              5-star rating & a quick comment
+              {t("5-star rating & a quick comment")}
             </span>
           </span>
           <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
@@ -332,8 +333,7 @@ export default function SettingsPage() {
       </section>
 
       <p className="selectable px-2 pb-2 text-center text-[11.5px] leading-relaxed text-muted-foreground">
-        Disclaimer: for spiritual guidance and entertainment only. Do not rely on AI for medical
-        diagnosis or financial planning.
+        {t("Disclaimer: for spiritual guidance and entertainment only. Do not rely on AI for medical diagnosis or financial planning.")}
       </p>
     </div>
   );

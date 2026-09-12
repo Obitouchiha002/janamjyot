@@ -1,4 +1,5 @@
 import { pickPrimary } from "@/lib/primary";
+import { useT } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 import { Sparkles, Gem, CalendarClock, Orbit, Check } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
@@ -24,6 +25,7 @@ const ROWS: Row[] = [
 ];
 
 export default function NotificationsPage() {
+  const t = useT();
   const [prefs, setPrefs] = useState<NotifPrefs>(getNotifPrefs());
   const [chartId, setChartId] = useState<string | undefined>();
   const [dasha, setDasha] = useState<any>(null);
@@ -75,7 +77,7 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6 pt-2">
       <p className="m-enter px-1 text-[13.5px] leading-relaxed text-muted-foreground">
-        Gentle reminders so you never miss your daily guidance or an important shift.
+        {t("Gentle reminders so you never miss your daily guidance or an important shift.")}
       </p>
 
       <section className="m-card m-enter divide-y divide-border">
@@ -85,10 +87,10 @@ export default function NotificationsPage() {
               <Icon className="h-[19px] w-[19px]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[14.5px] font-bold leading-tight">{label}</span>
-              <span className="mt-0.5 block text-[12px] text-muted-foreground">{desc}</span>
+              <span className="block text-[14.5px] font-bold leading-tight">{t(label)}</span>
+              <span className="mt-0.5 block text-[12px] text-muted-foreground">{t(desc)}</span>
             </span>
-            <Switch label={label} on={!!prefs[key]} onChange={() => toggle(key)} />
+            <Switch label={t(label)} on={!!prefs[key]} onChange={() => toggle(key)} />
           </div>
         ))}
       </section>
@@ -97,8 +99,8 @@ export default function NotificationsPage() {
       {prefs.daily && (
         <section className="m-card m-enter flex items-center justify-between gap-3 p-4">
           <div>
-            <p className="text-[14px] font-bold">Daily guidance time</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">When your morning reminder arrives</p>
+            <p className="text-[14px] font-bold">{t("Daily guidance time")}</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">{t("When your morning reminder arrives")}</p>
           </div>
           <input
             type="time"
@@ -118,13 +120,13 @@ export default function NotificationsPage() {
 
       {saved && (
         <p className="m-enter flex items-center justify-center gap-1.5 text-[13px] font-semibold text-accent">
-          <Check className="h-4 w-4" strokeWidth={3} /> Saved
+          <Check className="h-4 w-4" strokeWidth={3} /> {t("Saved")}
         </p>
       )}
 
       {!isNative && (
         <p className="px-1 text-center text-[11.5px] italic leading-relaxed text-muted-foreground">
-          Reminders are delivered on the app — install JanamJyot on your phone to receive them.
+          {t("Reminders are delivered on the app — install JanamJyot on your phone to receive them.")}
         </p>
       )}
     </div>

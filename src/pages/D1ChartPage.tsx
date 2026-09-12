@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { useParams } from "react-router-dom";
 import { NorthIndianChart, PLANET_COLOR } from "@/components/NorthIndianChart";
 import { Pressable } from "@/components/mobile/Pressable";
 import { LoadError } from "@/components/ErrorState";
 
 export default function D1ChartPage() {
+  const t = useT();
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [shortNames, setShortNames] = useState(false);
@@ -24,7 +26,7 @@ export default function D1ChartPage() {
   }, [chartId, reload]);
 
   if (failed) {
-    return <LoadError title="Couldn't load this chart" onRetry={() => setReload(n => n + 1)} />;
+    return <LoadError title={t("Couldn't load this chart")} onRetry={() => setReload(n => n + 1)} />;
   }
 
   if (!data) {
@@ -60,7 +62,7 @@ export default function D1ChartPage() {
               shortNames ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
             }`}
           >
-            Short names
+            {t("Short names")}
           </Pressable>
         </div>
         <NorthIndianChart
@@ -73,13 +75,13 @@ export default function D1ChartPage() {
       {/* placements */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          Planetary placements
+          {t("Planetary placements")}
         </h3>
         <div className="m-card divide-y divide-border">
           {/* ascendant */}
           <div className="bg-muted px-4 py-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[14.5px] font-bold text-accent">Ascendant</p>
+              <p className="text-[14.5px] font-bold text-accent">{t("Ascendant")}</p>
               <p className="text-[13px] font-semibold">
                 {data.ascendant.sign} · H1
               </p>

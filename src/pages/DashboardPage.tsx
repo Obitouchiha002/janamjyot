@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useT } from "@/lib/i18n";
 import { useCachedFetch } from '@/lib/useCachedFetch';
 import { ShareCardHost } from '@/components/mobile/ShareCardSheet';
 import { haptic } from '@/lib/native';
@@ -33,6 +34,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 export default function DashboardPage() {
+  const t = useT();
   const { chartId } = useParams();
   // Cached-first: reopening a kundli you just viewed paints instantly.
   const { data, error } = useCachedFetch<any>(`/api/chart/${chartId}`);
@@ -42,8 +44,8 @@ export default function DashboardPage() {
   if (failed) {
     return (
       <div className="m-card mt-6 p-6 text-center">
-        <p className="text-[15px] font-bold">Couldn't load this chart</p>
-        <p className="mt-1 text-[13px] text-muted-foreground">Check your connection and try again.</p>
+        <p className="text-[15px] font-bold">{t("Couldn't load this chart")}</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t("Check your connection and try again.")}</p>
       </div>
     );
   }
@@ -107,7 +109,7 @@ export default function DashboardPage() {
             feedback="medium"
             className="flex items-center justify-center gap-1.5 rounded-full bg-accent py-3 text-[13px] font-bold leading-tight text-accent-foreground shadow-lg shadow-accent/25"
           >
-            <MessageCircle className="h-[17px] w-[17px] shrink-0" strokeWidth={2.4} /> Talk to Astrologer
+            <MessageCircle className="h-[17px] w-[17px] shrink-0" strokeWidth={2.4} /> {t("Talk to Astrologer")}
           </Pressable>
           <Pressable
             to={`/reports/${chartId}`}
@@ -124,7 +126,7 @@ export default function DashboardPage() {
           className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-accent/50 py-3 text-[13px] font-bold text-accent"
         >
           <Share2 className="h-[16px] w-[16px]" />
-          Share my Kundli
+          {t("Share my Kundli")}
         </Pressable>
       </section>
 
@@ -156,7 +158,7 @@ export default function DashboardPage() {
           <Sparkles className="h-[19px] w-[19px]" />
         </span>
         <span className="min-w-0 flex-1 text-left">
-          <span className="block text-[14.5px] font-bold leading-tight">See your full day</span>
+          <span className="block text-[14.5px] font-bold leading-tight">{t("See your full day")}</span>
           <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
             Career · Money · Love · Health · your best hours
           </span>
@@ -167,8 +169,8 @@ export default function DashboardPage() {
       {/* key positions */}
       <section className="m-enter grid grid-cols-2 gap-2.5" style={{ animationDelay: '0.08s' }}>
         <Stat label="Lagna" value={data.ascendant.sign} sub={`${data.ascendant.degree.toFixed(1)}°`} />
-        <Stat label="Moon Rashi" value={moon} />
-        <Stat label="Sun Sign" value={sun} />
+        <Stat label={t("Moon Rashi")} value={moon} />
+        <Stat label={t("Sun Sign")} value={sun} />
         <Stat
           label="Nakshatra"
           value={data.summary?.nakshatra || data.ascendant.nakshatra}
@@ -183,15 +185,15 @@ export default function DashboardPage() {
       >
         <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/10 blur-2xl" />
         <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-          <Clock className="h-3.5 w-3.5" /> Current Dasha
+          <Clock className="h-3.5 w-3.5" /> {t("Current Dasha")}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-2xl bg-muted p-3.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mahadasha</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Mahadasha")}</p>
             <p className="mt-1 text-[20px] font-bold text-accent">{data.dashas.current_mahadasha}</p>
           </div>
           <div className="rounded-2xl bg-muted p-3.5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Antardasha</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Antardasha")}</p>
             <p className="mt-1 text-[20px] font-bold">{data.dashas.current_antardasha}</p>
           </div>
         </div>

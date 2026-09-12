@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { useParams } from "react-router-dom";
 import {
   Briefcase, Wallet, Heart, Activity, Clock, AlertTriangle, Lightbulb, Bot,
@@ -27,6 +28,7 @@ function fmtDate(iso?: string) {
 }
 
 export default function DailyGuidancePage() {
+  const t = useT();
   const { chartId } = useParams();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export default function DailyGuidancePage() {
   if (failed || !data) {
     return (
       <LoadError
-        title="Couldn't load today's guidance"
+        title={t("Couldn't load today's guidance")}
         onRetry={() => setReload((n) => n + 1)}
       />
     );
@@ -105,7 +107,7 @@ export default function DailyGuidancePage() {
       {/* life areas */}
       <section className="m-enter">
         <h3 className="mb-3 px-1 flex items-center gap-1.5 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          <Bot className="h-3.5 w-3.5" /> Your day, area by area
+          <Bot className="h-3.5 w-3.5" /> {t("Your day, area by area")}
         </h3>
         <div className="space-y-3">
           {AREAS.map(({ key, label, icon: Icon, tint }) =>
@@ -116,7 +118,7 @@ export default function DailyGuidancePage() {
                     <span className="grid h-8 w-8 place-items-center rounded-xl" style={{ background: `${tint}22`, color: tint }}>
                       <Icon className="h-[17px] w-[17px]" />
                     </span>
-                    {label}
+                    {t(label)}
                   </h4>
                   <SpeakButton text={g[key]} lang={lang} />
                 </div>
@@ -134,7 +136,7 @@ export default function DailyGuidancePage() {
         <section className="m-card m-enter p-4" style={{ background: "linear-gradient(180deg, rgba(232,180,74,0.10), transparent)" }}>
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-accent">
-              <Lightbulb className="h-3.5 w-3.5" /> Today's practical advice
+              <Lightbulb className="h-3.5 w-3.5" /> {t("Today's practical advice")}
             </p>
             <SpeakButton text={g.advice} lang={lang} />
           </div>

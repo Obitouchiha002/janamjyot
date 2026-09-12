@@ -92,7 +92,7 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
                   key={l.key}
                   onClick={() => switchLang(l.key)}
                   subtle
-                  className={`rounded-full px-2.5 py-1 text-[11.5px] font-bold ${
+                  className={`tap-44 relative rounded-full px-2.5 py-1.5 text-[11.5px] font-bold ${
                     language === l.key ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"
                   }`}
                 >

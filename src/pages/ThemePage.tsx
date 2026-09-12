@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import { THEMES, useTheme } from "@/theme";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
+import { useT } from "@/lib/i18n";
 
 /**
  * Appearance picker on its own screen.
@@ -11,12 +12,13 @@ import { haptic } from "@/lib/native";
  * dedicated screen keeps Settings to a tidy list of rows.
  */
 export default function ThemePage() {
+  const t = useT();
   const [theme, setTheme] = useTheme();
 
   return (
     <div className="space-y-5 pt-2">
       <p className="px-1 text-[13px] leading-relaxed text-muted-foreground">
-        Pick a look for the whole app. Colours and text adjust automatically for contrast.
+        {t("Pick a look for the whole app. Colours and text adjust automatically for contrast.")}
       </p>
 
       <div className="grid grid-cols-2 gap-3">

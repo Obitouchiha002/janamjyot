@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 import { Clock, Sparkles } from "lucide-react";
 import ProfilePicker from "@/components/ProfilePicker";
 import { LoadError } from "@/components/ErrorState";
 
 export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: string; onChartId?: (id: string) => void }) {
+  const t = useT();
   const [intId, setIntId] = useState("");
   const chartId = extId ?? intId;
   const setChartId = onChartId ?? setIntId;
@@ -37,23 +39,23 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
           <div className="skeleton h-[120px]" />
         </div>
       ) : failed ? (
-        <LoadError title="Couldn't load your alerts" onRetry={() => setReload((n) => n + 1)} />
+        <LoadError title={t("Couldn't load your alerts")} onRetry={() => setReload((n) => n + 1)} />
       ) : data && (
         <>
           {data.current && (
             <section className="m-card m-enter relative overflow-hidden p-5" style={{ animationDelay: '0.04s' }}>
               <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/10 blur-2xl" />
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" /> Running now
+                <Clock className="h-3.5 w-3.5" /> {t("Running now")}
               </p>
               <div className="mt-3 space-y-2.5">
                 <div className="rounded-2xl bg-muted p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current Mahadasha</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Current Mahadasha")}</p>
                   <p className="mt-1 text-[20px] font-bold leading-tight text-accent">{data.current.mahadasha}</p>
                   <p className="mt-1 text-[12px] text-muted-foreground">{data.current.mahadasha_from} → {data.current.mahadasha_to}</p>
                 </div>
                 <div className="rounded-2xl bg-muted p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current Antardasha</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Current Antardasha")}</p>
                   <p className="mt-1 text-[20px] font-bold leading-tight">{data.current.antardasha}</p>
                   <p className="mt-1 text-[12px] text-muted-foreground">{data.current.antardasha_from} → {data.current.antardasha_to}</p>
                 </div>
@@ -64,7 +66,7 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
           {data.transit_highlights?.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.08s' }}>
               <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Sparkles className="h-[15px] w-[15px] text-accent" /> Right now in the sky
+                <Sparkles className="h-[15px] w-[15px] text-accent" /> {t("Right now in the sky")}
               </h3>
               <div className="m-card border-accent/25 bg-accent/[0.06] p-4">
                 <ul className="space-y-2.5">
@@ -82,7 +84,7 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
           {data.upcoming?.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.12s' }}>
               <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Clock className="h-[15px] w-[15px]" /> Upcoming Antardasha periods
+                <Clock className="h-[15px] w-[15px]" /> {t("Upcoming Antardasha periods")}
               </h3>
               <div className="m-card divide-y divide-border">
                 {data.upcoming.map((a: any, i: number) => (
@@ -96,7 +98,7 @@ export default function AlertsPage({ chartId: extId, onChartId }: { chartId?: st
           )}
 
           <p className="px-2 pb-2 text-center text-[11.5px] text-muted-foreground">
-            Based on your natal chart and the live sky. Astrology offers guidance, not certainty.
+            {t("Based on your natal chart and the live sky. Astrology offers guidance, not certainty.")}
           </p>
         </>
       )}

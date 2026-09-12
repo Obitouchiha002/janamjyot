@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT, formatDate, weekdayName, currentLang } from "@/lib/i18n";
 import {
   Sunrise, Sunset, AlertTriangle, Clock, Sparkles, MapPin, CalendarDays,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const CHO_TINT: Record<string, string> = { good: "#34D399", bad: "#F87171" };
 const NEUTRAL_TINT = "#E8B44A";
 
 export default function PanchangPage() {
+  const t = useT();
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [place, setPlace] = useState<Place>(DEFAULT);
@@ -63,16 +65,16 @@ export default function PanchangPage() {
   const loadHoroscope = () => {
     setHoroLoading(true); setHoroErr(null);
     fetch("/api/horoscope", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date }) })
-      .then(async (r) => { const j = await r.json(); if (!r.ok) setHoroErr(j.error || "Could not load horoscope."); else setHoro(j.horoscope); })
-      .catch(() => setHoroErr("Network error.")).finally(() => setHoroLoading(false));
+      .then(async (r) => { const j = await r.json(); if (!r.ok) setHoroErr(j.error || t("Could not load horoscope.")); else setHoro(j.horoscope); })
+      .catch(() => setHoroErr(t("Network error."))).finally(() => setHoroLoading(false));
   };
 
   const elements = data ? [
-    ["Tithi", data.tithi], ["Nakshatra", data.nakshatra], ["Yoga", data.yoga],
-    ["Karana", data.karana], ["Paksha", data.paksha], ["Moon Sign", data.moon_sign],
+    [t("Tithi"), data.tithi], [t("Nakshatra"), data.nakshatra], [t("Yoga"), data.yoga],
+    [t("Karana"), data.karana], [t("Paksha"), data.paksha], [t("Moon Sign"), data.moon_sign],
   ] : [];
   const inausp = data?.periods ? [
-    ["Rahu Kaal", data.periods.rahu_kaal], ["Yamaganda", data.periods.yamaganda], ["Gulika Kaal", data.periods.gulika],
+    [t("Rahu Kaal"), data.periods.rahu_kaal], [t("Yamaganda"), data.periods.yamaganda], [t("Gulika Kaal"), data.periods.gulika],
   ].filter(([, v]) => v) : [];
 
   const choTint = (q: string) => CHO_TINT[q] ?? NEUTRAL_TINT;
@@ -97,7 +99,7 @@ export default function PanchangPage() {
             <input
               value={q}
               onChange={(e) => { setQ(e.target.value); }}
-              placeholder="Search city…"
+              placeholder={t("Search city…")}
               className="selectable h-11 w-full min-w-0 bg-transparent text-[14px] font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:outline-none"
             />
           </label>
@@ -119,7 +121,7 @@ export default function PanchangPage() {
 
         {data && (
           <p className="px-1 text-[12px] text-muted-foreground">
-            {data.weekday}, {data.date}
+            {formatDate(data.date, currentLang())}
           </p>
         )}
       </section>
@@ -138,28 +140,28 @@ export default function PanchangPage() {
               <div className="m-card flex items-center gap-2.5 px-3.5 py-3">
                 <Sunrise className="h-[22px] w-[22px] shrink-0 text-accent" />
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sunrise</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Sunrise")}</p>
                   <p className="truncate text-[15px] font-bold leading-tight">{data.sunrise}</p>
                 </div>
               </div>
               <div className="m-card flex items-center gap-2.5 px-3.5 py-3">
                 <Sunset className="h-[22px] w-[22px] shrink-0 text-accent" />
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sunset</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Sunset")}</p>
                   <p className="truncate text-[15px] font-bold leading-tight">{data.sunset}</p>
                 </div>
               </div>
             </div>
             <div className="m-card px-3.5 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Vara (Weekday)</p>
-              <p className="mt-0.5 text-[17px] font-bold leading-tight">{data.weekday}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Vara (Weekday)")}</p>
+              <p className="mt-0.5 text-[17px] font-bold leading-tight">{weekdayName(data.date)}</p>
             </div>
           </section>
 
           {/* panchang elements */}
           <section className="m-enter" style={{ animationDelay: '0.1s' }}>
             <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-              Panchang Elements
+              {t("Panchang Elements")}
             </h3>
             <div className="m-card grid grid-cols-2 gap-2.5 p-3">
               {elements.map(([k, v]) => (
@@ -175,7 +177,7 @@ export default function PanchangPage() {
           {inausp.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.14s' }}>
               <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-destructive">
-                <AlertTriangle className="h-[15px] w-[15px]" /> Inauspicious periods
+                <AlertTriangle className="h-[15px] w-[15px]" /> {t("Inauspicious periods")}
               </h3>
               <div className="m-card divide-y divide-border">
                 {inausp.map(([k, v]: any) => (
@@ -199,9 +201,9 @@ export default function PanchangPage() {
                   <Sparkles className="h-[21px] w-[21px]" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[14.5px] font-bold leading-tight">Abhijit Muhurat</span>
+                  <span className="block text-[14.5px] font-bold leading-tight">{t("Abhijit Muhurat")}</span>
                   <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
-                    {data.periods.abhijit.note ?? 'Around midday — good for starting almost anything'}
+                    {data.periods.abhijit.note ?? t("Around midday — good for starting almost anything")}
                   </span>
                 </span>
                 {!data.periods.abhijit.note && (
@@ -217,10 +219,10 @@ export default function PanchangPage() {
           {data.day_choghadiya?.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.18s' }}>
               <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Clock className="h-[15px] w-[15px]" /> Choghadiya
+                <Clock className="h-[15px] w-[15px]" /> {t("Choghadiya")}
               </h3>
               <div className="m-card space-y-4 p-4">
-                {[["Day", data.day_choghadiya], ["Night", data.night_choghadiya]].map(([lbl, list]: any) => (
+                {[[t("Day"), data.day_choghadiya], [t("Night"), data.night_choghadiya]].map(([lbl, list]: any) => (
                   <div key={lbl}>
                     <p className="mb-2 text-[12px] font-bold text-muted-foreground">{lbl}</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -251,8 +253,7 @@ export default function PanchangPage() {
                   </div>
                 ))}
                 <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-                  Green = auspicious · Amber = neutral · Red = avoid. A ✕ marks a window that falls
-                  inside Rahu Kaal, Yamaganda or Gulika — skip it even if the name looks good.
+                  {t("Green = auspicious · Amber = neutral · Red = avoid. A ✕ marks a window that falls inside Rahu Kaal, Yamaganda or Gulika — skip it even if the name looks good.")}
                 </p>
               </div>
             </section>
@@ -263,7 +264,7 @@ export default function PanchangPage() {
           {data.hora?.length > 0 && (
             <section className="m-enter" style={{ animationDelay: '0.20s' }}>
               <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-                <Clock className="h-[15px] w-[15px]" /> Hora — planetary hours
+                <Clock className="h-[15px] w-[15px]" /> {t("Hora — planetary hours")}
               </h3>
               <div className="m-card p-4">
                 <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: 'none' }}>
@@ -279,16 +280,14 @@ export default function PanchangPage() {
                         <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{h.start}</p>
                         <p className="text-[11px] leading-snug text-muted-foreground">– {h.end}</p>
                         <p className="mt-1 text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {h.is_day ? 'Day' : 'Night'}
+                          {h.is_day ? t("Day") : t("Night")}
                         </p>
                       </div>
                     );
                   })}
                 </div>
                 <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Each hora is ruled by a planet — Jupiter, Venus, Mercury and Moon horas suit new
-                  work, money and talks. Day and night are each split into 12, so a hora is not
-                  exactly one hour.
+                  {t("Each hora is ruled by a planet — Jupiter, Venus, Mercury and Moon horas suit new work, money and talks. Day and night are each split into 12, so a hora is not exactly one hour.")}
                 </p>
               </div>
             </section>
@@ -297,7 +296,7 @@ export default function PanchangPage() {
           {/* daily horoscope */}
           <section className="m-enter" style={{ animationDelay: '0.22s' }}>
             <h3 className="mb-3 flex items-center gap-1.5 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-              <Sparkles className="h-[15px] w-[15px] text-accent" /> Today's horoscope
+              <Sparkles className="h-[15px] w-[15px] text-accent" /> {t("Today's horoscope")}
             </h3>
 
             {!horo && (
@@ -305,7 +304,7 @@ export default function PanchangPage() {
                 {horoErr && <p className="mb-3 text-[13px] text-destructive">{horoErr}</p>}
                 {!horoLoading && (
                   <p className="text-[13px] text-muted-foreground">
-                    See today's AI prediction for all 12 moon signs.
+                    {t("See today's AI prediction for all 12 moon signs.")}
                   </p>
                 )}
                 {horoLoading ? (
@@ -318,7 +317,7 @@ export default function PanchangPage() {
                     feedback="medium"
                     className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
                   >
-                    <Sparkles className="h-[17px] w-[17px]" strokeWidth={2.4} /> Show horoscope
+                    <Sparkles className="h-[17px] w-[17px]" strokeWidth={2.4} /> {t("Show horoscope")}
                   </Pressable>
                 )}
               </div>
@@ -348,7 +347,7 @@ export default function PanchangPage() {
           </section>
 
           <p className="px-2 pb-2 text-center text-[11.5px] text-muted-foreground">
-            Computed for {place.label}. Astrology offers guidance, not certainty.
+            {place.label} — {t("Astrology offers guidance, not certainty.")}
           </p>
         </>
       )}
