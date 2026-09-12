@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense} from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -30,47 +30,58 @@ import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
 import UpdateSheet from './components/mobile/UpdateSheet';
 import LanguageGate, { languageChosen } from './components/LanguageGate';
+import Onboarding, { onboardingSeen } from './components/Onboarding';
 import { depthOf, hidesTabBar } from './components/mobile/routes';
 
 import LoginPage from './pages/LoginPage';
-import AdminPage from './pages/AdminPage';
 import HomePage from './pages/HomePage';
-import CreateChartPage from './pages/CreateChartPage';
-import DashboardPage from './pages/DashboardPage';
-import D1ChartPage from './pages/D1ChartPage';
-import D9ChartPage from './pages/D9ChartPage';
-import DivisionalChartsPage from './pages/DivisionalChartsPage';
-import DashaPage from './pages/DashaPage';
-import LifeReportPage from './pages/LifeReportPage';
-// The five old chat surfaces (AskQuestionPage, AstrologersPage, ConsultPage,
-// TransitPage, SectorsPage) are retired in favour of ONE universal chat. Their
-// files stay in the repo for now, but every old path redirects into ChatPage so
-// existing links, buttons and notification deep-links all still land somewhere.
-import ChatPage from './pages/ChatPage';
-import ChatHome from './pages/ChatHome';
-import ProfilesPage from './pages/ProfilesPage';
-import SettingsPage from './pages/SettingsPage';
-import AIStatusPage from './pages/AIStatusPage';
-import HelpPage from './pages/HelpPage';
-import MatchingPage from './pages/MatchingPage';
-import MorePage from './pages/MorePage';
-import PanchangPage from './pages/PanchangPage';
-import MuhuratPage from './pages/MuhuratPage';
-import YogasPage from './pages/YogasPage';
-import AshtakavargaPage from './pages/AshtakavargaPage';
-import AlertsPage from './pages/AlertsPage';
-import AdvancedToolsPage from './pages/AdvancedToolsPage';
-import RemediesPage from './pages/RemediesPage';
-import DailyGuidancePage from './pages/DailyGuidancePage';
-import NotificationsPage from './pages/NotificationsPage';
-import PlanPage from './pages/PlanPage';
-import ReportsPage from './pages/ReportsPage';
-import ReportViewPage from './pages/ReportViewPage';
-import TimelinePage from './pages/TimelinePage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import ThemePage from './pages/ThemePage';
-import RightNowPage from './pages/RightNowPage';
-import DeveloperPage from './pages/DeveloperPage';
+
+/*
+ * Every other screen is its own chunk.
+ *
+ * All thirty-four pages used to be imported eagerly, so opening the app
+ * meant downloading and PARSING 930KB of JavaScript before the first pixel
+ * — the admin panel, the PDF builder, the matching engine's UI, all of it,
+ * for someone who just wanted to see today's panchang. On a mid-range
+ * Android phone that parse alone is seconds of a blank screen, and it is
+ * the whole of the "app feels laggy" complaint.
+ *
+ * Now a screen arrives when it is opened. The comment below about the five
+ * retired chat surfaces still applies: their paths redirect into ChatPage.
+ */
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const CreateChartPage = lazy(() => import('./pages/CreateChartPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const D1ChartPage = lazy(() => import('./pages/D1ChartPage'));
+const D9ChartPage = lazy(() => import('./pages/D9ChartPage'));
+const DivisionalChartsPage = lazy(() => import('./pages/DivisionalChartsPage'));
+const DashaPage = lazy(() => import('./pages/DashaPage'));
+const LifeReportPage = lazy(() => import('./pages/LifeReportPage'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+const ChatHome = lazy(() => import('./pages/ChatHome'));
+const ProfilesPage = lazy(() => import('./pages/ProfilesPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const AIStatusPage = lazy(() => import('./pages/AIStatusPage'));
+const HelpPage = lazy(() => import('./pages/HelpPage'));
+const MatchingPage = lazy(() => import('./pages/MatchingPage'));
+const MorePage = lazy(() => import('./pages/MorePage'));
+const PanchangPage = lazy(() => import('./pages/PanchangPage'));
+const MuhuratPage = lazy(() => import('./pages/MuhuratPage'));
+const YogasPage = lazy(() => import('./pages/YogasPage'));
+const AshtakavargaPage = lazy(() => import('./pages/AshtakavargaPage'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const AdvancedToolsPage = lazy(() => import('./pages/AdvancedToolsPage'));
+const RemediesPage = lazy(() => import('./pages/RemediesPage'));
+const DailyGuidancePage = lazy(() => import('./pages/DailyGuidancePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const PlanPage = lazy(() => import('./pages/PlanPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const ReportViewPage = lazy(() => import('./pages/ReportViewPage'));
+const TimelinePage = lazy(() => import('./pages/TimelinePage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const ThemePage = lazy(() => import('./pages/ThemePage'));
+const RightNowPage = lazy(() => import('./pages/RightNowPage'));
+const DeveloperPage = lazy(() => import('./pages/DeveloperPage'));
 
 /**
  * Offline strip. Appears only when connectivity drops, so the user knows why
@@ -125,6 +136,18 @@ function NotFound() {
       hint="That link doesn't point anywhere in the app any more."
       onRetry={() => navigate('/', { replace: true })}
     />
+  );
+}
+
+/** Shown for the instant a screen's own chunk is still arriving. */
+function ScreenSkeleton() {
+  return (
+    <div className="space-y-3 pt-2" aria-hidden>
+      <div className="skeleton h-[74px]" />
+      <div className="skeleton h-[150px]" />
+      <div className="skeleton h-[110px] opacity-70" />
+      <div className="skeleton h-[110px] opacity-45" />
+    </div>
   );
 }
 
@@ -210,6 +233,7 @@ function Shell() {
   const [locked, setLocked] = useState(() => isNative && isLockEnabled());
   // First launch asks for the language before the app says a word.
   const [langOk, setLangOk] = useState(languageChosen);
+  const [tourDone, setTourDone] = useState(onboardingSeen);
   useEffect(() => {
     if (!isNative) return;
     let handle: any;
@@ -320,6 +344,25 @@ function Shell() {
 
   if (!langOk) return <LanguageGate onDone={() => setLangOk(true)} />;
 
+  /*
+   * The first-run tour, once, after the language and before the app.
+   *
+   * Deliberately NOT gated on "has no kundli": someone who deletes their last
+   * one is not a new user and does not want to be introduced to the app again.
+   * A single flag, set by finishing OR skipping, is the honest rule.
+   *
+   * Finishing it lands on the create-kundli screen, because that is the one
+   * action the rest of the app is built on; skipping lands on Home like before.
+   */
+  if (!tourDone) {
+    return (
+      <Onboarding
+        onSkip={() => setTourDone(true)}
+        onStart={() => { setTourDone(true); navigate('/create-chart'); }}
+      />
+    );
+  }
+
   // The emailed password-reset link must open even while signed out, so it
   // bypasses the launch auth gate below.
   if (!user && location.pathname === '/reset-password') {
@@ -376,7 +419,16 @@ function Shell() {
             exit={{ opacity: 0, transition: { duration: 0.07, ease: 'easeOut' } }}
             className="app-content px-4 pb-6"
           >
-            <AppRoutes location={location} />
+            {/*
+              A screen now arrives as its own chunk, so there is a moment
+              between the tap and the code. The fallback is a plain skeleton
+              rather than a spinner: a spinner announces a wait, a skeleton
+              reads as the screen already arriving, and on a warm cache it is
+              gone in a frame either way.
+            */}
+            <Suspense fallback={<ScreenSkeleton />}>
+              <AppRoutes location={location} />
+            </Suspense>
           </motion.main>
         </AnimatePresence>
       </div>
