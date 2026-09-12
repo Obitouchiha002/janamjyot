@@ -15,4 +15,10 @@ export interface OtaManifest {
   disabled?: boolean;  // kill switch: stop rolling this out
 }
 
-export const OTA_MANIFEST: OtaManifest | null = null;
+export const OTA_MANIFEST: OtaManifest | null = {
+  "build": "202609121022",
+  "url": "/ota/web-202609121022.zip",
+  "checksum": "c19f7170f5eb49b01f591e6f520d58b070d28d6729d73795e7e7bbc3aa4fbe3f",
+  "min_native": "1.17",
+  "notes": "Deep kundli matching, your past period by period, Hindi across more screens"
+};

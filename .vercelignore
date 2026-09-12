@@ -11,3 +11,17 @@ node_modules
 # Local docs
 VedicAstra-Documentation.html
 VedicAstra-SOP.html
+
+# Old APKs — kept locally, not uploaded.
+#
+# Sixteen builds is 134MB, and Vercel's upload aborted part-way through every
+# deploy because of it. Only the version the app actually points at needs to be
+# served; the previous one stays as a fallback while the update rolls out.
+public/*.apk
+!public/JanamJyot-v1.16.apk
+!public/JanamJyot-v1.17.apk
+
+# The Android project. 149MB of Gradle cache, intermediate dex and build
+# outputs that the web deploy has no use for — and the single reason every
+# upload aborted part-way. The APK that IS served lives in public/.
+android
