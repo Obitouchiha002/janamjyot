@@ -405,6 +405,10 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
     hinglish: "App kholne se pehle fingerprint ya screen lock maange",
   },
   "Vibration": { hi: "कंपन", hinglish: "Vibration" },
+  "When the phone should buzz": { hi: "फ़ोन कब कंपे", hinglish: "Phone kab vibrate ho" },
+  "Off": { hi: "बंद", hinglish: "Band" },
+  "Only key actions": { hi: "सिर्फ़ ज़रूरी कामों पर", hinglish: "Sirf zaroori kaamon par" },
+  "Everything": { hi: "हर चीज़ पर", hinglish: "Har cheez par" },
   "How strongly the phone buzzes when you tap": {
     hi: "टैप करने पर फ़ोन कितना ज़ोर से कंपे",
     hinglish: "Tap karne par phone kitna zor se vibrate ho",

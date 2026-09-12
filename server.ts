@@ -23,6 +23,7 @@ import cors from "cors";
 
 import {
   initDb,
+  ensureSettings,
   insertBirthProfile,
   insertChartCalculation,
   getNormalizedChart,
@@ -443,6 +444,16 @@ const PUBLIC_API = [
   /^\/downloads?$/,   // POST /download (record) and GET /downloads (public count)
   /^\/health$/,
 ];
+
+/*
+ * Keep this instance's view of the admin settings current.
+ *
+ * Cheap: a no-op while the copy is fresh, a single small SELECT at most twice a
+ * minute, and only the very first request on a cold instance waits for it.
+ * Without it a warm serverless instance serves whatever the settings were when
+ * it started, for as long as it lives.
+ */
+app.use("/api", (_req, _res, next) => { ensureSettings().then(() => next(), () => next()); });
 
 app.use("/api", (req, res, next) => {
   const isPublic = PUBLIC_API.some((re) => re.test(req.path));

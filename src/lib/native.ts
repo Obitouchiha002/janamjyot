@@ -67,17 +67,38 @@ const impact = (style: ImpactStyle) => {
   Haptics.impact({ style }).catch(() => {});
 };
 
+/*
+ * What the default level actually buzzes for.
+ *
+ * There are around two hundred and forty haptic call sites in this app, and at
+ * the old default every one of them fired — opening a screen, picking a tab,
+ * scrolling a chip row, tapping any card. A phone that buzzes at everything is
+ * a phone that is buzzing for nothing, and it reads as cheap rather than
+ * responsive.
+ *
+ * So the default now answers a narrower question: did something HAPPEN? A
+ * confirm, a send, a finished report, a refusal. Moving around the app is not
+ * an event and gets nothing. `full` restores the old everything-buzzes feel for
+ * anyone who wants it, and that is the only reason it still exists.
+ *
+ * Fixed here rather than at the call sites on purpose: two hundred and forty
+ * edits is two hundred and forty chances to get one wrong, and the next feature
+ * would reintroduce the problem anyway.
+ */
+const INCIDENTAL_NEEDS_FULL = true;
+
 export const haptic = {
-  /** Every interactive element. Must stay barely-there. */
-  tap: () => impact(ImpactStyle.Light),
-  /** Primary actions (send, generate, confirm). */
-  medium: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Medium : ImpactStyle.Light),
-  heavy: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Heavy : ImpactStyle.Medium),
+  /** Every interactive element — silent unless the person asked for full. */
+  tap: () => { if (!INCIDENTAL_NEEDS_FULL || getHapticLevel() === 'full') impact(ImpactStyle.Light); },
+  /** Moving through a list or a segmented control. Same rule as tap. */
   select: () => {
-    if (!isNative || getHapticLevel() === 'off') return;
+    if (!isNative || getHapticLevel() !== 'full') return;
     Haptics.selectionChanged().catch(() => {});
   },
-  /** Was a long notification buzz — now a single short pulse. */
+  /** Primary actions (send, generate, confirm) — something is being DONE. */
+  medium: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Medium : ImpactStyle.Light),
+  heavy: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Heavy : ImpactStyle.Medium),
+  /** An outcome arrived: the report is ready, the payment went through. */
   success: () => impact(getHapticLevel() === 'full' ? ImpactStyle.Medium : ImpactStyle.Light),
   warning: () => impact(ImpactStyle.Light),
   /** The one place a distinct notification pattern earns its keep. */

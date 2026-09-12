@@ -15,10 +15,15 @@ import { useNavigate } from "react-router-dom";
 const SELECT_CLS =
   "w-full appearance-none rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] outline-none transition-colors focus:border-accent disabled:text-muted-foreground";
 
+/*
+ * "Light" is the default and now means "only when something happens" — a
+ * confirm, a finished report, an error. "Everything" is the old behaviour,
+ * where moving around the app buzzes too, kept for people who liked it.
+ */
 const HAPTIC_CHOICES: { value: HapticLevel; label: string }[] = [
   { value: "off", label: "Off" },
-  { value: "light", label: "Light" },
-  { value: "full", label: "Strong" },
+  { value: "light", label: "Only key actions" },
+  { value: "full", label: "Everything" },
 ];
 
 /** A read-only "current method" row — honest about what the engine actually uses. */
@@ -202,7 +207,7 @@ export default function SettingsPage() {
               <span className="min-w-0 flex-1">
                 <span className="block text-[14.5px] font-bold leading-tight">{t("Vibration")}</span>
                 <span className="mt-0.5 block text-[12px] leading-snug text-muted-foreground">
-                  {t("How strongly the phone buzzes when you tap")}
+                  {t("When the phone should buzz")}
                 </span>
                 <span className="mt-2 flex gap-1.5">
                   {HAPTIC_CHOICES.map((c) => (
@@ -220,7 +225,7 @@ export default function SettingsPage() {
                           : "bg-muted-foreground/10 text-muted-foreground"
                       }`}
                     >
-                      {c.label}
+                      {t(c.label)}
                     </Pressable>
                   ))}
                 </span>

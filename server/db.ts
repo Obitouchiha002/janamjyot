@@ -593,7 +593,9 @@ export function initDb(): Promise<void> {
   initPromise = (async () => {
     if (USE_PG) {
       await pool!.query(SCHEMA_SQL);
-      await loadSettings();
+      // Loaded separately below too, and refreshed on a TTL — this is only the
+      // warm start. A failure here must not leave the process with no settings.
+      await loadSettings().catch((e) => console.warn("[settings] initial load failed:", (e as Error).message));
       console.log("[db] Postgres schema ready");
     } else {
       loadFile();
@@ -1375,11 +1377,50 @@ export async function chartsByOwner(id: string) {
 // existing callers expect.
 // ===========================================================================
 const settingsCache: Record<string, any> = {};
+let settingsLoadedAt = 0;
+let settingsLoading: Promise<void> | null = null;
 
 export async function loadSettings() {
   if (!USE_PG) return;
   const { rows } = await pool!.query(`SELECT key, value FROM app_settings`);
   for (const r of rows) settingsCache[r.key] = r.value;
+  settingsLoadedAt = Date.now();
+}
+
+/**
+ * Make sure the settings in memory are not stale — and not simply missing.
+ *
+ * Two ways the old cache went wrong in production, both silent:
+ *
+ *  1. It was filled once per process and never again. A serverless instance
+ *     that had already started serving kept its copy for its whole life, so an
+ *     admin publishing a version, an announcement, a feature flag or
+ *     maintenance mode changed nothing for anyone that instance answered. The
+ *     panel said saved, the database said saved, and the app went on as before.
+ *
+ *  2. The one load was chained behind the schema query, whose failure is
+ *     caught and logged at the entry point. When that failed, every setting
+ *     read as undefined for the life of the instance — and `app_version` fell
+ *     through to a stale APP_VERSION env var, which is how the download page
+ *     ended up offering a build five releases old that no longer existed.
+ *
+ * So: a first read waits for real values rather than serving the fallback, and
+ * after that a background refresh keeps every instance within `maxAgeMs` of the
+ * truth. Never throws — a refresh that fails leaves the last good values in
+ * place, which is the right answer for a cache of small config values.
+ */
+export async function ensureSettings(maxAgeMs = 30_000): Promise<void> {
+  if (!USE_PG) return;
+  const fresh = settingsLoadedAt && Date.now() - settingsLoadedAt < maxAgeMs;
+  if (fresh) return;
+  if (!settingsLoading) {
+    settingsLoading = loadSettings()
+      .catch((e) => { console.warn("[settings] refresh failed:", (e as Error).message); })
+      .finally(() => { settingsLoading = null; });
+  }
+  // Never loaded at all → wait, so the caller gets real values rather than a
+  // fallback. Merely stale → let it refresh behind this request.
+  if (!settingsLoadedAt) await settingsLoading;
 }
 
 export function getSetting(key: string): any {

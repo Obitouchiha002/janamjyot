@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609121022",
-  "url": "/ota/web-202609121022.zip",
-  "checksum": "c19f7170f5eb49b01f591e6f520d58b070d28d6729d73795e7e7bbc3aa4fbe3f",
+  "build": "202609121046",
+  "url": "/ota/web-202609121046.zip",
+  "checksum": "040c5e63f7805bb5be1462dc21ac500cbe4d6f013b29d60d7835e5c90a29df92",
   "min_native": "1.17",
-  "notes": "Deep kundli matching, your past period by period, Hindi across more screens"
+  "notes": "Less vibration, admin settings apply live, correct download version"
 };
