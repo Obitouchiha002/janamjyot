@@ -40,12 +40,15 @@ type Lang = 'en' | 'hi' | 'hinglish';
  * English pitch. Each version is written to sound like someone speaking it.
  */
 const COPY: Record<Lang, {
-  skip: string; next: string; start: string; steps: Array<{ title: string; body: string }>;
+  skip: string; next: string; start: string; startSignedOut: string; note: string;
+  steps: Array<{ title: string; body: string }>;
 }> = {
   hinglish: {
     skip: 'Abhi nahi',
     next: 'Aage',
     start: 'Meri kundli banaiye',
+    startSignedOut: 'Shuru karein',
+    note: 'Ek chhota sa sign-in, fir seedha kundli banegi.',
     steps: [
       { title: 'Aapki apni kundli, do minute mein',
         body: 'Sirf janm ki tareekh, samay aur jagah. Usi se poora chart banta hai — lagna, rashi, nakshatra, dasha.' },
@@ -59,6 +62,8 @@ const COPY: Record<Lang, {
     skip: 'अभी नहीं',
     next: 'आगे',
     start: 'मेरी कुंडली बनाएँ',
+    startSignedOut: 'शुरू करें',
+    note: 'एक छोटा सा साइन-इन, फिर सीधे कुंडली बनेगी।',
     steps: [
       { title: 'आपकी अपनी कुंडली, दो मिनट में',
         body: 'बस जन्म की तारीख़, समय और जगह। उसी से पूरा चार्ट बनता है — लग्न, राशि, नक्षत्र, दशा।' },
@@ -72,6 +77,8 @@ const COPY: Record<Lang, {
     skip: 'Not now',
     next: 'Next',
     start: 'Create my kundli',
+    startSignedOut: 'Get started',
+    note: 'A quick sign-in, then straight to your kundli.',
     steps: [
       { title: 'Your own kundli, in two minutes',
         body: 'Just your date, time and place of birth. Everything is built from that — lagna, moon sign, nakshatra, dasha.' },
@@ -85,7 +92,9 @@ const COPY: Record<Lang, {
 
 const ICONS = [Sparkles, CalendarHeart, MessageCircle];
 
-export default function Onboarding({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) {
+export default function Onboarding(
+  { onStart, onSkip, signedIn }: { onStart: () => void; onSkip: () => void; signedIn: boolean },
+) {
   const raw = getLang();
   const lang: Lang = raw === 'hi' || raw === 'hinglish' ? raw : 'en';
   const c = COPY[lang];
@@ -152,6 +161,13 @@ export default function Onboarding({ onStart, onSkip }: { onStart: () => void; o
             />
           ))}
         </div>
+        {/*
+          The last button must not promise something the next screen does not
+          do. Signed out, the app's own wall comes first — so it says "get
+          started" and the line under it says why, instead of saying "create my
+          kundli" and handing over a sign-in form. That mismatch is what made
+          the tour feel broken.
+        */}
         <button
           onClick={next}
           className="flex w-full items-center justify-center gap-2 rounded-full py-4 text-[15.5px] font-bold shadow-lg"
@@ -161,9 +177,14 @@ export default function Onboarding({ onStart, onSkip }: { onStart: () => void; o
             boxShadow: '0 10px 30px -12px var(--hm-accent, #B7791F)',
           }}
         >
-          {last ? c.start : c.next}
+          {last ? (signedIn ? c.start : c.startSignedOut) : c.next}
           <ArrowRight className="h-[18px] w-[18px]" strokeWidth={2.4} />
         </button>
+        {last && !signedIn && (
+          <p className="mt-3 text-center text-[12.5px]" style={{ color: 'var(--hm-text-2)' }}>
+            {c.note}
+          </p>
+        )}
       </div>
     </div>
   );

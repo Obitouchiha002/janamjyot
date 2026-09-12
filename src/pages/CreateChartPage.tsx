@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useT } from '@/lib/i18n';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   MapPin, Calendar, Clock, UserIcon, Check, Loader2, ChevronRight, ChevronLeft, Sparkles, ShieldCheck,
@@ -63,6 +64,7 @@ const inputCls =
   'w-full rounded-2xl border border-input bg-card px-4 py-3.5 text-[15px] text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-accent transition-colors';
 
 export default function CreateChartPage() {
+  const t = useT();
   const navigate = useNavigate();
   // Same screen, two jobs. `/create-chart` builds a new kundli; `/edit/:chartId`
   // corrects an existing one in place — which the app had been promising on
@@ -302,7 +304,7 @@ export default function CreateChartPage() {
               }`}
             />
             <p className={`mt-2 text-[11px] font-semibold ${i === step ? 'text-accent' : 'text-muted-foreground'}`}>
-              {s}
+              {t(s)}
             </p>
           </div>
         ))}
@@ -319,35 +321,34 @@ export default function CreateChartPage() {
             {/* A one-line bridge so a newcomer knows what the payoff is before
                 filling a form — "hope → what you'll get". */}
             <p className="-mt-1 text-[13.5px] leading-relaxed text-muted-foreground">
-              Let&apos;s read your birth chart — I&apos;ll tell you about yourself and
-              your life in plain words. Just three quick steps.
+              {t("Let's read your birth chart — I'll tell you about yourself and your life in plain words. Just three quick steps.")}
             </p>
-            <Field label="Full name">
+            <Field label={t("Full name")}>
               <div className="relative">
                 <UserIcon className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
                   autoFocus
                   className={`${inputCls} pl-11`}
-                  placeholder="Your full name"
+                  placeholder={t("Your full name")}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
             </Field>
 
-            <Field label="Gender">
+            <Field label={t("Gender")}>
               <Segmented
                 value={formData.gender}
                 onChange={(v) => setFormData({ ...formData, gender: v })}
                 options={[
-                  { value: 'male', label: 'Male' },
-                  { value: 'female', label: 'Female' },
-                  { value: 'other', label: 'Other' },
+                  { value: 'male', label: t('Male') },
+                  { value: 'female', label: t('Female') },
+                  { value: 'other', label: t('Other') },
                 ]}
               />
             </Field>
 
-            <Field label="Language">
+            <Field label={t("Language")}>
               <Segmented
                 value={formData.language}
                 onChange={(v) => setFormData({ ...formData, language: v })}
@@ -363,7 +364,7 @@ export default function CreateChartPage() {
 
         {step === 1 && (
           <>
-            <Field label="Date of birth">
+            <Field label={t("Date of birth")}>
               {/* Day / Month / Year dropdowns instead of a native date picker:
                   that picker opened on the CURRENT month, so reaching a birth
                   year 25-30 years back meant tapping the calendar's back-arrow
@@ -390,7 +391,7 @@ export default function CreateChartPage() {
               </div>
             </Field>
 
-            <Field label="Exact birth time">
+            <Field label={t("Exact birth time")}>
               <div className="grid grid-cols-2 gap-2">
                 <select
                   className={inputCls}
@@ -440,7 +441,7 @@ export default function CreateChartPage() {
               <Clock className="mt-0.5 h-4 w-4 shrink-0" />
               {unknownTime
                 ? "No problem — we'll use noon. Your Moon sign, nakshatra and dashas stay accurate; only the rising sign (Lagna) and house-based details may shift. You can correct the time later — open the kundli list and tap Edit."
-                : "Pick AM/PM carefully. Birth time decides your rising sign (Lagna), so an accurate time gives a sharper reading."}
+                : t("Pick AM/PM carefully. Birth time decides your rising sign (Lagna), so an accurate time gives a sharper reading.")}
             </p>
 
             {/* Said at the moment we ask, not buried in a policy page. */}
@@ -456,14 +457,14 @@ export default function CreateChartPage() {
           <>
             <div className="space-y-2" ref={boxRef}>
               <label className="px-1 text-[12.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                Birth place
+                {t("Birth place")}
               </label>
               <div className="relative">
                 <MapPin className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
                 <input
                   autoFocus
                   className={`${inputCls} pl-11 pr-11`}
-                  placeholder="City name, e.g. Alwar"
+                  placeholder={t("City name, e.g. Alwar")}
                   value={placeQuery}
                   autoComplete="off"
                   onChange={(e) => onPlaceChange(e.target.value)}
@@ -560,7 +561,7 @@ export default function CreateChartPage() {
             feedback="none"
             className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-accent py-3.5 text-[15px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
           >
-            Next <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2.6} />
+            {t("Next")} <ChevronRight className="h-[18px] w-[18px]" strokeWidth={2.6} />
           </Pressable>
         ) : (
           <button

@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609121056",
-  "url": "/ota/web-202609121056.zip",
-  "checksum": "648f5a49d31fb92c0163848b469bd563ef7a65040384a0f11c51669c2ce2672f",
+  "build": "202609121116",
+  "url": "/ota/web-202609121116.zip",
+  "checksum": "2a6e127327f9df4a1bdba3a794d779afe567a8131ae422ae757a0f25bb19c8c6",
   "min_native": "1.17",
-  "notes": "Faster start, less vibration, and a guided first kundli"
+  "notes": "First-run guide, faster start, Hindi sign-in and kundli form"
 };

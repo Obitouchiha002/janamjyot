@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { Sparkles, LogIn, UserPlus, MailCheck, Star, Sunrise, MessageCircleHeart } from "lucide-react";
 import { useAuth } from "@/auth";
@@ -35,6 +36,7 @@ const PERKS = [
  * "Continue as guest" escape hatch instead of stranding the user on the screen.
  */
 export default function LoginPage() {
+  const t = useT();
   const { login, signup, loginWithOtp } = useAuth();
   const nav = useNavigate();
   // New user → Sign up (with the perks visible); returning user → Sign in.
@@ -145,8 +147,8 @@ export default function LoginPage() {
         </h1>
         <p className="mx-auto mt-1.5 max-w-[300px] text-[13px] leading-relaxed text-muted-foreground">
           {mode === "login"
-            ? "Welcome back — sign in to your account."
-            : "Your birth chart, read in plain words. Free to start."}
+            ? t("Welcome back — sign in to your account.")
+            : t("Your birth chart, read in plain words. Free to start.")}
         </p>
       </div>
 
@@ -159,7 +161,7 @@ export default function LoginPage() {
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">
                 <Icon className="h-[18px] w-[18px]" strokeWidth={2.1} />
               </span>
-              <span className="text-[13.5px] font-semibold leading-snug">{text}</span>
+              <span className="text-[13.5px] font-semibold leading-snug">{t(text)}</span>
             </div>
           ))}
         </div>
@@ -175,10 +177,10 @@ export default function LoginPage() {
           className="flex w-full items-center justify-center gap-2.5 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
         >
           <MailCheck className="h-[18px] w-[18px]" strokeWidth={2.3} />
-          Continue with Email code
+          {t("Continue with Email code")}
         </Pressable>
         <p className="mt-2 text-center text-[11.5px] font-medium text-muted-foreground">
-          We&apos;ll email you a 6-digit code — no password needed
+          {t("We'll email you a 6-digit code — no password needed")}
         </p>
 
         {/* or divider */}
@@ -192,11 +194,11 @@ export default function LoginPage() {
           /* ── Passwordless: e-mailed code ─────────────────────────────── */
           <form onSubmit={otpStage === "email" ? sendOtp : verifyOtp} className="space-y-3">
             <h2 className="text-[16px] font-bold">
-              {otpStage === "email" ? "Sign in with your email" : "Enter your code"}
+              {otpStage === "email" ? t("Sign in with your email") : t("Enter your code")}
             </h2>
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
               {otpStage === "email"
-                ? "We'll send a 6-digit code to your email. New here? This creates your account too."
+                ? t("We'll send a 6-digit code to your email. New here? This creates your account too.")
                 : `We sent a 6-digit code to ${email}. It expires in 10 minutes.`}
             </p>
 
@@ -214,7 +216,7 @@ export default function LoginPage() {
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   maxLength={6}
-                  placeholder="6-digit code"
+                  placeholder={t("6-digit code")}
                   value={otpCode}
                   onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   className={`${INPUT_CLS} text-center text-[20px] font-bold tracking-[0.4em]`}
@@ -239,7 +241,7 @@ export default function LoginPage() {
               className="pressable flex w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25 disabled:opacity-50"
             >
               {otpBusy && <Sparkles className="h-[17px] w-[17px] animate-spin" />}
-              {otpStage === "email" ? "Send code" : "Verify & sign in"}
+              {otpStage === "email" ? t("Send code") : t("Verify & sign in")}
             </button>
 
             {otpStage === "code" && (
@@ -248,7 +250,7 @@ export default function LoginPage() {
                 onClick={() => { haptic.tap(); setOtpStage("email"); setOtpCode(""); setError(null); }}
                 className="block w-full py-1 text-center text-[13px] font-semibold text-muted-foreground"
               >
-                Use a different email
+                {t("Use a different email")}
               </Pressable>
             )}
             <Pressable
@@ -262,7 +264,7 @@ export default function LoginPage() {
         ) : forgot ? (
           /* ── Forgot password ─────────────────────────────────────────── */
           <form onSubmit={sendReset} className="space-y-3">
-            <h2 className="text-[16px] font-bold">Reset your password</h2>
+            <h2 className="text-[16px] font-bold">{t("Reset your password")}</h2>
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">
               Enter your account email — we&apos;ll send you a link to choose a new password.
             </p>
@@ -288,7 +290,7 @@ export default function LoginPage() {
               onClick={() => { haptic.tap(); setForgot(false); setSent(null); setError(null); }}
               className="block w-full py-1 text-center text-[13px] font-semibold text-muted-foreground"
             >
-              Back to sign in
+              {t("Back to sign in")}
             </Pressable>
           </form>
         ) : (
@@ -352,7 +354,7 @@ export default function LoginPage() {
             ) : (
               <UserPlus className="h-[17px] w-[17px]" strokeWidth={2.4} />
             )}
-            {mode === "login" ? "Sign in" : "Create account"}
+            {mode === "login" ? t("Sign in") : t("Create account")}
           </button>
 
           {mode === "login" && (
@@ -361,7 +363,7 @@ export default function LoginPage() {
               onClick={() => { haptic.tap(); setForgot(true); setError(null); }}
               className="block w-full pt-1 text-center text-[13px] font-semibold text-accent"
             >
-              Forgot password?
+              {t("Forgot password?")}
             </Pressable>
           )}
         </form>
@@ -371,7 +373,7 @@ export default function LoginPage() {
 
 
       <p className="m-enter mt-5 px-4 text-center text-[11.5px] leading-relaxed text-muted-foreground">
-        By continuing you agree this app is for spiritual guidance and entertainment.
+        {t("By continuing you agree this app is for spiritual guidance and entertainment.")}
       </p>
     </div>
   );

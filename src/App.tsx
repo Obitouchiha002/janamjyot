@@ -357,8 +357,16 @@ function Shell() {
   if (!tourDone) {
     return (
       <Onboarding
+        signedIn={!!user}
         onSkip={() => setTourDone(true)}
-        onStart={() => { setTourDone(true); navigate('/create-chart'); }}
+        onStart={() => {
+          setTourDone(true);
+          // Navigating here even while signed out is deliberate: the sign-in
+          // wall below renders over this path, and the moment they are in, the
+          // location is already /create-chart — so they land where the tour
+          // said they would rather than on a home screen they have to search.
+          navigate('/create-chart');
+        }}
       />
     );
   }

@@ -197,6 +197,105 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Deity": { hi: "देवता", hinglish: "Devta" },
   "Colour": { hi: "रंग", hinglish: "Rang" },
 
+  // --- sign in (the second screen a new person ever sees) ----------------
+  "Your birth chart, read in plain words. Free to start.": {
+    hi: "आपकी जन्म कुंडली, आसान भाषा में। शुरू करना मुफ़्त है।",
+    hinglish: "Aapki janm kundli, aasan bhasha mein. Shuru karna free hai.",
+  },
+  "Welcome back — sign in to your account.": {
+    hi: "वापस स्वागत है — अपने खाते में साइन इन करें।",
+    hinglish: "Wapas swagat hai — apne account mein sign in karein.",
+  },
+  "Your free Janam Kundli in minutes": {
+    hi: "आपकी मुफ़्त जन्म कुंडली, मिनटों में",
+    hinglish: "Aapki free janm kundli, minton mein",
+  },
+  "Daily guidance made just for you": {
+    hi: "रोज़ का मार्गदर्शन, सिर्फ़ आपके लिए",
+    hinglish: "Roz ka margdarshan, sirf aapke liye",
+  },
+  "Ask an astrologer anything, in plain words": {
+    hi: "ज्योतिषी से कुछ भी पूछिए, आसान भाषा में",
+    hinglish: "Jyotishi se kuch bhi poochiye, aasan bhasha mein",
+  },
+  "Continue with Email code": { hi: "ईमेल कोड से आगे बढ़ें", hinglish: "Email code se aage badhein" },
+  "Continue with email code": { hi: "ईमेल कोड से आगे बढ़ें", hinglish: "Email code se aage badhein" },
+  "Sign in with your email": { hi: "अपने ईमेल से साइन इन करें", hinglish: "Apne email se sign in karein" },
+  "Enter your code": { hi: "अपना कोड डालें", hinglish: "Apna code daaliye" },
+  "We'll send a 6-digit code to your email. New here? This creates your account too.": {
+    hi: "हम आपके ईमेल पर 6 अंकों का कोड भेजेंगे। पहली बार आए हैं? इसी से खाता भी बन जाएगा।",
+    hinglish: "Hum aapke email par 6 ank ka code bhejenge. Pehli baar aaye hain? Isi se account bhi ban jayega.",
+  },
+  "Send code": { hi: "कोड भेजें", hinglish: "Code bhejein" },
+  "We'll email you a 6-digit code — no password needed": {
+    hi: "हम आपको 6 अंकों का कोड ईमेल करेंगे — पासवर्ड की ज़रूरत नहीं",
+    hinglish: "Hum aapko 6 ank ka code email karenge — password ki zarurat nahi",
+  },
+  "6-digit code": { hi: "6 अंकों का कोड", hinglish: "6 ank ka code" },
+  "Sign in": { hi: "साइन इन", hinglish: "Sign in" },
+  "Verify & sign in": { hi: "जाँचें और साइन इन करें", hinglish: "Jaanch kar sign in karein" },
+  "Use a different email": { hi: "दूसरा ईमेल इस्तेमाल करें", hinglish: "Dusra email istemal karein" },
+  "Create account": { hi: "खाता बनाएँ", hinglish: "Account banayein" },
+  "Email": { hi: "ईमेल", hinglish: "Email" },
+  "Your name (new accounts only)": { hi: "आपका नाम (सिर्फ़ नए खाते के लिए)", hinglish: "Aapka naam (sirf naye account ke liye)" },
+  "Password (6+ characters)": { hi: "पासवर्ड (6+ अक्षर)", hinglish: "Password (6+ akshar)" },
+  "Forgot password?": { hi: "पासवर्ड भूल गए?", hinglish: "Password bhool gaye?" },
+  "Reset your password": { hi: "पासवर्ड रीसेट करें", hinglish: "Password reset karein" },
+  "Back to sign in": { hi: "साइन इन पर वापस", hinglish: "Sign in par wapas" },
+  "By continuing you agree this app is for spiritual guidance and entertainment.": {
+    hi: "आगे बढ़ने का मतलब है कि यह ऐप आध्यात्मिक मार्गदर्शन और मनोरंजन के लिए है।",
+    hinglish: "Aage badhne ka matlab hai ki ye app aadhyatmik margdarshan aur manoranjan ke liye hai.",
+  },
+  "Code sent. Please check your email.": { hi: "कोड भेज दिया। अपना ईमेल देखें।", hinglish: "Code bhej diya. Apna email dekhein." },
+  "Could not send the code.": { hi: "कोड नहीं भेजा जा सका।", hinglish: "Code nahi bhej paye." },
+  "Could not verify that code.": { hi: "वह कोड जाँचा नहीं जा सका।", hinglish: "Wo code verify nahi ho paya." },
+  "Could not send the reset link.": { hi: "रीसेट लिंक नहीं भेजा जा सका।", hinglish: "Reset link nahi bhej paye." },
+  "If that email has an account, a reset link is on its way.": {
+    hi: "अगर उस ईमेल का खाता है, तो रीसेट लिंक भेज दिया गया है।",
+    hinglish: "Agar us email ka account hai, to reset link bhej diya gaya hai.",
+  },
+  "Something went wrong. Please try again.": {
+    hi: "कुछ गड़बड़ हो गई। फिर कोशिश करें।",
+    hinglish: "Kuch gadbad ho gayi. Dobara koshish karein.",
+  },
+  // --- new kundli form ---------------------------------------------------
+  "About you": { hi: "आपके बारे में", hinglish: "Aapke baare mein" },
+  "Let's read your birth chart — I'll tell you about yourself and your life in plain words. Just three quick steps.": {
+    hi: "आइए आपकी जन्म कुंडली पढ़ें — आपके बारे में और आपके जीवन के बारे में आसान भाषा में बताऊँगा। बस तीन छोटे चरण।",
+    hinglish: "Aaiye aapki janm kundli padhein — aapke baare mein aur aapke jeevan ke baare mein aasan bhasha mein bataunga. Bas teen chhote step.",
+  },
+  "Exact birth time": { hi: "ठीक-ठीक जन्म समय", hinglish: "Theek-theek janm samay" },
+  "Your full name": { hi: "आपका पूरा नाम", hinglish: "Aapka pura naam" },
+  "City name, e.g. Alwar": { hi: "शहर का नाम, जैसे अलवर", hinglish: "Sheher ka naam, jaise Alwar" },
+  "Pick your city from the list — latitude, longitude and timezone fill in automatically.": {
+    hi: "सूची में से अपना शहर चुनें — अक्षांश, देशांतर और समय-क्षेत्र अपने आप भर जाएँगे।",
+    hinglish: "List mein se apna sheher chunein — latitude, longitude aur timezone apne aap bhar jayenge.",
+  },
+  "Pick AM/PM carefully. Birth time decides your rising sign (Lagna), so an accurate time gives a sharper reading.": {
+    hi: "AM/PM ध्यान से चुनें। जन्म समय से ही लग्न तय होता है, इसलिए सही समय से पढ़ाई ज़्यादा सटीक होती है।",
+    hinglish: "AM/PM dhyan se chunein. Janm samay se hi lagna tay hota hai, isliye sahi samay se reading zyada sateek hoti hai.",
+  },
+  "Couldn't search places. Check your connection and try again.": {
+    hi: "जगह नहीं खोजी जा सकी। इंटरनेट देखकर फिर कोशिश करें।",
+    hinglish: "Jagah nahi dhoondh paye. Internet dekh kar dobara koshish karein.",
+  },
+  "Couldn't load this kundli to edit.": {
+    hi: "यह कुंडली बदलने के लिए लोड नहीं हो पाई।",
+    hinglish: "Ye kundli badalne ke liye load nahi ho payi.",
+  },
+  "Next": { hi: "आगे", hinglish: "Aage" },
+  "Date": { hi: "तिथि", hinglish: "Tithi" },
+  "Time": { hi: "समय", hinglish: "Samay" },
+  "Month": { hi: "महीना", hinglish: "Mahina" },
+  "Year": { hi: "साल", hinglish: "Saal" },
+  "Hour": { hi: "घंटा", hinglish: "Ghanta" },
+  "Minute": { hi: "मिनट", hinglish: "Minute" },
+  "Language": { hi: "भाषा", hinglish: "Bhasha" },
+  "Gender": { hi: "लिंग", hinglish: "Gender" },
+  "Male": { hi: "पुरुष", hinglish: "Purush" },
+  "Female": { hi: "स्त्री", hinglish: "Stri" },
+  "Other": { hi: "अन्य", hinglish: "Anya" },
+
   // --- charts, dasha, alerts, reports list, theme ------------------------
   "Pick a look for the whole app. Colours and text adjust automatically for contrast.": {
     hi: "पूरे ऐप के लिए एक लुक चुनें। रंग और टेक्स्ट अपने आप साफ़ दिखने के हिसाब से बदल जाते हैं।",
@@ -361,7 +460,6 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   // --- Settings --------------------------------------------------------
   "Settings": { hi: "सेटिंग्स", hinglish: "Settings" },
   "Account": { hi: "खाता", hinglish: "Account" },
-  "Language": { hi: "भाषा", hinglish: "Bhasha" },
   "Reading language": { hi: "पढ़ने की भाषा", hinglish: "Padhne ki bhasha" },
   "The language the app and your readings use.": {
     hi: "ऐप और आपकी रीडिंग इसी भाषा में दिखेंगी।",
@@ -374,7 +472,6 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Dark": { hi: "डार्क", hinglish: "Dark" },
   "System": { hi: "सिस्टम", hinglish: "System" },
   "Sign out": { hi: "साइन आउट", hinglish: "Sign out" },
-  "Sign in": { hi: "साइन इन", hinglish: "Sign in" },
   "Delete my account": { hi: "मेरा खाता हटाएँ", hinglish: "Mera account delete karein" },
   "App version": { hi: "ऐप वर्ज़न", hinglish: "App version" },
   "Help & Support": { hi: "मदद और सहायता", hinglish: "Madad aur support" },
