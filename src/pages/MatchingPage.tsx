@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { HeartHandshake, Bot, Mars, Venus, CheckCircle2, AlertTriangle, FileText, Download, Loader2 } from "lucide-react";
+import { getLang } from "@/lib/prefs";
+import { useT } from "@/lib/i18n";
+import {
+  FinalVerdict, PersonPanel, PlanetTable, TimingWindows, DoshaPanel,
+  MatchChat, YearOutlook, WeddingDates, MatchHistory, SectionTitle,
+} from "@/components/match/DeepMatch";
+import { useAuth } from "@/auth";
+import { HeartHandshake, Bot, Mars, Venus, CheckCircle2, FileText, Download, Loader2, Share2 } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import { Pressable } from "@/components/mobile/Pressable";
-import { haptic, isNative, saveToDownloads, shareFile } from "@/lib/native";
+import { haptic, isNative, saveToDownloads, shareFile, shareText } from "@/lib/native";
 
 interface Place { label: string; latitude: number; longitude: number; timezone: string; }
 interface PersonForm {
@@ -30,6 +37,7 @@ function to24h(hour: string, min: string, ampm: string): string {
 function PersonForm({ title, icon: Icon, tint, value, onChange }: {
   title: string; icon: any; tint: string; value: PersonForm; onChange: (v: PersonForm) => void;
 }) {
+  const t = useT();
   const [q, setQ] = useState(value.place);
   const [opts, setOpts] = useState<Place[]>([]);
   const [open, setOpen] = useState(false);
@@ -57,19 +65,19 @@ function PersonForm({ title, icon: Icon, tint, value, onChange }: {
 
       <div className="space-y-3.5">
         <div>
-          <label className={LABEL}>Name</label>
-          <input className={FIELD} placeholder="Full name" value={value.name}
+          <label className={LABEL}>{t("Name")}</label>
+          <input className={FIELD} placeholder={t("Full name")} value={value.name}
             onChange={(e) => onChange({ ...value, name: e.target.value })} />
         </div>
 
         <div>
-          <label className={LABEL}>Date of birth</label>
+          <label className={LABEL}>{t("Date of birth")}</label>
           <input type="date" className={FIELD} value={value.date}
             onChange={(e) => onChange({ ...value, date: e.target.value })} />
         </div>
 
         <div>
-          <label className={LABEL}>Birth time</label>
+          <label className={LABEL}>{t("Birth time")}</label>
           {/* A 3-col grid, NOT flex. The old flex row put `w-full` (from FIELD)
               AND `w-[86px]` on the same select — conflicting width utilities of
               equal specificity, so the AM/PM box won `w-full`, refused to shrink
@@ -92,10 +100,10 @@ function PersonForm({ title, icon: Icon, tint, value, onChange }: {
         </div>
 
         <div className="relative">
-          <label className={LABEL}>Birth place</label>
+          <label className={LABEL}>{t("Birth place")}</label>
           <input
             className={FIELD}
-            placeholder="Start typing a city…"
+            placeholder={t("Start typing a city…")}
             value={q}
             onChange={(e) => { setQ(e.target.value); onChange({ ...value, place: "", latitude: undefined }); }}
           />
@@ -146,13 +154,87 @@ function ScoreRing({ total, max, percent }: { total: number; max: number; percen
   );
 }
 
+/*
+ * The North Indian chart, drawn into the PDF.
+ *
+ * The screen renders it as SVG, which jsPDF cannot take. Rasterising the DOM
+ * node would work and would also drag in html2canvas for one square — lines
+ * and text are three dozen calls and stay sharp at any print size.
+ *
+ * Same house centres as the on-screen chart, scaled to the box, so the printed
+ * page and the phone agree about where a planet sits.
+ */
+const PDF_HOUSE_CENTERS: Record<number, { x: number; y: number }> = {
+  1: { x: 0.50, y: 0.25 }, 2: { x: 0.25, y: 0.125 }, 3: { x: 0.125, y: 0.25 }, 4: { x: 0.25, y: 0.50 },
+  5: { x: 0.125, y: 0.75 }, 6: { x: 0.25, y: 0.875 }, 7: { x: 0.50, y: 0.75 }, 8: { x: 0.75, y: 0.875 },
+  9: { x: 0.875, y: 0.75 }, 10: { x: 0.75, y: 0.50 }, 11: { x: 0.875, y: 0.25 }, 12: { x: 0.75, y: 0.125 },
+};
+const PDF_SHORT: Record<string, string> = {
+  Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me", Jupiter: "Ju",
+  Venus: "Ve", Saturn: "Sa", Rahu: "Ra", Ketu: "Ke",
+};
+const PDF_SIGN_NO: Record<string, number> = {
+  Aries: 1, Taurus: 2, Gemini: 3, Cancer: 4, Leo: 5, Virgo: 6,
+  Libra: 7, Scorpio: 8, Sagittarius: 9, Capricorn: 10, Aquarius: 11, Pisces: 12,
+};
+
+function drawChart(doc: any, x: number, y: number, size: number, person: any, caption: string) {
+  doc.setDrawColor(200, 170, 110); doc.setLineWidth(0.8);
+  doc.rect(x, y, size, size);
+  doc.line(x, y, x + size, y + size);
+  doc.line(x + size, y, x, y + size);
+  // The inner diamond.
+  doc.line(x + size / 2, y, x + size, y + size / 2);
+  doc.line(x + size, y + size / 2, x + size / 2, y + size);
+  doc.line(x + size / 2, y + size, x, y + size / 2);
+  doc.line(x, y + size / 2, x + size / 2, y);
+
+  const asc = PDF_SIGN_NO[person?.lagna] || 1;
+  const byHouse: Record<number, string[]> = {};
+  for (const p of person?.planets ?? []) {
+    (byHouse[p.house] ||= []).push(`${PDF_SHORT[p.planet] ?? p.planet}${p.retrograde ? "R" : ""}`);
+  }
+
+  for (let h = 1; h <= 12; h++) {
+    const c = PDF_HOUSE_CENTERS[h];
+    const cx = x + c.x * size, cy = y + c.y * size;
+    doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+    doc.text(String(((asc + h - 2) % 12) + 1), cx, cy - size * 0.055, { align: "center" });
+    doc.setFontSize(7); doc.setTextColor(60, 60, 60);
+    const names = byHouse[h] ?? [];
+    names.forEach((n, i) => doc.text(n, cx, cy + size * 0.02 + i * 8, { align: "center" }));
+  }
+  doc.setFontSize(9); doc.setTextColor(31, 41, 55);
+  doc.text(`${caption} — ${person?.name ?? ""} (${person?.lagna ?? ""})`, x, y + size + 12, { maxWidth: size });
+  doc.setTextColor(31, 41, 55);
+}
+
 export default function MatchingPage() {
+  const t = useT();
+  const { user } = useAuth();
   const [boy, setBoy] = useState<PersonForm>({ ...empty });
   const [girl, setGirl] = useState<PersonForm>({ ...empty });
-  const [lang, setLang] = useState("en");
+  /*
+   * Defaults to the language they chose for the app, not to English.
+   *
+   * Someone who picks हिंदी at first launch and then reads an English reading
+   * here has been told the choice applies and found that it does not. The
+   * select still lets them answer in another language for one reading.
+   */
+  const [lang, setLang] = useState(getLang());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);
+  /*
+   * The exact birth inputs this result was computed from.
+   *
+   * The chat, the year picker and the wedding-date scan all recompute from
+   * these server-side. Reading them back off the two forms instead would send
+   * whatever is in the boxes NOW — so editing a date after matching, without
+   * pressing Match again, silently asked about a different couple.
+   */
+  const [inputs, setInputs] = useState<{ boy: any; girl: any } | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
   // Long-form report (Phase 2): generated on demand, then downloadable as PDF.
   const [report, setReport] = useState<any>(null);
   const [reportBusy, setReportBusy] = useState<"" | "gen" | "pdf" | "share">("");
@@ -163,17 +245,63 @@ export default function MatchingPage() {
     place_of_birth: p.place, latitude: p.latitude, longitude: p.longitude, timezone: p.timezone, language: "en",
   });
 
+  /**
+   * Reopen a saved match exactly as it was computed.
+   *
+   * The stored result is shown rather than recomputed: the koota table would
+   * come back identical, but the AI verdict would be worded differently every
+   * time, and a saved reading that changes when you reopen it is not saved.
+   */
+  const openSaved = (row: any) => {
+    if (!row?.result) return;
+    setResult(row.result);
+    setInputs({ boy: row.boy, girl: row.girl });
+    setReport(null);
+    setError(null);
+    // Put the two forms back too, so Match again re-runs the same couple.
+    const toForm = (b: any): PersonForm => ({
+      name: b?.name ?? "", date: b?.date_of_birth ?? "",
+      hour: (b?.time_of_birth ?? "12:00").slice(0, 2),
+      minute: (b?.time_of_birth ?? "12:00").slice(3, 5),
+      ampm: Number((b?.time_of_birth ?? "12:00").slice(0, 2)) >= 12 ? "PM" : "AM",
+      place: b?.place_of_birth ?? "", latitude: b?.latitude, longitude: b?.longitude,
+      timezone: b?.timezone ?? "Asia/Kolkata",
+    } as any);
+    setBoy(toForm(row.boy));
+    setGirl(toForm(row.girl));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /** Share the headline numbers. Native sheet, then the browser's, then clipboard. */
+  const shareMatch = async () => {
+    if (!result) return;
+    const line = `${result.boy?.name} & ${result.girl?.name} — ${result.total}/${result.max} (${result.percent}%)`
+      + `\n${result.final_verdict?.headline || result.verdict || ""}`;
+    await shareText("Kundli Matching — JanamJyot", line, "https://janamjyot.lzworth.in");
+  };
+
   const match = async () => {
-    if (!ready(boy) || !ready(girl)) { haptic.error(); setError("Enter name, date and place for both (choose the place from the suggestions)."); return; }
+    if (!ready(boy) || !ready(girl)) { haptic.error(); setError(t("Enter name, date and place for both (choose the place from the suggestions).")); return; }
     setLoading(true); setError(null); setResult(null);
     try {
-      const res = await fetch("/api/match", {
+      const payload = { boy: toInput(boy), girl: toInput(girl), language: lang };
+      const res = await fetch("/api/match/deep", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ boy: toInput(boy), girl: toInput(girl), language: lang }),
+        body: JSON.stringify(payload),
       });
       const d = await res.json();
-      if (!res.ok) { haptic.error(); setError(d.error || "Matching failed."); }
-      else { haptic.success(); setResult(d); setReport(null); }
+      if (!res.ok) { haptic.error(); setError(d.error || t("Matching failed.")); }
+      else {
+        haptic.success(); setResult(d); setReport(null); setInputs(payload);
+        // Saved quietly for signed-in users. A failure here must never surface
+        // as an error on a reading that computed perfectly well.
+        if (user) {
+          fetch("/api/match/history", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...payload, result: d }),
+          }).then(() => setHistoryKey((k) => k + 1)).catch(() => {});
+        }
+      }
     } catch { haptic.error(); setError("Network error."); }
     finally { setLoading(false); }
   };
@@ -187,9 +315,9 @@ export default function MatchingPage() {
         body: JSON.stringify({ boy: toInput(boy), girl: toInput(girl), language: lang }),
       });
       const d = await res.json();
-      if (!res.ok || d.error) { haptic.error(); setError(d.error || "Could not build the report."); }
+      if (!res.ok || d.error) { haptic.error(); setError(d.error || t("Could not build the report.")); }
       else { haptic.success(); setReport(d); }
-    } catch { haptic.error(); setError("Network error while building the report."); }
+    } catch { haptic.error(); setError(t("Network error while building the report.")); }
     finally { setReportBusy(""); }
   };
 
@@ -217,6 +345,137 @@ export default function MatchingPage() {
       doc.setFont("helvetica", "normal"); doc.setFontSize(11.5);
       const lines = doc.splitTextToSize(plain(report.intro), CW);
       nextPage(lines.length * 15 + 10); doc.text(lines, M, y); y += lines.length * 15 + 14;
+    }
+
+    /* ---- everything the deep reading computed, before the AI prose ----
+     *
+     * The long-form reading used to be the whole PDF. A family printing this
+     * and taking it to an astrologer needs the numbers he will check — the
+     * birth details, both charts, the koota table, which doshas are live —
+     * not only an essay about them.
+     */
+    const H2 = (label: string) => {
+      nextPage(46); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+      doc.setTextColor(217, 119, 6); doc.text(label, M, y); y += 18;
+      doc.setTextColor(31, 41, 55); doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+    };
+    const para = (text: string, size = 11, indent = 0) => {
+      if (!text) return;
+      doc.setFontSize(size);
+      const lines = doc.splitTextToSize(plain(text), CW - indent);
+      nextPage(lines.length * (size + 3)); doc.text(lines, M + indent, y);
+      y += lines.length * (size + 3) + 6;
+    };
+
+    // Final verdict — first, because it is the answer.
+    const fv = result.final_verdict;
+    if (fv?.headline) {
+      H2("Final verdict");
+      doc.setFont("helvetica", "bold"); para(fv.headline, 12);
+      doc.setFont("helvetica", "normal");
+      const recLabel = fv.recommendation === "proceed" ? "Recommendation: go ahead"
+        : fv.recommendation === "consult_astrologer" ? "Recommendation: speak to an astrologer first"
+        : "Recommendation: go ahead, with care";
+      para(recLabel, 11);
+      para(fv.will_it_go_well, 11);
+      if (fv.problems?.length) {
+        doc.setFont("helvetica", "bold"); para("What to watch", 11);
+        doc.setFont("helvetica", "normal");
+        for (const x of fv.problems) para(`\u2022  ${x}`, 10.5, 8);
+      }
+      if (fv.solutions?.length) {
+        doc.setFont("helvetica", "bold"); para("What helps", 11);
+        doc.setFont("helvetica", "normal");
+        for (const x of fv.solutions) para(`\u2022  ${x}`, 10.5, 8);
+      }
+      y += 4;
+    }
+
+    // Birth details, side by side.
+    H2("Birth details");
+    const bd = (who: any, form: any) =>
+      `${who?.name || ""}  ·  ${form.date || ""}  ${form.hour}:${form.minute} ${form.ampm}  ·  ${form.place || ""}`;
+    para(`Groom: ${bd(result.boy, boy)}`, 10.5);
+    para(`Bride: ${bd(result.girl, girl)}`, 10.5);
+    y += 2;
+
+    // Both D1 charts, actually drawn.
+    if (result.boy_deep && result.girl_deep) {
+      H2("Birth charts (D1)");
+      const S = (CW - 24) / 2;
+      nextPage(S + 34);
+      drawChart(doc, M, y, S, result.boy_deep, "Groom");
+      drawChart(doc, M + S + 24, y, S, result.girl_deep, "Bride");
+      y += S + 34;
+    }
+
+    // Ashtakoot table.
+    if (result.kootas?.length) {
+      H2("Ashtakoot (Guna Milan)");
+      doc.setFontSize(10.5);
+      for (const k of result.kootas) {
+        nextPage(16);
+        doc.setFont("helvetica", "bold"); doc.text(String(k.name), M, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(`${k.score}/${k.max}`, M + 110, y);
+        doc.text(doc.splitTextToSize(`${k.boy} — ${k.girl}`, CW - 170)[0] ?? "", M + 160, y);
+        y += 15;
+      }
+      nextPage(18);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Total  ${result.total}/${result.max}  (${result.percent}%)`, M, y + 4);
+      doc.setFont("helvetica", "normal"); y += 24;
+    }
+
+    // Doshas, and the remedies that actually apply.
+    if (result.dosha_details?.length) {
+      H2("Doshas");
+      for (const d of result.dosha_details) {
+        doc.setFont("helvetica", "bold");
+        para(`${d.name}: ${d.active ? "present" : d.cancelled ? "present, cancelled" : "not present"}`, 11);
+        doc.setFont("helvetica", "normal");
+        para(d.detail, 10.5, 8);
+      }
+    }
+    if (result.remedies?.length) {
+      H2("Remedies");
+      for (const r of result.remedies) {
+        doc.setFont("helvetica", "bold"); para(r.title, 11);
+        doc.setFont("helvetica", "normal");
+        for (const st of r.steps) para(`\u2022  ${st}`, 10.5, 8);
+        para(r.note, 10, 8);
+      }
+    }
+
+    // 7th house, karakas and the individual promise.
+    if (result.boy_deep && result.girl_deep) {
+      H2("7th house, Venus & Jupiter");
+      const row = (label: string, a: string, b: string) => {
+        nextPage(16); doc.setFontSize(10.5);
+        doc.setFont("helvetica", "bold"); doc.text(label, M, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(a, M + 150, y); doc.text(b, M + 330, y); y += 15;
+      };
+      const seventh = (p: any, key: "seventh_d1" | "seventh_d9") =>
+        `${p[key]?.sign ?? "-"} · lord ${p[key]?.lord ?? "-"} in ${p[key]?.lord_house ?? "-"}${p[key]?.lord_in_dusthana ? " (difficult)" : ""}`;
+      const pl = (x: any) => (x ? `${x.sign} · house ${x.house}${x.retrograde ? " · R" : ""}` : "-");
+      row("", result.boy_deep.name, result.girl_deep.name);
+      row("7th (D1)", seventh(result.boy_deep, "seventh_d1"), seventh(result.girl_deep, "seventh_d1"));
+      row("7th (D9)", seventh(result.boy_deep, "seventh_d9"), seventh(result.girl_deep, "seventh_d9"));
+      row("Venus", pl(result.boy_deep.venus), pl(result.girl_deep.venus));
+      row("Jupiter", pl(result.boy_deep.jupiter), pl(result.girl_deep.jupiter));
+      row("Marriage promise", result.boy_deep.promise?.level ?? "-", result.girl_deep.promise?.level ?? "-");
+      y += 10;
+    }
+
+    // Timing.
+    if (result.timing) {
+      H2("Timing");
+      para(result.timing.note, 11);
+      for (const o of result.timing.overlaps ?? []) {
+        para(`\u2022  ${o.from} to ${o.to}  —  ${result.boy_deep?.name}: ${o.boy_period}, ${result.girl_deep?.name}: ${o.girl_period}`, 10.5, 8);
+      }
+      y += 4;
     }
 
     for (const s of report.sections || []) {
@@ -272,29 +531,48 @@ export default function MatchingPage() {
         notifyTitle: "Matching report ready", notifyBody: "Your Kundli matching PDF is ready",
       });
       if (isNative && uri) await shareFile(uri, "Kundli Matching Report");
-    } catch { alert("Couldn't create the PDF. Please try again."); }
+    } catch { alert(t("Couldn't create the PDF. Please try again.")); }
     finally { setReportBusy(""); }
   };
 
   return (
     <div className="space-y-6 pt-2">
-      <div className="m-enter flex items-center justify-between gap-3 px-1">
-        <p className="text-[13px] leading-snug text-muted-foreground">
-          Ashtakoot Guna Milan — 36 point compatibility.
+      {/*
+        Title and toolbar both wrap.
+        Without flex-wrap on the row AND on the button group, three controls
+        beside a sentence pushed the whole page sideways on a phone — the
+        content stayed put and the screen scrolled horizontally, which looks
+        like the layout broke rather than like something overflowed.
+      */}
+      <div className="m-enter flex flex-wrap items-center justify-between gap-2 px-1">
+        <p className="min-w-0 flex-1 text-[13px] leading-snug text-muted-foreground">
+          {t("Ashtakoot Guna Milan — 36 point compatibility.")}
         </p>
-        <select
-          value={lang}
-          onChange={(e) => { haptic.select(); setLang(e.target.value); }}
-          aria-label="Reply language"
-          className="h-9 shrink-0 rounded-full border border-border bg-card px-3 text-[12.5px] font-semibold text-muted-foreground outline-none"
-        >
-          {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {result && (
+            <Pressable
+              subtle
+              onClick={shareMatch}
+              className="flex items-center gap-1.5 rounded-full border-2 border-border bg-card px-3.5 py-2 text-[13px] font-bold"
+            >
+              <Share2 className="h-[15px] w-[15px]" /> {t("Share")}
+            </Pressable>
+          )}
+          <MatchHistory signedIn={!!user} refreshKey={historyKey} onOpen={openSaved} />
+          <select
+            value={lang}
+            onChange={(e) => { haptic.select(); setLang(e.target.value); }}
+            aria-label="Reply language"
+            className="h-9 shrink-0 rounded-full border border-border bg-card px-3 text-[12.5px] font-semibold text-muted-foreground outline-none"
+          >
+            {LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="m-enter space-y-4" style={{ animationDelay: '0.04s' }}>
-        <PersonForm title="Groom" icon={Mars} tint="#7DA6F2" value={boy} onChange={setBoy} />
-        <PersonForm title="Bride" icon={Venus} tint="#F26D9B" value={girl} onChange={setGirl} />
+        <PersonForm title={t("Groom")} icon={Mars} tint="#7DA6F2" value={boy} onChange={setBoy} />
+        <PersonForm title={t("Bride")} icon={Venus} tint="#F26D9B" value={girl} onChange={setGirl} />
       </div>
 
       <div className="m-enter" style={{ animationDelay: '0.08s' }}>
@@ -305,7 +583,7 @@ export default function MatchingPage() {
           className="flex w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
         >
           <HeartHandshake className="h-[18px] w-[18px]" strokeWidth={2.4} />
-          {loading ? "Matching…" : "Match Kundlis"}
+          {loading ? t("Matching…") : t("Match Kundlis")}
         </Pressable>
         {error && <p className="mt-3 px-1 text-center text-[13px] font-medium text-destructive">{error}</p>}
       </div>
@@ -326,27 +604,36 @@ export default function MatchingPage() {
             <div className="flex flex-col items-center">
               <ScoreRing total={result.total} max={result.max} percent={result.percent} />
               <p className="mt-4 text-[19px] font-bold leading-tight">{result.verdict}</p>
-              <p className="mt-0.5 text-[13px] font-semibold text-accent">{result.percent}% match</p>
+              <p className="mt-0.5 text-[13px] font-semibold text-accent">{result.percent}% {t("match")}</p>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-2.5">
               <div className="rounded-2xl bg-muted p-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Groom</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Groom")}</p>
                 <p className="mt-1 truncate text-[14.5px] font-bold">{result.boy?.name}</p>
                 <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{result.boy.rasi} · {result.boy.nakshatra}</p>
               </div>
               <div className="rounded-2xl bg-muted p-3.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bride</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("Bride")}</p>
                 <p className="mt-1 truncate text-[14.5px] font-bold">{result.girl?.name}</p>
                 <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{result.girl.rasi} · {result.girl.nakshatra}</p>
               </div>
             </div>
           </section>
 
+          {/*
+            The verdict comes FIRST, above the koota table.
+            A family reading this wants "should we go ahead, and what then" —
+            the eight-koota breakdown is the evidence for that answer, not the
+            answer, and putting the evidence first made people scroll past the
+            only part they came for.
+          */}
+          {result.final_verdict && <FinalVerdict v={result.final_verdict} lang={lang} />}
+
           {/* ── Koota breakdown ─────────────────────────────────────────── */}
           <section className="m-enter" style={{ animationDelay: '0.05s' }}>
             <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-              Ashtakoot breakdown
+              {t("Ashtakoot breakdown")}
             </h3>
             <div className="space-y-2.5">
               {(result.kootas ?? []).map((k: any) => {
@@ -393,35 +680,60 @@ export default function MatchingPage() {
             </div>
           </section>
 
-          {/* ── Doshas ──────────────────────────────────────────────────── */}
+          {/*
+            Doshas, with their cancellations and only the remedies that apply.
+            The server decides which of the three are ACTIVE; this reads that
+            boolean rather than the sentence, because the sentence is translated
+            and once flipped every icon red the moment someone chose Hindi.
+          */}
           <section className="m-enter" style={{ animationDelay: '0.08s' }}>
-            <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-              Dosha check
-            </h3>
-            <div className="space-y-2.5">
-              {[
-                ["Mangal Dosha", result.doshas.mangal, result.doshas.mangalClear],
-                ["Bhakoot", result.doshas.bhakoot, result.doshas.bhakootClear],
-                ["Nadi", result.doshas.nadi, result.doshas.nadiClear],
-              ].map(([t, v, clear]: any) => {
-                // Read the server's boolean. Sniffing English words out of the
-                // sentence flipped every icon to red as soon as the user picked
-                // Hindi — on the one screen where a false alarm matters most.
-                const ok = !!clear;
-                return (
-                  <div key={String(t)} className="m-card flex gap-3 p-4">
-                    <span className={`mt-0.5 shrink-0 ${ok ? "text-accent" : "text-destructive"}`}>
-                      {ok ? <CheckCircle2 className="h-[18px] w-[18px]" /> : <AlertTriangle className="h-[18px] w-[18px]" />}
-                    </span>
-                    <div className="min-w-0">
-                      <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t}</h4>
-                      <p className="selectable mt-1 text-[13.5px] leading-relaxed">{v}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <SectionTitle>{t("Doshas & remedies")}</SectionTitle>
+            <DoshaPanel doshas={result.dosha_details ?? []} remedies={result.remedies ?? []} />
           </section>
+
+          {/* ── Both charts, side by side ───────────────────────────────── */}
+          {result.boy_deep && result.girl_deep && (
+            <section className="m-enter" style={{ animationDelay: '0.09s' }}>
+              <SectionTitle>{t("Both charts")}</SectionTitle>
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <PersonPanel p={result.boy_deep} tint="#7DA6F2" roleLabel={t("Groom")} />
+                <PersonPanel p={result.girl_deep} tint="#F26D9B" roleLabel={t("Bride")} />
+              </div>
+            </section>
+          )}
+
+          {/* ── Every planet, both people ───────────────────────────────── */}
+          {result.boy_deep && result.girl_deep && (
+            <section className="m-enter" style={{ animationDelay: '0.10s' }}>
+              <SectionTitle>{t("All planets")}</SectionTitle>
+              <PlanetTable boy={result.boy_deep} girl={result.girl_deep} />
+            </section>
+          )}
+
+          {/* ── Timing ──────────────────────────────────────────────────── */}
+          {result.timing && (
+            <section className="m-enter" style={{ animationDelay: '0.10s' }}>
+              <SectionTitle>{t("Timing")}</SectionTitle>
+              <TimingWindows boy={result.boy_deep} girl={result.girl_deep} timing={result.timing} />
+            </section>
+          )}
+
+          {/* ── The year ahead, and wedding dates ───────────────────────── */}
+          {inputs && (
+            <section className="m-enter space-y-2.5" style={{ animationDelay: '0.11s' }}>
+              <SectionTitle>{t("The year ahead")}</SectionTitle>
+              <YearOutlook boyInput={inputs.boy} girlInput={inputs.girl} lang={lang} />
+              <WeddingDates boyInput={inputs.boy} girlInput={inputs.girl} />
+            </section>
+          )}
+
+          {/* ── Ask about this couple ───────────────────────────────────── */}
+          {inputs && (
+            <section className="m-enter" style={{ animationDelay: '0.11s' }}>
+              <SectionTitle>{t("Ask about this match")}</SectionTitle>
+              <MatchChat boyInput={inputs.boy} girlInput={inputs.girl} lang={lang} />
+            </section>
+          )}
 
           {/* ── AI summary ──────────────────────────────────────────────── */}
           {result.summary && (
@@ -471,7 +783,7 @@ export default function MatchingPage() {
               {report.remedies?.length > 0 && (
                 <div className="mt-4 rounded-2xl bg-muted p-3.5">
                   <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Suggested remedies
+                    {t("Suggested remedies")}
                   </p>
                   <ul className="mt-2 space-y-1.5">
                     {report.remedies.map((r: string, i: number) => (
