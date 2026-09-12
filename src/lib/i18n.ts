@@ -233,6 +233,7 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   },
   "6-digit code": { hi: "6 अंकों का कोड", hinglish: "6 ank ka code" },
   "Sign in": { hi: "साइन इन", hinglish: "Sign in" },
+  "Sign up": { hi: "खाता बनाएँ", hinglish: "Account banayein" },
   "Verify & sign in": { hi: "जाँचें और साइन इन करें", hinglish: "Jaanch kar sign in karein" },
   "Use a different email": { hi: "दूसरा ईमेल इस्तेमाल करें", hinglish: "Dusra email istemal karein" },
   "Create account": { hi: "खाता बनाएँ", hinglish: "Account banayein" },

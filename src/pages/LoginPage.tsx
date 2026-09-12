@@ -205,7 +205,7 @@ export default function LoginPage() {
             {otpStage === "email" ? (
               <input
                 type="email"
-                placeholder="Email"
+                placeholder={t("Email")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={INPUT_CLS}
@@ -222,7 +222,7 @@ export default function LoginPage() {
                   className={`${INPUT_CLS} text-center text-[20px] font-bold tracking-[0.4em]`}
                 />
                 <input
-                  placeholder="Your name (new accounts only)"
+                  placeholder={t("Your name (new accounts only)")}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className={INPUT_CLS}
@@ -270,7 +270,7 @@ export default function LoginPage() {
             </p>
             <input
               type="email"
-              placeholder="Email"
+              placeholder={t("Email")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={INPUT_CLS}
@@ -309,7 +309,7 @@ export default function LoginPage() {
                   : "text-muted-foreground"
               }`}
             >
-              {m === "login" ? "Sign in" : "Sign up"}
+              {m === "login" ? t("Sign in") : t("Sign up")}
             </Pressable>
           ))}
         </div>
@@ -317,7 +317,7 @@ export default function LoginPage() {
         <form onSubmit={submit} className="space-y-3">
           {mode === "signup" && (
             <input
-              placeholder="Full name"
+              placeholder={t("Full name")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className={INPUT_CLS}
@@ -325,14 +325,14 @@ export default function LoginPage() {
           )}
           <input
             type="email"
-            placeholder="Email"
+            placeholder={t("Email")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className={INPUT_CLS}
           />
           <input
             type="password"
-            placeholder="Password (6+ characters)"
+            placeholder={t("Password (6+ characters)")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className={INPUT_CLS}
