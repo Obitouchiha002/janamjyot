@@ -1361,8 +1361,23 @@ app.get("/api/config", (_req, res) => {
       notes: String(getSetting("app_update_notes") || ""),
       // When true the prompt reappears every launch instead of once per version.
       mandatory: !!getSetting("app_update_mandatory"),
-      // The web bundle phones should run — delivered over the air (src/lib/ota.ts).
-      web: OTA_MANIFEST,
+      /*
+       * The web bundle phones should run — delivered over the air.
+       *
+       * The url is made ABSOLUTE here, against the same base as apk_url. The
+       * manifest stores it relative, and inside the app the page origin is
+       * "https://localhost" — so a relative url resolved on the phone became
+       * https://localhost/ota/web-….zip, which 404s. Every over-the-air update
+       * failed silently at exactly that line, because the download error is
+       * caught and turned into "no update". The server knows its own domain;
+       * the phone does not.
+       */
+      web: OTA_MANIFEST && {
+        ...OTA_MANIFEST,
+        url: /^https?:\/\//i.test(OTA_MANIFEST.url)
+          ? OTA_MANIFEST.url
+          : `${base}${OTA_MANIFEST.url.startsWith("/") ? "" : "/"}${OTA_MANIFEST.url}`,
+      },
       };
     })(),
     // Lets the checkout say "test mode, use this card" while we are on test
