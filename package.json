@@ -17,7 +17,8 @@
     "check:failover": "tsx server/__checks__/failover.ts",
     "check:day-signals": "tsx server/__checks__/day-signals.ts",
     "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts",
-    "check:credits-race": "tsx server/__checks__/credits-race.ts"
+    "check:credits-race": "tsx server/__checks__/credits-race.ts",
+    "ota:publish": "node scripts/ota-publish.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
@@ -38,6 +39,7 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+    "@capgo/capacitor-updater": "^8.51.15",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@google/genai": "^2.4.0",
     "@radix-ui/react-slot": "^1.3.0",

@@ -353,6 +353,17 @@ function lifeStageNote(age: number | null): string {
   return "";
 }
 
+/*
+ * Always serialised COMPACT (no `null, 2`) at every call site.
+ *
+ * Pretty-printing this packet added ~5,000 characters — about 1,400 tokens — of
+ * pure indentation, and that pushed the chat prompt over Groq's 8,000
+ * token-per-request ceiling. Both strong models answered 413 "Request too
+ * large" and the chat silently fell through to the smallest 20B model, which
+ * ignored the answer format entirely and replied with generic advice carrying
+ * no chart, no timing and no reason. The whitespace was the whole difference
+ * between a real reading and a fortune-cookie.
+ */
 export function buildChartPacket(chart: any, category: Category, transit?: any) {
   // Never crash on an unrecognised category — fall back to the general packet.
   const cfg = PACKET_CONFIG[category] ?? PACKET_CONFIG.general;
@@ -454,7 +465,7 @@ matters most for this topic (${args.category}), but read and CROSS-REFERENCE all
 charts together — confirm each conclusion across D1 and the relevant divisional
 charts. Use the dasha + live_transit together for anything about the present and the
 near future. Do not rely on just one chart.
-${JSON.stringify(packet, null, 2)}
+${JSON.stringify(packet)}
 
 They asked you: "${args.question}"
 
@@ -568,7 +579,7 @@ This person's COMPLETE calculated chart (interpret ONLY this — D1, D9, D10, D6
 D11, the full dasha timeline, and "live_transit" = planets right now vs their
 natal lagna & moon). The "focus" block is what matters most for your speciality,
 but cross-reference the charts and use dasha + live_transit for present/future.
-${JSON.stringify(packet, null, 2)}
+${JSON.stringify(packet)}
 ${args.memory ? `\nWHAT YOU ALREADY KNOW ABOUT THIS PERSON (your own notes from past
 conversations — use it naturally, like a family astrologer who remembers them.
 Do NOT recite it back or say "as you told me earlier" every time):
@@ -724,8 +735,8 @@ ${languageInstruction(args.language)}
 This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, D10,
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
-${JSON.stringify(packet, null, 2)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext, null, 2)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
+${JSON.stringify(packet)}
+${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
 ${args.relation ? `
 THE OTHER PERSON in this question — ${args.relation.name || "they"} (${args.relation.relation}). Their chart and your compatibility were CALCULATED by the app, not guessed:
 ${JSON.stringify(args.relation)}
@@ -770,9 +781,13 @@ PART 1 — the answer (before the marker):
   • Plain language ONLY. NO astrology jargon here — no planet names, house
     numbers, dasha or Sanskrit terms in this part. Just what it means for them
     and, where it helps, one concrete thing to do or a time window.
-  • Keep it short: 2-5 short lines. If it's a yes/no, lead with the yes/no.
-    Match their length and tone — four words get a short reply, a paragraph
-    about their home life earns more room and a gentler start.
+  • FINISH the answer. Never stop mid-thought, and never leave out the part
+    they actually asked for. Length follows the question: a small factual one
+    gets 2-3 lines; "kab", "kya karun", "should I", or anything about a real
+    decision gets what it needs — up to 8 short lines, with the timing and one
+    concrete next step. If it's a yes/no, lead with the yes/no, then why, then
+    when. Match their tone; a paragraph about their home life earns a gentler
+    start, four words get a short reply. Short lines, never a wall of text.
   • For a feature/how-to question, answer from the app guide plainly.
   • Bold the single most important phrase with **double asterisks**. No other
     markdown, no bullets in this part.
@@ -948,7 +963,7 @@ You are starting a NEW consultation. This is your very first message to the
 person — greet, then gently introduce what their birth chart (D1) shows.
 
 The person's name is "${args.userName || "ji"}". Their calculated chart:
-${JSON.stringify(packet, null, 2)}
+${JSON.stringify(packet)}
 
 Write a SHORT opening as WhatsApp bubbles separated by lines of only "|||".
 Keep it BRIEF — this is a conversation, so say a little and then let them talk.
@@ -1000,13 +1015,163 @@ function splitBubbles(raw: string): string[] {
     if (buf.trim()) split.push(buf.trim());
   }
 
-  // Hard cap at 3. Even when the model over-produces, the user should never get
-  // a burst of messages — that is what made replies feel copy-pasted rather
-  // than like someone talking to them.
-  return split.slice(0, 3);
+  // At most three messages — a burst reads as copy-paste rather than someone
+  // talking. But the overflow is MERGED into the last one, never dropped:
+  // slicing it away ended answers mid-thought, which is what made them feel
+  // incomplete.
+  if (split.length <= 3) return split;
+  return [...split.slice(0, 2), split.slice(2).join(" ")];
 }
 
 /** Full life report across the 5 standard categories, as structured JSON. */
+/*
+ * At most ONE bold phrase per paragraph.
+ *
+ * A report came back with every second word wrapped in asterisks — "Aapka
+ * **career** abhi thoda **mixed** hai" — because the model was never told
+ * otherwise and some models bold by habit. Emphasis on everything is emphasis
+ * on nothing: the page reads as shouting and the one line that actually
+ * mattered no longer stands out.
+ *
+ * Enforced here rather than asked for in the prompt, because which model
+ * answers is decided at runtime by the fallback chain, and a formatting rule
+ * that has to hold for every one of them does not belong in a prompt.
+ */
+function capBold(text: string): string {
+  const spans = text.match(/\*\*[^*]+\*\*/g);
+  if (!spans || spans.length <= 1) return text;
+  // Keep the first — it is usually the verdict — and unwrap the rest.
+  let first = true;
+  return text.replace(/\*\*([^*]+)\*\*/g, (_m, inner) => {
+    if (first) { first = false; return `**${inner}**`; }
+    return inner;
+  });
+}
+
+/** capBold over every string in a report object, however deeply nested. */
+export function tidyReport<T>(value: T): T {
+  if (typeof value === "string") return capBold(value) as unknown as T;
+  if (Array.isArray(value)) return value.map(tidyReport) as unknown as T;
+  if (value && typeof value === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(value as any)) out[k] = tidyReport(v);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * "Here is what already happened" — the section that decides whether a person
+ * believes the rest of the report.
+ *
+ * The DATES are not the model's to choose. They are real dasha spans computed
+ * from the birth moment and handed in; the model only says what a period of
+ * that shape, in this chart, tends to have brought. That split matters: a model
+ * inventing both the date and the event will always sound right and can never
+ * be checked, which is precisely the failure this section exists to avoid.
+ *
+ * Two rules do the work:
+ *  · Be specific enough to be WRONG. "A mixed period with ups and downs" passes
+ *    for every human being alive and proves nothing. "Work changed or a senior
+ *    left, and money was tight for most of it" is checkable — and being caught
+ *    out on one line is a fair price for the other six landing.
+ *  · Never claim a certainty about someone's private life. Deaths, illnesses,
+ *    break-ups and losses are stated as what the period PRESSURED, never as
+ *    what happened, and never named.
+ */
+export async function generatePastTimeline(args: {
+  chart: any;
+  periods: any[];
+  language: string;
+}): Promise<{ timeline: Array<{ from: string; to: string; period: string; age: string; headline: string; areas: string[]; what: string }>; partial?: boolean }> {
+  if (!args.periods.length) return { timeline: [] };
+
+  const packet = {
+    lagna: args.chart?.summary?.lagna,
+    moon: args.chart?.summary?.rashi,
+    houses: (args.chart?.d1_chart?.houses ?? []).map((h: any) => ({ h: h.house, sign: h.sign, lord: h.sign_lord, in: h.planets })),
+    planets: (args.chart?.planet_positions ?? []).map((p: any) => ({ p: p.planet, sign: p.sign, house: p.house, retro: p.retrograde })),
+    periods: args.periods,
+  };
+
+  const prompt = `${SYSTEM_PROMPT}
+
+${languageInstruction(args.language)}
+
+This person's chart, and the REAL past periods they have already lived through.
+The dates are calculated — use them exactly as given, never change or add one.
+${JSON.stringify(packet)}
+
+For EACH period in "periods", say what that stretch of their life most likely
+brought. This is a section they will check against their own memory, so:
+
+ • Be SPECIFIC enough to be wrong. "There were ups and downs" is true of
+   everyone and proves nothing. Name the area and the kind of event: a job or
+   study change, money tightening or opening up, a move, a relationship
+   starting or straining, a health stretch that needed rest, a responsibility
+   landing on them.
+ • Use the period's own "themes", "rules" and "sits_in" — those are the houses
+   its lord actually governs in THIS chart. That is what makes the line belong
+   to them rather than to the dasha in general.
+ • Say it as a likelihood, not a certainty: "aksar", "shayad", "is daur mein
+   zyada tar logon ke saath" — they may have lived it differently.
+ • MATCH THE EVENT TO THEIR AGE in that period ("age_from"-"age_to"). At
+   fifteen a period is about school, exams, family and moving house — not a
+   job, a marriage or a mortgage. At twenty-five it can be a first job or a
+   relationship. At forty it is rarely a first job. Getting this wrong is the
+   fastest way to lose them, because they can see it instantly.
+ • NEVER name or assert a death, a disease, a diagnosis, an accident, a
+   divorce, or anyone's end. Where a period is heavy, describe the PRESSURE —
+   responsibility, tiredness, distance, a strain at home — not an event.
+ • Two short sentences for each period. No jargon: no planet names, no house
+   numbers, no Sanskrit in "what" or "headline".
+ • "areas" is 1-2 plain words from: career, money, family, home, study, health,
+   relationship, travel.
+
+Return ONLY this JSON:
+{
+  "timeline": [
+    {
+      "from": "<copy the period's from>",
+      "to": "<copy the period's to>",
+      "period": "<copy the period's period>",
+      "age": "<e.g. 22-25, from age_from and age_to>",
+      "headline": "<4-7 words, the one thing that stretch was about>",
+      "areas": ["career"],
+      "what": "<two short sentences>"
+    }
+  ]
+}`;
+
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.75, thinkingBudget: 0, maxTokens: 4096 });
+  const j = parseJsonLoose(text) ?? {};
+  const given = new Map(args.periods.map((p: any) => [p.period, p]));
+  const rows = (Array.isArray(j.timeline) ? j.timeline : [])
+    .map((r: any) => {
+      // The dates come back from OUR list, never from the reply — a model that
+      // "corrects" a date turns a checkable claim into a wrong one.
+      const src = given.get(r?.period) ?? args.periods.find((p: any) => p.from === r?.from);
+      if (!src) return null;
+      return {
+        from: src.from,
+        to: src.to,
+        period: src.period,
+        age: `${src.age_from}-${src.age_to}`,
+        headline: String(r?.headline ?? "").trim(),
+        areas: (Array.isArray(r?.areas) ? r.areas : []).map((x: any) => String(x)).slice(0, 2),
+        what: String(r?.what ?? "").trim(),
+      };
+    })
+    .filter((r: any) => r && r.what);
+
+  return tidyReport({
+    timeline: rows,
+    // Fewer rows than periods means the reply was cut short; the screen says so
+    // rather than quietly presenting half a life as the whole of it.
+    partial: rows.length < args.periods.length,
+  });
+}
+
 export async function generateLifeReport(chart: any, language: string, transit?: any): Promise<any> {
   // One COMPLETE context (all charts) — the report covers every area, so it reads
   // D1 + D9 + D10 + D6 + D11 + dasha together (+ live transit for present/future).
@@ -1058,13 +1223,24 @@ sentences (not a single dry line, not a giant essay).
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(fullContext, null, 2)}`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8 });
+  // thinkingBudget 0 + a real output budget: Gemini 2.5 spends its output
+    // allowance on hidden reasoning otherwise, and the JSON arrives cut in half.
+    //
+    // 4096, not 8192: the budget is RESERVED against a provider's per-request
+    // ceiling, and reserving 8k pushed every report past Groq's 8k limit — so
+    // the two strongest privacy-safe models refused each one and reports fell
+    // through to the weakest. A full five-area report measures ~1,800 tokens,
+    // so 4096 is still more than double what one has ever needed.
+    // (original note)
+  // allowance on hidden reasoning otherwise, and the JSON arrives cut in half
+  // — which is exactly how a paid-for report turned into an error.
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
 
-  try {
-    return JSON.parse(stripJsonFences(text || "{}"));
-  } catch {
-    return { error: "Failed to parse AI report", raw: text };
-  }
+  const j = parseJsonLoose(text);
+  if (!j) return { error: "Failed to parse AI report", raw: text };
+  const areas = ["health", "wealth", "career", "marriage", "relationships"];
+  const missing = areas.filter((k) => !j[k] || typeof j[k] !== "object");
+  return tidyReport(missing.length ? { ...j, partial: true, missing } : j);
 }
 
 /** Focused premium report types — each a deep single-theme reading. */
@@ -1124,17 +1300,20 @@ Give 5 to 7 sections. Keep each body a few natural sentences, not a giant essay.
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(context, null, 2)}`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8 });
-  try {
-    const j = JSON.parse(stripJsonFences(text || "{}"));
-    return {
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
+  {
+    const j = parseJsonLoose(text);
+    if (!j) return { error: "Failed to parse report", raw: text };
+    const sections = Array.isArray(j.sections) ? j.sections.filter((s: any) => s?.heading && s?.body) : [];
+    return tidyReport({
       title: j.title || cfg.title,
       intro: j.intro || "",
-      sections: Array.isArray(j.sections) ? j.sections.filter((s: any) => s?.heading && s?.body) : [],
+      sections,
+      // Fewer than four sections means the reply was cut short: say so rather
+      // than passing half a report off as the whole thing.
+      partial: sections.length < 4,
       disclaimer: j.disclaimer || "",
-    };
-  } catch {
-    return { error: "Failed to parse report", raw: text };
+    });
   }
 }
 
@@ -1231,9 +1410,9 @@ essay.
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(context, null, 2)}`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8 });
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
   try {
-    const j = JSON.parse(stripJsonFences(text || "{}"));
+    const j = parseJsonLoose(text) ?? {};
     return {
       range,
       range_label: cfg.label,
@@ -1346,9 +1525,9 @@ Their chart, the sky right now, and how the current time window is rated
 (interpret only this — and remember, none of these words may appear in your reply):
 ${JSON.stringify(context, null, 2)}`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.85 });
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.85, thinkingBudget: 0, maxTokens: 4096 });
   try {
-    const j = JSON.parse(stripJsonFences(text || "{}"));
+    const j = parseJsonLoose(text) ?? {};
     return {
       headline: j.headline || "",
       do_now: j.do_now || "",
@@ -1361,6 +1540,294 @@ ${JSON.stringify(context, null, 2)}`;
 }
 
 /** Warm, specific summary for a Kundli (compatibility) match result. */
+/**
+ * The one answer a family actually came for: should this happen, and what then.
+ *
+ * Structured rather than prose, because the screen has to colour it, sort it
+ * and put it above everything else — and because prose lets a model hedge its
+ * way out of committing to anything, which is the opposite of useful here.
+ *
+ * Three rules it is held to:
+ *  · The recommendation weighs EVERY layer. A 30/36 score with a weak
+ *    individual promise, or with no shared window for ten years, is not a clean
+ *    "proceed", and saying so is the whole point of computing those layers.
+ *  · It never tells anyone not to marry. A chart is not entitled to end a
+ *    relationship; the honest form of a difficult reading is "this needs real
+ *    care and an astrologer who can sit with you", not a verdict.
+ *  · `solutions` may only draw on the remedies computed by rule and handed in
+ *    below. A model inventing a puja for a dosha this couple does not have is
+ *    how someone ends up paying for one.
+ */
+export async function generateMatchVerdict(args: {
+  base: any;          // Ashtakoot result
+  boy: any;           // DeepPerson
+  girl: any;          // DeepPerson
+  timing: any;        // TimingAlignment
+  doshas: any[];      // DoshaDetail[]
+  remedies: any[];    // Remedy[] — already decided by rule
+  language: string;
+}): Promise<{
+  headline: string;
+  recommendation: "proceed" | "proceed_with_care" | "consult_astrologer";
+  will_it_go_well: string;
+  problems: string[];
+  solutions: string[];
+}> {
+  const first = (n: any, fb: string) => String(n ?? "").trim().split(/\s+/)[0] || fb;
+  const packet = {
+    score: { total: args.base?.total, max: args.base?.max, percent: args.base?.percent, verdict: args.base?.verdict },
+    kootas: (args.base?.kootas ?? []).map((k: any) => ({ name: k.name, score: k.score, max: k.max })),
+    doshas: args.doshas.map((d) => ({ name: d.name, present: d.present, cancelled: d.cancelled, active: d.active })),
+    groom: {
+      name: first(args.boy?.name, "the groom"),
+      lagna: args.boy?.lagna, moon: args.boy?.moon_sign,
+      seventh_lord: args.boy?.seventh_d1?.lord,
+      seventh_lord_house: args.boy?.seventh_d1?.lord_house,
+      seventh_lord_in_dusthana: args.boy?.seventh_d1?.lord_in_dusthana,
+      venus: args.boy?.venus, jupiter: args.boy?.jupiter,
+      own_marriage_promise: args.boy?.promise?.level,
+      current_dasha: args.boy?.current_dasha,
+      next_marriage_windows: (args.boy?.marriage_windows ?? []).slice(0, 3),
+    },
+    bride: {
+      name: first(args.girl?.name, "the bride"),
+      lagna: args.girl?.lagna, moon: args.girl?.moon_sign,
+      seventh_lord: args.girl?.seventh_d1?.lord,
+      seventh_lord_house: args.girl?.seventh_d1?.lord_house,
+      seventh_lord_in_dusthana: args.girl?.seventh_d1?.lord_in_dusthana,
+      venus: args.girl?.venus, jupiter: args.girl?.jupiter,
+      own_marriage_promise: args.girl?.promise?.level,
+      current_dasha: args.girl?.current_dasha,
+      next_marriage_windows: (args.girl?.marriage_windows ?? []).slice(0, 3),
+    },
+    timing: { aligned: args.timing?.aligned, overlaps: (args.timing?.overlaps ?? []).slice(0, 3) },
+    remedies_available: args.remedies.map((r) => ({ dosha: r.dosha, title: r.title, steps: r.steps })),
+  };
+
+  const prompt = `${SYSTEM_PROMPT}
+
+${languageInstruction(args.language)}
+
+A family has asked the one question that matters to them: should this marriage
+go ahead, will it go well, what will be hard, and what can be done about it.
+
+Everything below was CALCULATED by the app. Interpret it; never recompute it,
+never invent a placement, a dosha or a period that is not here.
+${JSON.stringify(packet)}
+
+How to weigh it — this is the part that makes the answer worth reading:
+ • The 36-point score is ONE layer. Each person's OWN marriage promise
+   (own_marriage_promise) and whether their supportive periods overlap
+   (timing.aligned) matter just as much. A high score with a weak promise, or
+   with no shared window, is NOT a clean "proceed" — say plainly that the score
+   alone would have misled them.
+ • A dosha that is cancelled is NOT a problem. Never list one as a concern.
+ • NEVER tell them not to marry, and never call a marriage doomed. Where the
+   data is genuinely difficult, the honest answer is that it needs real care and
+   an astrologer who can sit with the family — not a refusal.
+ • "solutions" may only use the remedies listed in remedies_available, plus
+   ordinary practical advice (talking early about money, meeting each other's
+   families, not rushing a date). If remedies_available is empty, do NOT invent
+   a puja — there is no dosha to remedy.
+ • Every problem must come from THIS data, with the reason visible. "Communication
+   may need work" is worthless; "his 7th lord sits in the 12th, so he withdraws
+   when a disagreement starts" is what they came for.
+
+Return ONLY a JSON object, nothing else:
+{
+  "headline": "one plain sentence — the bottom line, no jargon",
+  "recommendation": "proceed" | "proceed_with_care" | "consult_astrologer",
+  "will_it_go_well": "2-4 sentences, grounded in the data above",
+  "problems": ["2-5 concrete concerns from THIS match"],
+  "solutions": ["2-5 concrete actions"]
+}`;
+
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.7, thinkingBudget: 0, maxTokens: 2048 });
+  const j = parseJsonLoose(text) ?? {};
+  const arr = (v: any, n: number) =>
+    (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean).slice(0, n);
+  const rec = ["proceed", "proceed_with_care", "consult_astrologer"].includes(j.recommendation)
+    ? j.recommendation
+    : "proceed_with_care";
+  return tidyReport({
+    headline: String(j.headline ?? "").trim(),
+    recommendation: rec as "proceed" | "proceed_with_care" | "consult_astrologer",
+    will_it_go_well: String(j.will_it_go_well ?? "").trim(),
+    problems: arr(j.problems, 5),
+    solutions: arr(j.solutions, 5),
+  });
+}
+
+/**
+ * Both charts, compacted for a couple-level question.
+ *
+ * All twelve houses for each person, not just the marriage ones. The first
+ * version sent only the 7th, Venus and Jupiter — and then could not answer
+ * "how will our kids be?", "will his family accept me?" or "how will money
+ * be?", which is most of what people actually type into a matching screen. The
+ * 5th, 4th, 9th, 2nd, 10th and 11th houses are the answer to those, and they
+ * cost almost nothing to include.
+ */
+function couplePacket(base: any, boy: any, girl: any, timing: any, doshas: any[]) {
+  const side = (p: any) => ({
+    name: String(p?.name ?? "").trim().split(/\s+/)[0],
+    lagna: p?.lagna, lagna_lord: p?.lagna_lord, moon: p?.moon_sign, nakshatra: p?.nakshatra,
+    houses: (p?.d1_houses ?? []).map((h: any) => ({ h: h.house, sign: h.sign, lord: h.lord, in: h.occupants })),
+    navamsa_houses: (p?.d9_houses ?? []).map((h: any) => ({ h: h.house, sign: h.sign, in: h.occupants })),
+    planets: p?.planets,
+    seventh: p?.seventh_d1, seventh_navamsa: p?.seventh_d9,
+    venus: p?.venus, jupiter: p?.jupiter,
+    marriage_promise: p?.promise?.level,
+    dasha_now: p?.current_dasha,
+    marriage_windows: (p?.marriage_windows ?? []).slice(0, 5),
+  });
+  return {
+    score: { total: base?.total, max: base?.max, percent: base?.percent, verdict: base?.verdict },
+    kootas: (base?.kootas ?? []).map((k: any) => ({ name: k.name, score: k.score, max: k.max })),
+    doshas: doshas.map((d) => ({ name: d.name, active: d.active, cancelled: d.cancelled })),
+    timing,
+    groom: side(boy),
+    bride: side(girl),
+  };
+}
+
+/** Questions worth tapping, given what THIS match actually shows. */
+export function matchQuestionChips(language: string): string[] {
+  if (language === "hi") {
+    return [
+      "क्या हमारा रिश्ता लंबा चलेगा?",
+      "हमारे बच्चे कैसे होंगे?",
+      "हमारी सबसे बड़ी समस्या क्या होगी?",
+      "पैसों को लेकर कैसा रहेगा?",
+      "ससुराल वालों से कैसा रिश्ता रहेगा?",
+      "शादी के लिए सबसे अच्छा समय कौन सा है?",
+    ];
+  }
+  if (language === "hinglish") {
+    return [
+      "Kya hamara rishta lamba chalega?",
+      "Hamare bacche kaise honge?",
+      "Hamari sabse badi problem kya hogi?",
+      "Paison ko lekar kaisa rahega?",
+      "Sasural walon se kaisa rishta rahega?",
+      "Shaadi ke liye sabse accha samay kaun sa hai?",
+    ];
+  }
+  return [
+    "Will we last long term?",
+    "How will our kids be?",
+    "What's our biggest problem?",
+    "How will money be between us?",
+    "How will his/her family treat me?",
+    "When is the best time for the wedding?",
+  ];
+}
+
+/**
+ * Free-form question about THIS couple, answered from BOTH charts.
+ *
+ * Same safety floor as the main chat: no "don't marry", no diagnosis, no
+ * claiming to know what a third person privately feels or will decide.
+ */
+export async function answerMatchQuestion(args: {
+  base: any; boy: any; girl: any; timing: any; doshas: any[];
+  question: string; language: string;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+}): Promise<{ answer: string; reason: string }> {
+  const convo = (args.history ?? []).slice(-6)
+    .map((m) => `${m.role === "user" ? "They" : "You"}: ${m.text}`).join("\n");
+
+  const prompt = `${SYSTEM_PROMPT}
+
+${languageInstruction(args.language)}
+
+A couple is asking about themselves. BOTH their charts were calculated by the
+app — all twelve houses each, plus the Navamsa, their dashas and the computed
+match. Interpret ONLY this; never invent a placement or a period.
+${JSON.stringify(couplePacket(args.base, args.boy, args.girl, args.timing, args.doshas))}
+${convo ? `\nEarlier in this conversation:\n${convo}\n` : ""}
+They ask: "${args.question}"
+
+Answer in TWO parts, separated by a line that is EXACTLY "<<REASON>>".
+
+PART 1 — the answer:
+ • Answer what they ACTUALLY asked, from whichever houses hold it: children →
+   5th, money → 2nd and 11th, home and mother → 4th, in-laws and elders → 9th,
+   work → 10th, health → 6th. It is a full chart for each of them; use it.
+ • Name them by first name — "aap dono" for everything reads like a reply that
+   forgot who asked.
+ • Plain words. No planet names, house numbers or Sanskrit in this part.
+ • 3-7 short lines. Finish the thought; never stop mid-sentence.
+ • Bold the single most important phrase with **double asterisks**.
+ • Never tell them not to marry, never call the marriage doomed, never predict a
+   death, an illness or a diagnosis. A hard reading is described as something to
+   handle with care and, where it is serious, with an astrologer in person.
+ • Never claim to know what a person secretly feels or has decided — describe
+   what the charts show about the bond, not someone's private mind.
+
+PART 2 — after "<<REASON>>": 1-3 short lines naming the real basis (houses,
+lords, dasha). Technical terms are fine HERE.`;
+
+  const raw = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0, maxTokens: 2048 });
+  const i = raw.indexOf("<<REASON>>");
+  if (i === -1) return { answer: raw.trim(), reason: "" };
+  return { answer: raw.slice(0, i).trim(), reason: raw.slice(i + "<<REASON>>".length).trim() };
+}
+
+/**
+ * "How will the marriage look around <year>?" — the fixed, always-visible
+ * answer beside the year picker.
+ *
+ * The dasha periods active for BOTH of them in that specific year are computed
+ * here and handed over, so the answer is about that year rather than a general
+ * reading with a year pasted on top.
+ */
+export async function answerMatchYear(args: {
+  base: any; boy: any; girl: any; year: number; language: string;
+  boyPeriods: any[]; girlPeriods: any[];
+}): Promise<{ answer: string; reason: string }> {
+  const first = (n: any, fb: string) => String(n ?? "").trim().split(/\s+/)[0] || fb;
+  const prompt = `${SYSTEM_PROMPT}
+
+${languageInstruction(args.language)}
+
+${JSON.stringify({
+    year: args.year,
+    score: { total: args.base?.total, max: args.base?.max, verdict: args.base?.verdict },
+    groom: {
+      name: first(args.boy?.name, "the groom"),
+      seventh_lord: args.boy?.seventh_d1?.lord,
+      marriage_promise: args.boy?.promise?.level,
+      periods_in_that_year: args.boyPeriods,
+    },
+    bride: {
+      name: first(args.girl?.name, "the bride"),
+      seventh_lord: args.girl?.seventh_d1?.lord,
+      marriage_promise: args.girl?.promise?.level,
+      periods_in_that_year: args.girlPeriods,
+    },
+  })}
+
+Answer one question, for the year ${args.year} specifically: how will the
+relationship be, and what will married life look like around that year?
+
+Rules:
+ • Ground it in periods_in_that_year for BOTH of them — that is what makes this
+   about ${args.year} rather than about them in general. Say which of the two is
+   in the more supportive stretch and what that means day to day.
+ • 4-8 short lines, plain words, no jargon. Name them by first name.
+ • End with one concrete line about what to do with that year.
+ • Never say the marriage will fail, never predict illness or death.
+
+Then a line that is EXACTLY "<<REASON>>", and 1-3 short technical lines naming
+the dashas you used.`;
+
+  const raw = await llmGenerate(prompt, { temperature: 0.75, thinkingBudget: 0, maxTokens: 2048 });
+  const i = raw.indexOf("<<REASON>>");
+  if (i === -1) return { answer: raw.trim(), reason: "" };
+  return { answer: raw.slice(0, i).trim(), reason: raw.slice(i + "<<REASON>>".length).trim() };
+}
+
 export async function generateMatchSummary(result: any, language: string): Promise<string> {
   const prompt = `${SYSTEM_PROMPT}
 
@@ -1444,9 +1911,9 @@ temperament and attraction, family life & in-laws, children & health, money &
 stability, dosha analysis (Mangal / Bhakoot / Nadi — say clearly if cancelled),
 and how to make this marriage work. Keep each body a few sentences, never an essay.`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8 });
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
   try {
-    const j = JSON.parse(stripJsonFences(text || "{}"));
+    const j = parseJsonLoose(text) ?? {};
     return {
       title: j.title || `Kundli Matching Report — ${boyName} & ${girlName}`,
       intro: j.intro || "",
@@ -1478,9 +1945,9 @@ Respond with a SINGLE valid JSON object whose keys are EXACTLY these 12 names:
 Aries, Taurus, Gemini, Cancer, Leo, Virgo, Libra, Scorpio, Sagittarius, Capricorn, Aquarius, Pisces.
 Each value is the prediction string for that sign.`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.85, thinkingBudget: 0 });
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.85, thinkingBudget: 0, maxTokens: 4096 });
   try {
-    return JSON.parse(stripJsonFences(text || "{}"));
+    return parseJsonLoose(text) ?? {};
   } catch {
     return { error: "Failed to parse horoscope", raw: text };
   }
@@ -1546,9 +2013,9 @@ statement, no questions):
 - "health": today's energy/wellbeing tendency (gentle, never a medical diagnosis)
 - "advice": one practical thing to do today (a single actionable line)`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.85, thinkingBudget: 0 });
+  const text = await llmGenerate(prompt, { json: true, temperature: 0.85, thinkingBudget: 0, maxTokens: 4096 });
   try {
-    const j = JSON.parse(stripJsonFences(text || "{}"));
+    const j = parseJsonLoose(text) ?? {};
     return {
       career: j.career || "", money: j.money || "", relationship: j.relationship || "",
       health: j.health || "", advice: j.advice || "",
@@ -1572,6 +2039,46 @@ Remedies: ${JSON.stringify(context, null, 2)}`;
 }
 
 /** Some providers wrap JSON in ```json fences or add prose; extract the object. */
+/**
+ * Parse the model's JSON — and rescue a truncated one.
+ *
+ * A reply that stops mid-sentence used to throw the entire report away and
+ * show an error for something the person had already paid for. This closes the
+ * strings and brackets the model left open (dropping the half-written last
+ * field), so every part that did arrive survives; the caller then decides
+ * whether enough of it is there to show.
+ */
+function closeOpenJson(src: string): string {
+  let inStr = false, esc = false;
+  const stack: string[] = [];
+  for (const c of src) {
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{") stack.push("}");
+    else if (c === "[") stack.push("]");
+    else if (c === "}" || c === "]") stack.pop();
+  }
+  let out = src;
+  if (inStr) out += '"';
+  out = out.replace(/[,:]\s*$/, "");
+  return out + stack.reverse().join("");
+}
+
+export function parseJsonLoose(text: string | null | undefined): any | null {
+  const raw = String(text ?? "").trim();
+  if (!raw) return null;
+  let cand = raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const start = cand.indexOf("{");
+  if (start > 0) cand = cand.slice(start);
+  for (let i = 0; i < 8; i++) {
+    try { return JSON.parse(closeOpenJson(cand)); } catch { /* cut back to the last complete field */ }
+    const cut = cand.lastIndexOf(",");
+    if (cut <= 0) break;
+    cand = cand.slice(0, cut);
+  }
+  return null;
+}
+
 function stripJsonFences(s: string): string {
   let t = s.trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);

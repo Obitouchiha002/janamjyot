@@ -176,6 +176,12 @@ const GANA_MATRIX = [
 const NADI_PATTERN = [0, 1, 2, 2, 1, 0];
 const NADI_NAME = ["Adi", "Madhya", "Antya"];
 
+/** The Nadi a nakshatra belongs to. Exported so the deep-match layer asks the
+ *  same table rather than keeping a second copy that can drift out of step. */
+export function nadiOf(nakIndex: number): string {
+  return NADI_NAME[NADI_PATTERN[nakIndex % 6]];
+}
+
 // Planetary natural relationships for Graha Maitri.
 const FRIENDS: Record<string, string[]> = {
   Sun: ["Moon", "Mars", "Jupiter"],

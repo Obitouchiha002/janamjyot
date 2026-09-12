@@ -28,6 +28,10 @@ import {
   getNormalizedChart,
   listProfiles,
   deleteChart,
+  saveMatch,
+  listMatches,
+  getMatch,
+  deleteMatch,
   updateChart,
   recordDownload,
   downloadStats,
@@ -39,6 +43,13 @@ import {
   CREDIT_PRICES,
   trialState,
   startTrial,
+  accountsOnDevice,
+  noteDeviceSignup,
+  deviceUsedTrial,
+  noteDeviceTrial,
+  deviceUsedReferral,
+  noteDeviceReferral,
+  deviceOfUser,
   TRIAL,
   deliveryCountSince,
   createProviderOrder,
@@ -122,6 +133,7 @@ import {
   removeChartFacts,
 } from "./server/db";
 import { followupFor } from "./server/followup";
+import { OTA_MANIFEST } from "./server/ota-manifest";
 import {
   hashPassword, verifyPassword, signToken, verifyToken, requireAuth, optionalAuth, requireAdmin, ADMIN_EMAIL,
   normalizeEmail,
@@ -146,7 +158,13 @@ import {
   answerAsAstrologer,
   astrologerIntro,
   generateLifeReport,
+  generatePastTimeline,
+  tidyReport,
   generateMatchSummary,
+  generateMatchVerdict,
+  answerMatchQuestion,
+  answerMatchYear,
+  matchQuestionChips,
   generateMatchReport,
   updateChatNotes,
   generateFriendAdvice,
@@ -162,7 +180,11 @@ import {
   isSupportedLanguage,
   normalizeLanguage,
 } from "./server/gemini";
-import { personMoon, matchKundli } from "./server/matching";
+import { personMoon, matchKundli, nadiOf } from "./server/matching";
+import {
+  deepPerson, timingAlignment, doshaDetails, remediesFor, periodsInYear,
+} from "./server/deep-match";
+import { pastMilestones } from "./server/past-timeline";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
@@ -221,6 +243,24 @@ function fail(
 }
 const PORT = Number(process.env.PORT) || 3000;
 const AYANAMSA = Number(process.env.PROKERALA_AYANAMSA) || 1;
+
+/*
+ * "Today", in the timezone the caller actually lives in.
+ *
+ * `new Date().toISOString().slice(0,10)` is UTC. The server runs in UTC on
+ * Vercel, so between midnight and 05:30 IST every Indian user asking for
+ * today's panchang or muhurat was handed YESTERDAY's — the one window where
+ * people check tomorrow's muhurat before going to bed. Most of this file
+ * already does it correctly; this makes the remaining few say so by name.
+ */
+function todayIn(tz = "Asia/Kolkata"): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  }
+}
+
 // "local" (default, no API) or "prokerala" (uses the Prokerala API).
 const CHART_ENGINE = (process.env.CHART_ENGINE || "local").trim().toLowerCase();
 
@@ -452,6 +492,36 @@ async function adoptGuestCharts(req: any, userId: string) {
   }
 }
 
+/**
+ * How many accounts one install may create.
+ *
+ * A phone is shared — a couple, a parent and child, someone matching kundlis
+ * for the family — so this is not one. It is low enough that "make another
+ * account for another free trial" stops being worth the trouble, and the
+ * refusal points at signing in rather than at a wall.
+ *
+ * Deliberately soft: a reinstall issues a new device id and starts the count
+ * again. That is the right trade. A hard lock on a device id eventually locks
+ * out a real person who changed phones, and no amount of saved trial money is
+ * worth that support ticket.
+ */
+const MAX_ACCOUNTS_PER_DEVICE = 2;
+
+/** True when this install may NOT create another account (response sent). */
+async function deviceAtAccountLimit(req: any, res: any): Promise<boolean> {
+  const dev = identityOf(req).deviceId;
+  if (!dev) return false; // no device id (web, or an old build) — nothing to count
+  const n = await accountsOnDevice(dev).catch(() => 0);
+  if (n < MAX_ACCOUNTS_PER_DEVICE) return false;
+  res.status(429).json({
+    error:
+      `This phone already has ${MAX_ACCOUNTS_PER_DEVICE} accounts. ` +
+      `Please sign in to one of them instead.`,
+    device_limit: true,
+  });
+  return true;
+}
+
 app.post("/api/auth/signup", async (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   const email = normalizeEmail(req.body?.email);
@@ -460,12 +530,14 @@ app.post("/api/auth/signup", async (req, res) => {
     return res.status(400).json({ error: "Enter your name, a valid email, and a 6+ character password." });
   }
   if (await getUserByEmail(email)) return res.status(409).json({ error: "This email is already registered — please sign in." });
+  if (await deviceAtAccountLimit(req, res)) return;
   // Password signup proves NOTHING about owning the address — there is no
   // verification step. Granting admin here meant that on a fresh database
   // anyone who typed the (publicly visible) admin address became admin
   // instantly. Admin is only granted via a path that proves inbox ownership:
   // the emailed sign-in code, or Google Sign-In.
-  const user = await createUser({ name, email, passwordHash: hashPassword(password), role: "user" });
+  const user = await createUser({ name, email, passwordHash: hashPassword(password), role: "user", deviceId: identityOf(req).deviceId });
+  await noteDeviceSignup(identityOf(req).deviceId ?? "").catch(() => {});
   await adoptGuestCharts(req, user.id);
   // A password signup proves nothing about the address, so the invitee's own
   // bonus lands now and the referrer's waits for settleReferral.
@@ -572,12 +644,15 @@ app.post("/api/auth/otp/verify", async (req, res) => {
     // Verified — sign in, creating a passwordless account on first use.
     let user = await getUserByEmail(email);
     if (!user) {
+      if (await deviceAtAccountLimit(req, res)) return;
       user = await createUser({
         name: name || email.split("@")[0],
         email,
         passwordHash: null,
         role: email === ADMIN_EMAIL ? "admin" : "user",
+        deviceId: identityOf(req).deviceId,
       });
+      await noteDeviceSignup(identityOf(req).deviceId ?? "").catch(() => {});
       await useReferral(req, user.id);
     }
     if (user.status && user.status !== "active") {
@@ -622,8 +697,22 @@ async function useReferral(req: any, newUserId: string): Promise<void> {
   const code = String(req.body?.referral_code ?? req.body?.ref ?? "").trim();
   if (!code) return;
   try {
+    /*
+     * One joining bonus per phone, not per account.
+     *
+     * The bonus lands the moment an account is created, and a free account can
+     * be deleted — so "sign up with a code, take the credits, delete, repeat"
+     * printed credits. The account limit does not stop it, because deleting
+     * frees that slot on purpose. This does, and it never resets.
+     */
+    const dev = identityOf(req).deviceId;
+    if (dev && (await deviceUsedReferral(dev).catch(() => false))) {
+      console.log("[referral] joining bonus already taken on this device");
+      return;
+    }
     const out = await attachReferral(newUserId, code);
     if ("error" in out) console.log("[referral] rejected at signup:", out.error);
+    else if (dev) await noteDeviceReferral(dev).catch(() => {});
   } catch (e: any) {
     // A bad code must never block someone from creating their account.
     console.warn("[referral] attach failed:", e?.message);
@@ -859,13 +948,16 @@ app.post("/api/auth/google", async (req, res) => {
       await linkGoogleSub(byEmail.id, sub, picture);
       user = { ...byEmail, google_sub: sub, avatar_url: picture };
     } else {
+      if (await deviceAtAccountLimit(req, res)) return;
       user = await createUser({
         name, email,
         passwordHash: null,
         googleSub: sub,
         avatarUrl: picture,
+        deviceId: identityOf(req).deviceId,
         role: email === ADMIN_EMAIL ? "admin" : "user",
       });
+      await noteDeviceSignup(identityOf(req).deviceId ?? "").catch(() => {});
       await useReferral(req, user.id);
     }
   }
@@ -1192,6 +1284,8 @@ app.get("/api/config", (_req, res) => {
       notes: String(getSetting("app_update_notes") || ""),
       // When true the prompt reappears every launch instead of once per version.
       mandatory: !!getSetting("app_update_mandatory"),
+      // The web bundle phones should run — delivered over the air (src/lib/ota.ts).
+      web: OTA_MANIFEST,
       };
     })(),
     // Lets the checkout say "test mode, use this card" while we are on test
@@ -1244,6 +1338,11 @@ async function authoriseAction(
     throw {
       __httpStatus: 402,
       error: `${over.error} You can continue with credits — this costs ${credits} credit${credits === 1 ? "" : "s"}.`,
+      // `action` is what the sheet keys off to decide this is BUYABLE. Left out,
+      // the app showed a limit notice with a single "OK" button and no way to
+      // pay — on the exact screen where someone had just decided they wanted
+      // to. The 429 path below already sends it; this one did not.
+      action,
       needs_credits: credits,
       balance,
       free_limit: over.limit,
@@ -1388,6 +1487,37 @@ app.get("/api/billing/packs", (_req, res) => {
   });
 });
 
+/**
+ * May this request start a ₹1 trial? Answers the request itself when not.
+ *
+ * Checked BEFORE the order is created, not at settlement. The per-account guard
+ * downstream does catch a second trial — by taking the rupee and then flagging
+ * it for a manual refund, which is the right safety net and a terrible
+ * experience. Refusing up front means nobody is charged for something they
+ * cannot receive.
+ *
+ * Two conditions, because either alone is trivially defeated: this ACCOUNT must
+ * not have used a trial, and neither must any other account created on this
+ * PHONE. Five accounts for five rupees was the loophole; this closes it without
+ * touching anyone who simply owns one account.
+ */
+async function trialBlocked(req: any, res: any): Promise<boolean> {
+  const t = await trialState(req.user.id);
+  if (t.used) {
+    res.status(409).json({ error: "This account has already used its trial." });
+    return true;
+  }
+  const dev = identityOf(req).deviceId;
+  if (dev && (await deviceUsedTrial(dev).catch(() => false))) {
+    res.status(409).json({
+      error: "The trial has already been used on this phone. Credit packs are still available.",
+      device_limit: true,
+    });
+    return true;
+  }
+  return false;
+}
+
 /** POST /api/billing/order { pack } — create a Razorpay order for this user. */
 app.post("/api/billing/order", async (req: any, res) => {
   if (!RZP_READY) return res.status(503).json({ error: "Payments are not enabled yet." });
@@ -1399,10 +1529,7 @@ app.post("/api/billing/order", async (req: any, res) => {
       : CREDIT_PACKS[packId];
     if (!pack) return res.status(400).json({ error: "Unknown pack." });
 
-    if (isTrial) {
-      const t = await trialState(req.user.id);
-      if (t.used) return res.status(409).json({ error: "This account has already used its trial." });
-    }
+    if (isTrial && await trialBlocked(req, res)) return;
 
     // Two taps, or two open tabs, must not become two payable orders — send
     // them back to the one they already have. Razorpay refuses a second payment
@@ -1527,7 +1654,13 @@ async function honourPayment(
   if (!result.userId) return "no user";
   if (result.packId === "trial") {
     const started = await startTrial(result.userId);
-    if (started) return "trial started";
+    if (started) {
+      // Counted against the PHONE as well as the account, so the next account
+      // made here cannot buy the same trial again.
+      const dev = await deviceOfUser(result.userId).catch(() => null);
+      if (dev) await noteDeviceTrial(dev).catch(() => {});
+      return "trial started";
+    }
     // Paid for a trial this account had already used. The money is real, so it
     // is flagged for a person to refund rather than quietly kept.
     await markNeedsRefund(orderId, "Trial already used by this account — refund due.");
@@ -1611,10 +1744,7 @@ app.post("/api/billing/mock/order", async (req: any, res) => {
       : CREDIT_PACKS[packId];
     if (!pack) return res.status(400).json({ error: "Unknown pack." });
 
-    if (isTrial) {
-      const t = await trialState(req.user.id);
-      if (t.used) return res.status(409).json({ error: "This account has already used its trial." });
-    }
+    if (isTrial && await trialBlocked(req, res)) return;
 
     // The order carries the user id from the SESSION. Nothing the client sends
     // can change whose account gets credited — this is what makes it
@@ -1647,7 +1777,13 @@ app.post("/api/billing/mock/pay", async (req: any, res) => {
     let trialEndsAt: string | null = null;
     if (result.status === "paid") {
       if (result.packId === "trial") {
-        await startTrial(result.userId!);
+        // Same grant path as the real webhook, so the mock cannot drift away
+        // from it — the last time it did, the device-level trial flag was set
+        // in production and not in testing, which is the worst way round.
+        await honourPayment(
+          { userId: result.userId, credits: result.credits, packId: result.packId, paymentId: result.paymentId },
+          result.paymentId ?? "", orderId,
+        );
         trialEndsAt = (await trialState(result.userId!)).endsAt;
       } else if (result.credits) {
         // Granting is keyed on the payment id, and the ledger has a unique
@@ -2417,6 +2553,290 @@ app.post("/api/match", async (req, res) => {
 });
 
 /**
+ * POST /api/match/deep — matching past the 36 points.
+ *
+ * Everything deterministic is computed first and always returned, so the screen
+ * has a full reading even when the AI is down, rate-limited or switched off by
+ * an admin. The two model calls — the long-form summary and the structured
+ * verdict — run TOGETHER rather than one after the other: they do not depend on
+ * each other, and running them in series made this the slowest screen in the
+ * app for no reason.
+ */
+app.post("/api/match/deep", async (req, res) => {
+  const vb = validateBirthInput(req.body?.boy);
+  const vg = validateBirthInput(req.body?.girl);
+  if (!vb.ok || !vb.value) return res.status(400).json({ error: "Invalid groom details", details: vb.errors });
+  if (!vg.ok || !vg.value) return res.status(400).json({ error: "Invalid bride details", details: vg.errors });
+
+  const auth = await charge(req, res, "match", "matching");
+  if (!auth) return;
+
+  try {
+    const me = identityOf(req as any);
+    recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "match" }).catch(() => {});
+    const language = normalizeLanguage(req.body?.language, "en");
+
+    // --- deterministic layers ------------------------------------------
+    const boyMoon = personMoon(vb.value, AYANAMSA);
+    const girlMoon = personMoon(vg.value, AYANAMSA);
+    const base = matchKundli(boyMoon, girlMoon);
+    const boy = deepPerson(vb.value, AYANAMSA);
+    const girl = deepPerson(vg.value, AYANAMSA);
+    const timing = timingAlignment(boy, girl);
+    const doshas = doshaDetails(
+      boyMoon.manglik, girlMoon.manglik,
+      boyMoon.signIndex, girlMoon.signIndex,
+      boyMoon.rasiLord, girlMoon.rasiLord,
+      boyMoon.nakIndex, girlMoon.nakIndex,
+      nadiOf(boyMoon.nakIndex), nadiOf(girlMoon.nakIndex),
+    );
+    const remedies = remediesFor(doshas);
+
+    // --- the two AI layers, together ------------------------------------
+    let summary: string | null = null;
+    // Deliberately NOT called `verdict`: the Ashtakoot result already has a
+    // `verdict` string ("Very good match") that the screen prints under the
+    // score, and spreading this object over it replaced that line with
+    // "[object Object]".
+    let final_verdict: any = null;
+    if (req.body?.ai !== false && featureOn("match")) {
+      const [sum, ver] = await Promise.allSettled([
+        generateMatchSummary(base, language),
+        generateMatchVerdict({ base, boy, girl, timing, doshas, remedies, language }),
+      ]);
+      if (sum.status === "fulfilled") summary = sum.value;
+      else console.warn("[match-deep] summary failed:", sum.reason?.message);
+      if (ver.status === "fulfilled") final_verdict = ver.value;
+      else console.warn("[match-deep] verdict failed:", ver.reason?.message);
+    }
+
+    await settleCharge(req, auth.charge, "matching", null, { category: "marriage" });
+    res.json({ ...base, boy_deep: boy, girl_deep: girl, timing, dosha_details: doshas, remedies, final_verdict, summary });
+  } catch (err: any) {
+    console.error("[match-deep] error:", err?.message);
+    res.status(500).json({ error: "Matching failed" });
+  }
+});
+
+/*
+ * The rest of the deep-matching screen.
+ *
+ * Each of these recomputes the deterministic layers from the two birth inputs
+ * rather than trusting a result posted back by the browser. It costs a few
+ * milliseconds and it means a client cannot hand us a 36/36 score and a
+ * cancelled Nadi dosha that never existed.
+ */
+function deepLayersFrom(boyInput: any, girlInput: any) {
+  const boyMoon = personMoon(boyInput, AYANAMSA);
+  const girlMoon = personMoon(girlInput, AYANAMSA);
+  const base = matchKundli(boyMoon, girlMoon);
+  const boy = deepPerson(boyInput, AYANAMSA);
+  const girl = deepPerson(girlInput, AYANAMSA);
+  const timing = timingAlignment(boy, girl);
+  const doshas = doshaDetails(
+    boyMoon.manglik, girlMoon.manglik,
+    boyMoon.signIndex, girlMoon.signIndex,
+    boyMoon.rasiLord, girlMoon.rasiLord,
+    boyMoon.nakIndex, girlMoon.nakIndex,
+    nadiOf(boyMoon.nakIndex), nadiOf(girlMoon.nakIndex),
+  );
+  return { base, boy, girl, timing, doshas };
+}
+
+/**
+ * Both birth inputs off a request body, validated.
+ *
+ * Answers the request itself and returns null when either side is bad — the
+ * same shape as `charge()` above, so every match route reads
+ * `const b = twoBirths(req, res); if (!b) return;`.
+ */
+function twoBirths(req: any, res: any): { boy: any; girl: any } | null {
+  const vb = validateBirthInput(req.body?.boy);
+  const vg = validateBirthInput(req.body?.girl);
+  if (!vb.ok || !vb.value) { res.status(400).json({ error: "Invalid groom details", details: vb.errors }); return null; }
+  if (!vg.ok || !vg.value) { res.status(400).json({ error: "Invalid bride details", details: vg.errors }); return null; }
+  return { boy: vb.value, girl: vg.value };
+}
+
+/** GET /api/match/chips — questions worth tapping, in the chosen language. */
+app.get("/api/match/chips", (req, res) => {
+  res.json({ chips: matchQuestionChips(normalizeLanguage(req.query.lang, "en")) });
+});
+
+/** POST /api/match/ask — a free-form question about THIS couple, both charts. */
+app.post("/api/match/ask", async (req, res) => {
+  if (!featureOn("chat")) return res.status(503).json({ error: "AI chat is temporarily disabled by the admin." });
+  const question = String(req.body?.question ?? "").trim();
+  if (!question) return res.status(400).json({ error: "question is required" });
+  if (question.length > 500) return res.status(400).json({ error: "That question is too long." });
+  const b = twoBirths(req, res);
+  if (!b) return;
+
+  const auth = await charge(req, res, "ask", "match_chat");
+  if (!auth) return;
+  try {
+    const language = normalizeLanguage(req.body?.language, "en");
+    const { base, boy, girl, timing, doshas } = deepLayersFrom(b.boy, b.girl);
+    const history = Array.isArray(req.body?.history)
+      ? req.body.history.slice(-6).map((m: any) => ({
+          role: m?.role === "assistant" ? "assistant" : "user",
+          text: String(m?.text ?? "").slice(0, 1200),
+        }))
+      : [];
+    const out = await answerMatchQuestion({ base, boy, girl, timing, doshas, question, language, history });
+    if (!out.answer.trim()) return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });
+    const me = identityOf(req as any);
+    await recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "ask", meta: { kind: "match" } }).catch(() => {});
+    await settleCharge(req, auth.charge, "match_chat", null, { category: "marriage" });
+    res.json(out);
+  } catch (err: any) {
+    console.error("[match-ask] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/** POST /api/match/year — "how will it be around <year>?", from both dashas. */
+app.post("/api/match/year", async (req, res) => {
+  if (!featureOn("match")) return res.status(503).json({ error: "Matching is temporarily disabled." });
+  const b = twoBirths(req, res);
+  if (!b) return;
+  const thisYear = new Date().getFullYear();
+  const year = Number(req.body?.year);
+  // Bounded to the picker's own range: outside it the dasha data thins out and
+  // the answer becomes invention rather than reading.
+  if (!Number.isInteger(year) || year < thisYear || year > thisYear + 10) {
+    return res.status(400).json({ error: `Pick a year between ${thisYear} and ${thisYear + 10}.` });
+  }
+  try {
+    const language = normalizeLanguage(req.body?.language, "en");
+    const { base, boy, girl } = deepLayersFrom(b.boy, b.girl);
+    const boyPeriods = periodsInYear(boy, year);
+    const girlPeriods = periodsInYear(girl, year);
+    const out = await answerMatchYear({ base, boy, girl, year, language, boyPeriods, girlPeriods });
+    res.json({ ...out, year, boy_periods: boyPeriods, girl_periods: girlPeriods });
+  } catch (err: any) {
+    console.error("[match-year] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/**
+ * POST /api/match/muhurat — wedding dates for THIS couple.
+ *
+ * Two independent things have to agree. The panchang says whether the day
+ * itself is fit for a marriage (Kharmas, Chaturmas, Vivah nakshatra, tithi);
+ * the couple's charts say whether they are inside a period that supports one.
+ * A date that is both is meaningfully better than a date that is merely
+ * panchang-good, and that is the only claim this endpoint makes.
+ */
+app.post("/api/match/muhurat", async (req, res) => {
+  const b = twoBirths(req, res);
+  if (!b) return;
+  try {
+    const months = Math.min(12, Math.max(1, Number(req.body?.months) || 6));
+    const latitude = Number(req.body?.latitude ?? 28.6139);
+    const longitude = Number(req.body?.longitude ?? 77.209);
+    const timezone = String(req.body?.timezone || "Asia/Kolkata");
+    const { boy, girl, timing } = deepLayersFrom(b.boy, b.girl);
+
+    const inWindow = (date: string) =>
+      timing.overlaps.find((o) => date >= o.from && date <= o.to) ?? null;
+
+    const today = todayIn(timezone);
+    const start = new Date(`${today}T00:00:00`);
+    const dates: any[] = [];
+    for (let i = 0; i < months; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const scan = scanMonth({
+        year: d.getFullYear(), month: d.getMonth() + 1,
+        latitude, longitude, timezone, ayanamsa: AYANAMSA, activity: "marriage",
+      });
+      for (const day of scan.days) {
+        if (!day.suitable || day.date < today) continue;
+        const w = inWindow(day.date);
+        dates.push({
+          date: day.date, weekday: day.weekday, nakshatra: day.nakshatra,
+          tithi: day.tithi, paksha: day.paksha, quality: day.quality,
+          // The distinguishing badge: panchang-good AND chart-supported.
+          chart_supported: !!w,
+          window: w ? { from: w.from, to: w.to, boy_period: w.boy_period, girl_period: w.girl_period } : null,
+        });
+      }
+    }
+    // Chart-supported dates first, then the panchang's own ranking, then date.
+    const rank = { best: 0, good: 1, ok: 2, avoid: 3 } as Record<string, number>;
+    dates.sort((x, y) =>
+      (Number(y.chart_supported) - Number(x.chart_supported))
+      || ((rank[x.quality] ?? 3) - (rank[y.quality] ?? 3))
+      || (x.date < y.date ? -1 : 1));
+
+    res.json({
+      months,
+      total: dates.length,
+      supported: dates.filter((d) => d.chart_supported).length,
+      dates: dates.slice(0, 60),
+      timing_note: timing.note,
+      boy_windows: boy.marriage_windows, girl_windows: girl.marriage_windows,
+    });
+  } catch (err: any) {
+    console.error("[match-muhurat] error:", err?.message);
+    res.status(500).json({ error: "Could not scan the calendar." });
+  }
+});
+
+/* ---- saved matches. Signing in is only needed to KEEP one. ---- */
+
+app.get("/api/match/history", requireAuth, async (req: any, res) => {
+  try {
+    res.json({ matches: await listMatches(req.user.id) });
+  } catch (err: any) {
+    console.error("[match-history] list:", err?.message);
+    res.status(500).json({ error: "Could not load your saved matches." });
+  }
+});
+
+app.post("/api/match/history", requireAuth, async (req: any, res) => {
+  const b = twoBirths(req, res);
+  if (!b) return;
+  const result = req.body?.result;
+  if (!result || typeof result !== "object") return res.status(400).json({ error: "result is required" });
+  try {
+    const id = await saveMatch({
+      ownerId: req.user.id,
+      boyName: String(b.boy.name ?? ""), girlName: String(b.girl.name ?? ""),
+      score: Number(result.total) || 0, maxScore: Number(result.max) || 36,
+      boyInput: b.boy, girlInput: b.girl, result,
+    });
+    res.json({ id, saved: !!id });
+  } catch (err: any) {
+    console.error("[match-history] save:", err?.message);
+    res.status(500).json({ error: "Could not save this match." });
+  }
+});
+
+app.get("/api/match/history/:id", requireAuth, async (req: any, res) => {
+  try {
+    const row = await getMatch(req.user.id, req.params.id);
+    if (!row) return res.status(404).json({ error: "Not found" });
+    res.json(row);
+  } catch (err: any) {
+    console.error("[match-history] get:", err?.message);
+    res.status(500).json({ error: "Could not open that match." });
+  }
+});
+
+app.delete("/api/match/history/:id", requireAuth, async (req: any, res) => {
+  try {
+    const gone = await deleteMatch(req.user.id, req.params.id);
+    if (!gone) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("[match-history] delete:", err?.message);
+    res.status(500).json({ error: "Could not delete that match." });
+  }
+});
+
+/**
  * POST /api/match/report — the long-form, PDF-able matching report.
  * Takes the same boy/girl birth details as /api/match, recomputes the Ashtakoot
  * (cheap, deterministic) and asks the AI to interpret it in depth.
@@ -2452,10 +2872,10 @@ app.post("/api/match/report", async (req, res) => {
  * Rahu Kaal, Yamaganda, Gulika, and day/night Choghadiya.
  */
 app.get("/api/panchang", (req, res) => {
-  const date = String(req.query.date || "").trim() || new Date().toISOString().slice(0, 10);
+  const timezone = String(req.query.tz || "Asia/Kolkata").trim();
+  const date = String(req.query.date || "").trim() || todayIn(timezone);
   const latitude = Number(req.query.lat);
   const longitude = Number(req.query.lon);
-  const timezone = String(req.query.tz || "Asia/Kolkata").trim();
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return res.status(400).json({ error: "lat and lon are required" });
   }
@@ -2503,10 +2923,10 @@ app.post("/api/horoscope", async (req, res) => {
 
 /** GET /api/muhurat — auspicious time windows for an activity on a date & place. */
 app.get("/api/muhurat", (req, res) => {
-  const date = String(req.query.date || "").trim() || new Date().toISOString().slice(0, 10);
+  const timezone = String(req.query.tz || "Asia/Kolkata").trim();
+  const date = String(req.query.date || "").trim() || todayIn(timezone);
   const latitude = Number(req.query.lat);
   const longitude = Number(req.query.lon);
-  const timezone = String(req.query.tz || "Asia/Kolkata").trim();
   const activity = String(req.query.activity || "general").trim();
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return res.status(400).json({ error: "lat and lon are required" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "date must be YYYY-MM-DD" });
@@ -3065,7 +3485,11 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     // (or the same person again) are instant and don't re-call the AI.
     if (!regenerate) {
       const cached = await getReport(chartId, lifeKey);
-      if (cached) return res.json({ ...cached, cached: true });
+      // Tidied on the way OUT as well as in. Reports written before the
+      // one-bold-per-paragraph rule existed are already in the database, and a
+      // person re-opening the report they paid for should see the fixed page,
+      // not the shouting one they saw last week.
+      if (cached) return res.json({ ...tidyReport(cached), cached: true });
     }
 
     /*
@@ -3106,6 +3530,48 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     res.status(quota ? 429 : 500).json({ error: friendlyError(err?.message) });
   }
 }
+/**
+ * GET /api/chart/:chartId/past — the checkable half of a reading.
+ *
+ * Charged as a report, because it is one: the same AI cost, and it is the
+ * section people say made them believe the rest. Cached on the chart so
+ * reopening it is free and, more importantly, so it says the SAME thing twice —
+ * a past that rewords itself between visits is not a past.
+ */
+app.get("/api/chart/:chartId/past", async (req: any, res) => {
+  if (!featureOn("reports")) return res.status(503).json({ error: "Reports are temporarily disabled." });
+  try {
+    const chart = await getNormalizedChart(req.params.chartId);
+    if (!chart) return res.status(404).json({ error: "Chart not found" });
+    const language = normalizeLanguage(req.query.lang, chart.birth_details?.language || "en");
+    const periods = pastMilestones(chart);
+    if (!periods.length) {
+      return res.json({ timeline: [], note: "There is not enough lived history in this chart yet." });
+    }
+
+    const key = `past:${language}:${periods.length}:${periods[0]?.from ?? ""}`;
+    if (req.query.regenerate !== "1") {
+      const cached = await getReport(req.params.chartId, key);
+      if (cached) return res.json({ ...tidyReport(cached), cached: true });
+    }
+
+    const auth = await charge(req, res, "report", "life_report");
+    if (!auth) return;
+    const me = identityOf(req as any);
+    await recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { kind: "past" } }).catch(() => {});
+
+    const out = await generatePastTimeline({ chart, periods, language });
+    if (!out.timeline.length) return res.status(502).json({ error: "Could not build the timeline. Please try again." });
+
+    await insertReport({ chartId: req.params.chartId, report: out, language: key });
+    await settleCharge(req, auth.charge, "life_report", req.params.chartId, { category: "past" });
+    res.json(out);
+  } catch (err: any) {
+    console.error("[past-timeline] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
 app.post("/api/generate-report", handleGenerateReport);
 app.post("/api/generate-life-report", handleGenerateReport);
 
@@ -3281,7 +3747,7 @@ app.get("/api/chart/:chartId/timeline", async (req, res) => {
     if (!chart) return res.status(404).json({ error: "Chart not found" });
 
     const language = normalizeLanguage(req.query.lang, chart.birth_details?.language || "en");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIn(chart.birth_details?.timezone);
     const cacheKey = `timeline:${range}:${today}:${language}`;
     if (req.query.regenerate !== "1") {
       const cached = await getReport(chartId, cacheKey);

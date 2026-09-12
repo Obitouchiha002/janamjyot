@@ -16,6 +16,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { useTheme, isDarkTheme } from './theme';
 import { isNative, isLowPowerDevice, initNative, hideSplash, setStatusBarForTheme } from './lib/native';
 import { applyNotifications } from './lib/notifications';
+import { otaReady, checkWebUpdate } from './lib/ota';
 import { pickPrimary } from './lib/primary';
 import { isOnline, onConnectivityChange } from './lib/offline';
 import { isLockEnabled } from './lib/biometric';
@@ -262,6 +263,20 @@ function Shell() {
 
   // Keep the status bar icon tint in step with the chosen theme.
   useEffect(() => { setStatusBarForTheme(dark); }, [dark]);
+
+  // Over the air: this bundle booted (a bundle that never gets here is rolled
+  // back by the updater), then look for a newer one — now and whenever the app
+  // comes back to the foreground.
+  useEffect(() => {
+    if (!isNative) return;
+    // Settle the last attempt first, so a build that just failed is not fetched again.
+    otaReady().then(() => checkWebUpdate(true));
+    let handle: any;
+    import('@capacitor/app').then(({ App: CapApp }) => {
+      CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive) checkWebUpdate(); }).then((h) => { handle = h; });
+    }).catch(() => {});
+    return () => { handle?.remove?.(); };
+  }, []);
 
   // Deep-link when the user taps a scheduled notification.
   useEffect(() => {

@@ -24,7 +24,7 @@ const FILES = [
   // it would ship server-side code (plus its source map) to every device.
   "server.cjs", "server.cjs.map", "server.mjs", "server.mjs.map",
 ];
-const DIRS = ["screens"];
+const DIRS = ["screens", "ota"]; // ota/: published web bundles — never inside another bundle or the APK
 // anything matching these extensions at the dist root (the APK + demo video)
 const EXT = [".apk", ".mp4"];
 

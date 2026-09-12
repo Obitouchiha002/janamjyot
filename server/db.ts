@@ -310,6 +310,31 @@ CREATE TABLE IF NOT EXISTS chart_facts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Saved Kundli matches.
+--
+-- Matching itself needs no account: anyone can open the screen, type two sets
+-- of birth details and get the whole reading. This table only exists so a
+-- signed-in user can come BACK to one — a family compares half a dozen rishtas
+-- over a month and cannot be asked to retype four birth details each time.
+--
+-- The full computed result is stored as JSON rather than recomputed on open:
+-- the deterministic half would come back identical, but the AI verdict would
+-- be worded differently every time, and a saved reading that changes when you
+-- reopen it is not a saved reading.
+CREATE TABLE IF NOT EXISTS match_history (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   UUID NOT NULL,
+  boy_name   TEXT NOT NULL DEFAULT '',
+  girl_name  TEXT NOT NULL DEFAULT '',
+  score      INT  NOT NULL DEFAULT 0,
+  max_score  INT  NOT NULL DEFAULT 36,
+  boy_input  JSONB NOT NULL,
+  girl_input JSONB NOT NULL,
+  result     JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_match_history_owner ON match_history(owner_id, created_at DESC);
+
 -- Passwordless e-mail sign-in codes. Kept in their OWN table (not on app_users)
 -- because a first-time user has no account row yet when the code is sent.
 -- Only the HASH of the code is stored.
@@ -321,6 +346,42 @@ CREATE TABLE IF NOT EXISTS login_codes (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_app_users_created ON app_users(created_at DESC);
+
+-- The install an account was created from.
+--
+-- The ₹1 trial is once per ACCOUNT, which is once per person only as long as a
+-- person has one account. Making five accounts on one phone bought five trials
+-- for five rupees, and every free allowance came back with each one. Recording
+-- the device at signup lets both of those be counted per phone as well.
+--
+-- Not an identity: a reinstall or a factory reset issues a new id, and that is
+-- deliberate — this is a speed bump against casual farming, not a lock on a
+-- human being. Nothing here should ever be the only thing standing between a
+-- real user and their account.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS signup_device_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_app_users_device ON app_users(signup_device_id);
+
+-- Two counters per install, and NOTHING else.
+--
+-- The per-device limits above read app_users, and an account with no payment
+-- history is genuinely deleted when someone asks for it — which is the right
+-- privacy behaviour and also meant "create, delete, repeat" walked straight
+-- past both limits.
+--
+-- So the counters live here instead. This table holds an install id and two
+-- numbers. It has no name, no email, no link to any account, and nothing in it
+-- can be traced back to a person — which is precisely why it can survive
+-- "delete my account" without breaking that promise. Deleting a person's data
+-- means their data, not the fact that some phone once made an account.
+CREATE TABLE IF NOT EXISTS device_flags (
+  device_id     TEXT PRIMARY KEY,
+  -- Once true, never false again. These are the two things worth money that a
+  -- fresh account would otherwise hand out a second time.
+  trial_used    BOOLEAN NOT NULL DEFAULT false,
+  referral_used BOOLEAN NOT NULL DEFAULT false,
+  first_seen    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Ownership. Without these, every signed-in user could read every chart.
 ALTER TABLE birth_profiles     ADD COLUMN IF NOT EXISTS owner_id UUID;
@@ -674,13 +735,15 @@ export async function createUser(u: {
   role: "admin" | "user";
   googleSub?: string | null;
   avatarUrl?: string | null;
+  /** The install this account was created from, when the client sent one. */
+  deviceId?: string | null;
 }): Promise<AppUser> {
   const email = u.email.toLowerCase();
   if (USE_PG) {
     const { rows } = await pool!.query(
-      `INSERT INTO app_users (email, name, password_hash, google_sub, avatar_url, role)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [email, u.name, u.passwordHash ?? null, u.googleSub ?? null, u.avatarUrl ?? null, u.role]
+      `INSERT INTO app_users (email, name, password_hash, google_sub, avatar_url, role, signup_device_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [email, u.name, u.passwordHash ?? null, u.googleSub ?? null, u.avatarUrl ?? null, u.role, u.deviceId ?? null]
     );
     return rowToUser(rows[0]);
   }
@@ -1069,7 +1132,7 @@ export async function usageSeries(days = 14) {
     [days]
   );
   return rows.map((r) => ({
-    day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day),
+    day: dateOnly(r.day),
     charts: r.charts, asks: r.asks, reports: r.reports, matches: r.matches,
   }));
 }
@@ -1248,7 +1311,7 @@ export async function chartsByOwner(id: string) {
     );
     return rows.map((r) => ({
       ...r,
-      date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date),
+      date: dateOnly(r.date),
     }));
   }
   return Object.values(fileData.chart_calculations).filter((c: any) => c.owner_id === id)
@@ -1647,6 +1710,96 @@ export async function referralStats(userId: string): Promise<{ joined: number; e
   );
   const joined = rows[0]?.joined ?? 0;
   return { joined, earned: joined * REFERRAL.referrer, pending: rows[0]?.pending ?? 0 };
+}
+
+/**
+ * How many accounts this install currently HAS — deleted ones free their slot.
+ *
+ * Deliberately live accounts, not a lifetime tally. A lifetime tally is the
+ * safer-sounding choice and it strands a real person: delete both accounts to
+ * start fresh, and the app refuses to let you back in, forever, with a message
+ * telling you to sign in to accounts that no longer exist.
+ *
+ * It is safe to be generous here because this cap is not what protects the
+ * money. The two things a fresh account could farm — the ₹1 trial and the
+ * referral bonus — are each flagged against the device separately below, and
+ * those flags never reset. Free usage is already counted per device on
+ * `usage_events`, which deletion anonymises rather than removes. So the worst a
+ * delete-and-recreate loop achieves is an empty account.
+ */
+export async function accountsOnDevice(deviceId: string): Promise<number> {
+  if (!USE_PG || !deviceId) return 0;
+  const { rows } = await pool!.query(
+    `SELECT count(*)::int AS n FROM app_users
+      WHERE signup_device_id = $1 AND status <> 'deleted'`,
+    [deviceId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/** Touch the install's row so it exists for the flags below. */
+export async function noteDeviceSignup(deviceId: string): Promise<void> {
+  if (!USE_PG || !deviceId) return;
+  await pool!.query(
+    `INSERT INTO device_flags (device_id) VALUES ($1)
+     ON CONFLICT (device_id) DO UPDATE SET last_seen = now()`,
+    [deviceId],
+  );
+}
+
+/** Has this install already collected a referral joining bonus? */
+export async function deviceUsedReferral(deviceId: string): Promise<boolean> {
+  if (!USE_PG || !deviceId) return false;
+  const { rows } = await pool!.query(
+    `SELECT referral_used FROM device_flags WHERE device_id = $1`,
+    [deviceId],
+  );
+  return !!rows[0]?.referral_used;
+}
+
+/** Mark this install as having collected its joining bonus. */
+export async function noteDeviceReferral(deviceId: string): Promise<void> {
+  if (!USE_PG || !deviceId) return;
+  await pool!.query(
+    `INSERT INTO device_flags (device_id, referral_used) VALUES ($1, true)
+     ON CONFLICT (device_id) DO UPDATE SET referral_used = true, last_seen = now()`,
+    [deviceId],
+  );
+}
+
+/**
+ * Has any account on this install already taken the ₹1 trial?
+ *
+ * The per-account guard stays where it is; this is the second one, because the
+ * per-account guard is defeated by making another account. Both must pass.
+ */
+export async function deviceUsedTrial(deviceId: string): Promise<boolean> {
+  if (!USE_PG || !deviceId) return false;
+  const { rows } = await pool!.query(
+    `SELECT trial_used FROM device_flags WHERE device_id = $1`,
+    [deviceId],
+  );
+  return !!rows[0]?.trial_used;
+}
+
+/** The install an account was created from, if we recorded one. */
+export async function deviceOfUser(userId: string): Promise<string | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(
+    `SELECT signup_device_id FROM app_users WHERE id = $1`,
+    [userId],
+  );
+  return rows[0]?.signup_device_id ?? null;
+}
+
+/** Mark this install as having used its trial. */
+export async function noteDeviceTrial(deviceId: string): Promise<void> {
+  if (!USE_PG || !deviceId) return;
+  await pool!.query(
+    `INSERT INTO device_flags (device_id, trial_used) VALUES ($1, true)
+     ON CONFLICT (device_id) DO UPDATE SET trial_used = true, last_seen = now()`,
+    [deviceId],
+  );
 }
 
 export async function trialState(userId: string): Promise<TrialState> {
@@ -2401,6 +2554,28 @@ export async function getNormalizedChart(chartId: string): Promise<any | null> {
  * WHERE clause, so an unauthenticated `GET /api/profiles` returned every
  * chart in the database (each person's name, date of birth and chart id).
  */
+/*
+ * A DATE column, read back as the same calendar day it was written.
+ *
+ * node-postgres turns a `date` into a JS Date at LOCAL midnight, and
+ * `.toISOString()` then converts that to UTC — which in any timezone ahead of
+ * UTC lands on the day before. In IST that is every single row: a kundli
+ * created for 14 August 1995 was listed as 13 August 1995. For an astrology app
+ * the birth date IS the product, so this was not a formatting nit.
+ *
+ * Reading the local Y/M/D parts keeps the day the database actually holds,
+ * whatever timezone the server happens to run in.
+ */
+function dateOnly(v: unknown): string {
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(v ?? "").slice(0, 10);
+}
+
 export async function listProfiles(
   ownerId?: string,
   deviceId?: string,
@@ -2423,7 +2598,7 @@ export async function listProfiles(
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
-      date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date),
+      date: dateOnly(r.date),
     }));
   }
   return Object.values(fileData.chart_calculations)
@@ -2434,6 +2609,78 @@ export async function listProfiles(
       const profile = fileData.birth_profiles[c.birth_profile_id] || {};
       return { id: c.id, name: profile.name ?? "", date: profile.date_of_birth ?? "" };
     });
+}
+
+// ---- saved matches --------------------------------------------------------
+
+export interface SavedMatch {
+  id: string;
+  boy_name: string;
+  girl_name: string;
+  score: number;
+  max_score: number;
+  created_at: string;
+}
+
+/** Save one computed match. Returns its id, or null when there is no database. */
+export async function saveMatch(args: {
+  ownerId: string;
+  boyName: string;
+  girlName: string;
+  score: number;
+  maxScore: number;
+  boyInput: any;
+  girlInput: any;
+  result: any;
+}): Promise<string | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(
+    `INSERT INTO match_history (owner_id, boy_name, girl_name, score, max_score, boy_input, girl_input, result)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [args.ownerId, args.boyName, args.girlName, args.score, args.maxScore,
+     JSON.stringify(args.boyInput), JSON.stringify(args.girlInput), JSON.stringify(args.result)],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/** The list for the History panel — headers only, never the whole result. */
+export async function listMatches(ownerId: string, limit = 30): Promise<SavedMatch[]> {
+  if (!USE_PG) return [];
+  const { rows } = await pool!.query(
+    `SELECT id, boy_name, girl_name, score, max_score, created_at
+       FROM match_history WHERE owner_id = $1
+      ORDER BY created_at DESC LIMIT $2`,
+    [ownerId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id, boy_name: r.boy_name, girl_name: r.girl_name,
+    score: r.score, max_score: r.max_score,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
+/**
+ * One saved match, in full.
+ *
+ * The owner is part of the WHERE clause, not checked afterwards: a match holds
+ * two people's birth details, and "fetch then compare" is exactly the shape
+ * that leaks one the day someone forgets the second line.
+ */
+export async function getMatch(ownerId: string, id: string): Promise<any | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(
+    `SELECT boy_input, girl_input, result FROM match_history WHERE id = $1 AND owner_id = $2`,
+    [id, ownerId],
+  );
+  if (!rows[0]) return null;
+  return { boy: rows[0].boy_input, girl: rows[0].girl_input, result: rows[0].result };
+}
+
+/** Delete one saved match. Returns true when a row of theirs was removed. */
+export async function deleteMatch(ownerId: string, id: string): Promise<boolean> {
+  if (!USE_PG) return false;
+  const r = await pool!.query(`DELETE FROM match_history WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
+  return (r.rowCount ?? 0) > 0;
 }
 
 export async function deleteChart(chartId: string): Promise<void> {

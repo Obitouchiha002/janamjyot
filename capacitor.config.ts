@@ -57,6 +57,19 @@ const config: CapacitorConfig = {
       scopes: ['profile', 'email'],
       forceCodeForRefreshToken: false,
     },
+    CapacitorUpdater: {
+      // Our own update check only (src/lib/ota.ts): never the vendor's cloud.
+      autoUpdate: false,
+      // "" turns stats reporting off — otherwise it posts to plugin.capgo.app.
+      statsUrl: '',
+      // A bundle must report a good boot within 10s or it is rolled back.
+      appReadyTimeout: 10000,
+      // Installing a new APK drops downloaded bundles, so the APK's own web
+      // code always wins over an older over-the-air one.
+      resetWhenUpdate: true,
+      autoDeleteFailed: true,
+      autoDeletePrevious: true,
+    },
   },
 };
 

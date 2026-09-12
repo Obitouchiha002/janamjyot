@@ -525,6 +525,34 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
     }
   }
 
+  /*
+   * Skip a provider that cannot physically accept this prompt.
+   *
+   * Groq's on-demand tier caps a single request at 8,000 tokens for the two
+   * strong models. A chart prompt sits right on that line, so both answered
+   * 413 "Request too large" and the chat fell all the way through to the
+   * smallest model — which replied with generic advice and none of the chart.
+   * Two wasted round-trips, several seconds of latency, and a worse answer.
+   *
+   * The ceiling is learned from the provider's own rate-limit headers (recorded
+   * on every response, success or failure), so nothing is hard-coded and a tier
+   * upgrade takes effect by itself. A provider that has never reported one is
+   * assumed to fit — guessing it does not is how you skip the good model.
+   */
+  const estTokens = Math.ceil(prompt.length / 3.5) + (opts.maxTokens ?? 1200);
+  const fits = (p: Provider) => {
+    const cap = Number(stat(p.name).rateLimit?.["x-ratelimit-limit-tokens"] ?? 0);
+    return !cap || estTokens <= cap;
+  };
+  const sized = usable.filter(fits);
+  // Never empty the list: a prompt too big for everything must still be TRIED
+  // and fail with a real error, not silently find nobody to send it to.
+  if (sized.length && sized.length < usable.length) {
+    const skipped = usable.filter((p) => !fits(p)).map((p) => p.name);
+    console.log(`[llm] ~${estTokens} tokens — too large for ${skipped.join(", ")}; skipped`);
+    usable = sized;
+  }
+
   let lastErr: any;
   let attempt = 0;
   for (const p of usable) {

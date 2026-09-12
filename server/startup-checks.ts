@@ -54,6 +54,38 @@ export function runStartupChecks(): void {
     );
   }
 
+  // ── Payments ─────────────────────────────────────────────────────────────
+  /*
+   * A live key with no webhook secret is the worst of the three states.
+   *
+   * Payments advertise themselves as enabled off KEY_ID + KEY_SECRET alone, so
+   * the checkout opens and the card is charged — and then every webhook is
+   * rejected with 503 because there is nothing to verify the signature
+   * against, and the credits are never granted. The buyer sees a debit and an
+   * unchanged balance. (`/api/billing/verify` can still recover it by asking
+   * Razorpay directly, but that is a safety net, not the design.)
+   *
+   * Fatal in production ONLY when a live key is present: a test key with no
+   * webhook secret is an ordinary development setup and must still boot.
+   */
+  const rzpKey = (process.env.RAZORPAY_KEY_ID || "").trim();
+  if (rzpKey && !has("RAZORPAY_KEY_SECRET")) {
+    (IS_PROD ? fatal : warn).push(
+      "RAZORPAY_KEY_ID is set but RAZORPAY_KEY_SECRET is not — no order can be created.",
+    );
+  }
+  if (rzpKey && !has("RAZORPAY_WEBHOOK_SECRET")) {
+    const live = rzpKey.startsWith("rzp_live_");
+    (IS_PROD && live ? fatal : warn).push(
+      "RAZORPAY_WEBHOOK_SECRET is not set. Payments will be taken and the webhook that grants " +
+      "credits will be rejected — buyers get charged and credited nothing. Set it from the " +
+      "Razorpay dashboard (Settings → Webhooks) before enabling live payments.",
+    );
+  }
+  if (IS_PROD && rzpKey.startsWith("rzp_test_")) {
+    warn.push("Razorpay is in TEST mode in production — real cards will not be charged.");
+  }
+
   // ── Non-fatal but worth flagging ─────────────────────────────────────────
   if (!has("ADMIN_EMAIL")) warn.push("ADMIN_EMAIL is not set — nobody will get the admin panel.");
   if (!has("SMTP_USER") || !has("SMTP_PASS")) {

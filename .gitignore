@@ -29,3 +29,6 @@ public/*.apk
 server-bundle.mjs
 server.cjs
 server.cjs.map
+
+# over-the-air web bundles (built by npm run ota:publish, deployed, not committed)
+public/ota/*.zip

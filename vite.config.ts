@@ -8,6 +8,11 @@ import {defineConfig} from 'vite';
 // app update. The hosted web build keeps its service worker.
 export default defineConfig(() => {
   return {
+    // Every build carries its own number; over-the-air updates only ever move
+    // a phone forward to a larger one (src/lib/ota.ts).
+    define: {
+      __WEB_BUILD__: JSON.stringify(process.env.WEB_BUILD || new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)),
+    },
     plugins: [
       react(),
       tailwindcss(),
