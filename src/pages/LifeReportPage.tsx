@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PastTimeline } from "@/components/PastTimeline";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp } from "lucide-react";
@@ -104,7 +105,14 @@ export default function LifeReportPage() {
   const { chartId } = useParams();
   const [chart, setChart] = useState<any>(null);
   const [report, setReport] = useState<any>(null);
-  const [lang, setLang] = useState("en");
+  /*
+   * Defaults to the language they chose for the app, not to English.
+   *
+   * Someone who picks हिंदी at first launch and then reads an English reading
+   * here has been told the choice applies and found that it does not. The
+   * select still lets them answer in another language for one reading.
+   */
+  const [lang, setLang] = useState(getLang());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Ask the user which language BEFORE generating — no auto-generate.
@@ -135,7 +143,9 @@ export default function LifeReportPage() {
     fetch(`/api/chart/${chartId}`)
       .then(res => (res.ok ? res.json() : null))
       .then(d => {
-        if (d) { setChart(d); setLang(d.birth_details?.language || "en"); }
+        // The chart's own language if it has one, otherwise the language they
+        // chose for the app — never a hard-coded "en".
+        if (d) { setChart(d); setLang(d.birth_details?.language || getLang()); }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -581,6 +591,15 @@ export default function LifeReportPage() {
 
       {/* Dasha timeline graph */}
       {chart?.dasha && <DashaTimeline dasha={chart.dasha} />}
+
+      {/*
+        The past comes BEFORE the forecast — and before the paywall for the full
+        report. A reading that opens on 2029 asks for trust it has not earned;
+        one that opens on a stretch the reader recognises has earned it. It is
+        also the honest order to sell in: see whether this thing knows you,
+        then decide whether to buy the rest.
+      */}
+      {chartId && chart && <PastTimeline chartId={chartId} lang={lang} />}
 
       {/* Report body */}
       {!chosen && !report ? (
