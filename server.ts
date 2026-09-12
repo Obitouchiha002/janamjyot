@@ -92,6 +92,7 @@ import {
   bumpLoginCodeAttempts,
   clearLoginCode,
   listUsers,
+  exportUsers,
   adminStats,
   getSetting,
   setSetting,
@@ -987,6 +988,71 @@ app.get("/api/admin/users", requireAdmin, async (req, res) =>
  * Totals say how busy the app is; this says whether it works. A launch without
  * it means watching users arrive and never learning which step lost them.
  */
+/**
+ * GET /api/admin/users.csv — every user, as a spreadsheet.
+ *
+ * A CSV rather than an API the panel paginates: the question this answers is
+ * "let me look at all of it in Excel", and that is not a thing a table on a
+ * phone-sized admin screen does well.
+ *
+ * Two details that decide whether it opens cleanly:
+ *  · a UTF-8 BOM, because Excel on Windows otherwise reads Hindi names as
+ *    mojibake — and most of these names are Hindi;
+ *  · a leading apostrophe is NOT used for long ids. They are quoted instead,
+ *    which keeps them intact without polluting the value for anything that
+ *    reads the file properly.
+ */
+function toCsv(rows: any[], columns: Array<[string, string]>): string {
+  const esc = (v: any) => {
+    if (v === null || v === undefined) return "";
+    const s = v instanceof Date ? v.toISOString() : String(v);
+    // Quote when the value could otherwise break the row, and double any quote.
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = columns.map(([, label]) => esc(label)).join(",");
+  const body = rows.map((r) => columns.map(([key]) => esc(r[key])).join(",")).join("\n");
+  return `\ufeff${head}\n${body}\n`;
+}
+
+app.get("/api/admin/users.csv", requireAdmin, async (_req, res) => {
+  try {
+    const rows = (await exportUsers()).map((r: any) => ({
+      ...r,
+      // Rupees, not paise: the column is read by a person, not a machine.
+      paid_rupees: ((Number(r.paid_paise) || 0) / 100).toFixed(2),
+      trial_used: r.trial_started_at ? "yes" : "no",
+    }));
+    const csv = toCsv(rows, [
+      ["name", "Name"],
+      ["email", "Email"],
+      ["plan", "Plan"],
+      ["status", "Status"],
+      ["created_at", "Joined"],
+      ["last_seen_at", "Last seen"],
+      ["kundlis", "Kundlis"],
+      ["questions", "Questions asked"],
+      ["reports", "Reports"],
+      ["matches", "Matchings"],
+      ["credits_balance", "Credits balance"],
+      ["payments_count", "Payments"],
+      ["paid_rupees", "Paid (Rs)"],
+      ["last_paid_at", "Last payment"],
+      ["trial_used", "Trial used"],
+      ["trial_ends_at", "Trial ends"],
+      ["referral_code", "Referral code"],
+      ["role", "Role"],
+      ["id", "User id"],
+    ]);
+    const day = todayIn();
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="janamjyot-users-${day}.csv"`);
+    res.send(csv);
+  } catch (err: any) {
+    console.error("[admin/users.csv]", err?.message);
+    res.status(500).json({ error: "Could not build the export." });
+  }
+});
+
 app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);

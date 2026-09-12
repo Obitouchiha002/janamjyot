@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Shield, Users, FileText, MessageSquare, Sparkles, Activity, KeyRound,
   Power, Megaphone, ToggleLeft, Search, X, Ban, ShieldCheck, UserCog,
-  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee, Smartphone,
+  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee, Smartphone, Download
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import Switch from "@/components/mobile/Switch";
@@ -194,8 +194,53 @@ function Users_() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const t = setTimeout(() => load(q), 300); return () => clearTimeout(t); }, [q, load]);
 
+  /*
+   * Download the whole list as a spreadsheet.
+   *
+   * Fetched rather than linked, because the export is behind the admin session
+   * and a plain <a href> carries no Authorization header — the link would
+   * download a 401 page named like a CSV, which looks like a broken file rather
+   * than a refused one.
+   */
+  const [exporting, setExporting] = useState(false);
+  const downloadCsv = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch("/api/admin/users.csv");
+      if (!res.ok) throw new Error("export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `janamjyot-users-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Could not build the export. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] text-muted-foreground">
+          {users ? `${users.length} accounts` : "Loading…"}
+        </p>
+        <button
+          onClick={downloadCsv}
+          disabled={exporting}
+          className="flex items-center gap-1.5 rounded-full border-2 border-border bg-card px-3.5 py-2 text-[13px] font-bold disabled:opacity-50"
+        >
+          <Download className="h-[15px] w-[15px]" />
+          {exporting ? "Preparing…" : "Export CSV"}
+        </button>
+      </div>
+
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
         <input

@@ -1043,6 +1043,54 @@ export async function touchUser(id: string) {
   if (!USE_PG) return;
   await pool!.query(`UPDATE app_users SET last_seen_at = now() WHERE id = $1`, [id]);
 }
+/**
+ * Every user, with the numbers a person actually asks about, for export.
+ *
+ * Separate from `listUsers` on purpose: that one powers a screen, so it is
+ * capped at 200 rows and counts asks over 30 days. An export is the opposite —
+ * no cap, lifetime totals, and money included. Aggregated with joins rather
+ * than per-row subqueries because at a few thousand users the subquery version
+ * is thousands of round-trips for one file.
+ */
+export async function exportUsers(): Promise<any[]> {
+  if (!USE_PG) {
+    return fileData.users.map((u: any) => ({
+      id: u.id, name: u.name, email: u.email, plan: u.plan ?? "free",
+      status: u.status ?? "active", created_at: u.created_at,
+    }));
+  }
+  const { rows } = await pool!.query(
+    `SELECT u.id, u.name, u.email, u.role, u.plan, u.status, u.status_reason,
+            u.created_at, u.last_seen_at, u.referral_code, u.signup_device_id,
+            u.trial_started_at, u.trial_ends_at,
+            COALESCE(ch.n, 0)::int          AS kundlis,
+            COALESCE(ask.n, 0)::int         AS questions,
+            COALESCE(rep.n, 0)::int         AS reports,
+            COALESCE(mat.n, 0)::int         AS matches,
+            COALESCE(led.n, 0)::int         AS credits_balance,
+            COALESCE(pay.n, 0)::int         AS payments_count,
+            COALESCE(pay.paise, 0)::bigint  AS paid_paise,
+            pay.last_paid_at
+       FROM app_users u
+       LEFT JOIN (SELECT owner_id, count(*) AS n FROM chart_calculations GROUP BY owner_id) ch
+              ON ch.owner_id = u.id
+       LEFT JOIN (SELECT user_id, count(*) AS n FROM usage_events WHERE action = 'ask'    GROUP BY user_id) ask
+              ON ask.user_id = u.id
+       LEFT JOIN (SELECT user_id, count(*) AS n FROM usage_events WHERE action = 'report' GROUP BY user_id) rep
+              ON rep.user_id = u.id
+       LEFT JOIN (SELECT user_id, count(*) AS n FROM usage_events WHERE action = 'match'  GROUP BY user_id) mat
+              ON mat.user_id = u.id
+       LEFT JOIN (SELECT user_id, SUM(delta) AS n FROM credit_ledger GROUP BY user_id) led
+              ON led.user_id = u.id
+       LEFT JOIN (SELECT user_id, count(*) AS n, SUM(amount_paise) AS paise,
+                         MAX(created_at) AS last_paid_at
+                    FROM payments WHERE status = 'paid' GROUP BY user_id) pay
+              ON pay.user_id = u.id
+      ORDER BY u.created_at DESC`,
+  );
+  return rows;
+}
+
 export async function listUsers(search = ""): Promise<any[]> {
   if (USE_PG) {
     const like = `%${search.trim().toLowerCase()}%`;
