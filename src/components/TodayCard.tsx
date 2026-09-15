@@ -5,6 +5,7 @@ import SpeakButton from "@/components/SpeakButton";
 import { Pressable } from "@/components/mobile/Pressable";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
+import { useT } from "@/lib/i18n";
 
 const LANGS = [
   { key: "en", label: "EN" },
@@ -20,7 +21,20 @@ const LANGS = [
  * foreign widget rather than part of the app. Trimmed to the three facts people
  * actually glance at, plus the guidance line.
  */
-export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: string }) {
+/*
+ * Two looks, one component.
+ *
+ * "card" is the app's own surface, used on the kundli dashboard. "dark" is the
+ * navy bar the Home screen launched with — asked for back by name, because on a
+ * cream page it is the one element that reads as "today" at a glance. Only the
+ * bar itself goes dark; the expanded body stays on the card surface so the
+ * timings inside it are never grey-on-navy.
+ */
+export default function TodayCard(
+  { chartId, lang, variant = "card" }: { chartId?: string; lang?: string; variant?: "card" | "dark" },
+) {
+  const t = useT();
+  const dark = variant === "dark";
   const [open, setOpen] = useState(false);
   const [language, setLanguage] = useState<string>(lang || getLang());
   const [d, setD] = useState<any>(null);
@@ -63,26 +77,33 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
   ].filter(([, , v]) => v) as any : [];
 
   return (
-    <div className="m-card overflow-hidden">
+    <div className={dark ? "overflow-hidden rounded-2xl shadow-lg" : "m-card overflow-hidden"}>
       <Pressable
         onClick={() => { haptic.tap(); setOpen((o) => !o); }}
         subtle
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left"
+        className={`flex w-full items-center gap-3 text-left ${dark ? "px-5 py-4 text-white" : "px-4 py-3.5"}`}
+        style={dark ? { background: "linear-gradient(135deg,#1E293B,#0f172a)" } : undefined}
       >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
-          <Sun className="h-[19px] w-[19px]" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-bold leading-tight">Today</span>
-          <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
-            {d?.panchang ? `${d.panchang.weekday} · ${d.panchang.nakshatra}` : "Your day at a glance"}
+        {dark ? (
+          <Sun className="h-5 w-5 shrink-0 text-amber-300" />
+        ) : (
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/15 text-accent">
+            <Sun className="h-[19px] w-[19px]" />
           </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className={`block font-bold leading-tight ${dark ? "text-[16px]" : "text-[14.5px]"}`}>{t("Today")}</span>
+          {!dark && (
+            <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
+              {d?.panchang ? `${d.panchang.weekday} · ${d.panchang.nakshatra}` : t("Your day at a glance")}
+            </span>
+          )}
         </span>
-        <ChevronDown className={`h-[18px] w-[18px] shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-[18px] w-[18px] shrink-0 transition-transform ${dark ? "text-white/70" : "text-muted-foreground"} ${open ? "rotate-180" : ""}`} />
       </Pressable>
 
       {open && (
-        <div className="border-t border-border px-4 pb-4 pt-3.5">
+        <div className={`border-t border-border px-4 pb-4 pt-3.5 ${dark ? "bg-card" : ""}`}>
           {/* language picker */}
           <div className="mb-3 flex items-center gap-2">
             <Languages className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -114,9 +135,13 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
                   {facts.map(([Icon, label, value]) => (
                     <div key={label} className="rounded-xl bg-muted px-2.5 py-2">
                       <p className="flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">
-                        <Icon className="h-3 w-3" /> {label}
+                        <Icon className="h-3 w-3" /> {t(label)}
                       </p>
-                      <p className="mt-0.5 truncate text-[12.5px] font-bold">{value}</p>
+                      {/* Wraps, never truncates. Three tiles on a phone are
+                          ~100px each, and "Rahu–Mercury" or a Rahu Kaal range
+                          cut to "Rahu–Merc…" / "03:21 PM–0…" hid the one
+                          number the tile exists to show. */}
+                      <p className="mt-0.5 break-words text-[12.5px] font-bold leading-snug">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -126,7 +151,7 @@ export default function TodayCard({ chartId, lang }: { chartId?: string; lang?: 
                 <div className="rounded-2xl border border-accent/25 bg-accent/8 p-3.5">
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="text-[10.5px] font-bold uppercase tracking-widest text-accent">
-                      Today&apos;s guidance
+                      {t("Today's Guidance")}
                     </p>
                     <SpeakButton text={d.tip} lang={language} />
                   </div>

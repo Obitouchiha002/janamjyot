@@ -19,7 +19,7 @@
     "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts",
     "check:credits-race": "tsx server/__checks__/credits-race.ts",
     "ota:publish": "node scripts/ota-publish.mjs",
-    "build:apk": "npm run build && node scripts/prune-app-dist.mjs && npx cap sync android && (cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleRelease) && node scripts/copy-apk.mjs"
+    "build:apk": "node scripts/ota-publish.mjs && npx cap sync android && (cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleRelease) && node scripts/copy-apk.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

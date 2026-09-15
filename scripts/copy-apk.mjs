@@ -10,6 +10,14 @@
  *
  * The version comes from build.gradle, which is the only place it is set, so
  * the file name and the version can never disagree.
+ *
+ * `npm run build:apk` runs the OTA publish FIRST and builds the APK from that
+ * same dist. Built separately, the APK stamped its own newer web-build number:
+ * a phone that had already taken an over-the-air bundle kept running that
+ * older bundle over the freshly installed APK (same versionCode, so the
+ * updater does not reset), and a phone installing fresh ran code the manifest
+ * did not know about. One build number for both is the only state that is
+ * never surprising.
  */
 import fs from "node:fs";
 
