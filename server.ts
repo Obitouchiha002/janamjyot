@@ -186,7 +186,7 @@ import { personMoon, matchKundli, nadiOf } from "./server/matching";
 import {
   deepPerson, timingAlignment, doshaDetails, remediesFor, periodsInYear,
 } from "./server/deep-match";
-import { pastMilestones } from "./server/past-timeline";
+import { pastMilestones, recentPastPeriods } from "./server/past-timeline";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
@@ -3972,6 +3972,8 @@ app.post("/api/ask-question", handleChat);
  */
 const TODAY_RE = /\b(today|aaj|tonight|abhi)\b/i;
 const TOMORROW_RE = /\b(tomorrow|kal|agle din)\b/i;
+// "pichhle 5 saal", "past few years", "beete saal", "last 3 years" → the past.
+const PAST_RE = /\b(pichh?le|pichh?li|beete|beeta|guzre|past|last|previous|ab tak)\b[^?]{0,25}\b(saal|sal|years?|varsh|mahine|months?)\b/i;
 // "aap kya kya kar sakte ho" is the most common opening question and the one
 // most likely to be answered vaguely, so it routes to the real feature list
 // rather than to the model's imagination.
@@ -4154,8 +4156,16 @@ app.post("/api/chat/universal", async (req, res) => {
       return res.json({ answer: c.answer, reason: "", category: "clarify", next: c.next });
     }
 
+    // A question about the past gets the periods actually lived through, the
+    // way a question about today gets the day's computed signals.
+    let pastContext: any = undefined;
+    if (PAST_RE.test(question)) {
+      const n = Number(question.match(/(\d{1,2})\s*(?:saal|sal|years?|varsh)/i)?.[1]) || 5;
+      pastContext = recentPastPeriods(chart, Math.min(20, Math.max(1, n)));
+    }
+
     const { answer, reason, next, action, facts } = await answerUniversal({
-      chart, question, language, category, transit, dayContext,
+      chart, question, language, category, transit, dayContext, pastContext,
       appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
       history, userName, memory, isFirst, suggested, facts: lifeFacts, relation,
     });

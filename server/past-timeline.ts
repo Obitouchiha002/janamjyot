@@ -136,3 +136,40 @@ export function pastMilestones(chart: any, max = 7): PastPeriod[] {
   }
   return picked.sort((a, b) => (a.from < b.from ? -1 : 1));
 }
+
+
+/**
+ * The periods someone lived through in the last `years` — for a chat question
+ * about the past ("pichhle 5 saal mushkil kyun the?").
+ *
+ * The chat already hands the model the computed facts for "today" and
+ * "tomorrow", and it answered those well. It had nothing equivalent for the
+ * past, so "why were the last five years hard" came back as "it was a time of
+ * pressure" — the question restated, with no years and no reason, every time.
+ * The periods are in the chart; this puts the relevant ones where the model
+ * cannot miss them, with dates and the life areas each period's lord actually
+ * governs in THIS chart.
+ */
+export function recentPastPeriods(chart: any, years = 5): Array<{
+  period: string; from: string; to: string; lord_rules: string[]; lord_sits_in: string | null;
+}> {
+  const rows: any[] = chart?.dasha?.antardasha ?? [];
+  const houses: any[] = chart?.d1_chart?.houses ?? [];
+  const planets: any[] = chart?.planet_positions ?? [];
+  const now = Date.now();
+  const since = now - years * YEAR;
+  const area = (h: number) => THEME_HOUSES[h] ?? (h === 1 ? "self & health" : h === 3 ? "effort & siblings" : h === 8 ? "sudden change & hidden matters" : `house ${h}`);
+  return rows
+    .filter((a) => ms(a.to) > since && ms(a.from) < now)
+    .map((a) => {
+      const rules = houses.filter((h) => h.sign_lord === a.lord).map((h) => h.house);
+      const sits = planets.find((p: any) => p.planet === a.lord)?.house;
+      return {
+        period: a.label ?? `${a.mahadasha}-${a.lord}`,
+        from: String(a.from).slice(0, 10),
+        to: String(a.to).slice(0, 10),
+        lord_rules: rules.map(area),
+        lord_sits_in: sits ? area(Number(sits)) : null,
+      };
+    });
+}

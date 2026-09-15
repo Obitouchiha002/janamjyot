@@ -684,6 +684,7 @@ export async function answerUniversal(args: {
   category: Category;
   transit?: any;
   dayContext?: any;   // compact day-signals for a date the question is about
+  pastContext?: any;  // the periods lived through, when the question is about the past
   appGuide?: string;  // APP_GUIDE, included when the question is about the app
   history?: Array<{ role: "user" | "assistant"; text: string }>;
   userName?: string;  // the person's first name — so the chat never asks who they are
@@ -778,7 +779,7 @@ This person's COMPLETE calculated chart — interpret ONLY this. It has D1, D9, 
 D6, D11, the full dasha timeline, and "live_transit" (planets right now vs their
 natal lagna & moon). Use dasha + live_transit for anything about now or the future.
 ${JSON.stringify(packet)}
-${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
+${args.pastContext ? `\nTHE PAST THEY ARE ASKING ABOUT — the real periods they lived through in that window, computed from their chart. A question about why the past was hard (or good) is answered FROM THESE: name the stretch of years, say what that period's lord governs in their life (lord_rules / lord_sits_in) in plain words, and connect it to what they felt. Do not restate the question back to them:\n${JSON.stringify(args.pastContext)}\n` : ""}${args.dayContext ? `\nTODAY/RELEVANT-DAY, already computed for this person (use these EXACT facts for any "today/tomorrow/aaj/kal" part — do not recompute or contradict them):\n${JSON.stringify(args.dayContext)}\n` : ""}${args.appGuide ? `\n${args.appGuide}\n` : ""}${args.memory ? `\nWhat earlier conversations established about them (use it; never make them repeat it):\n${args.memory}\n` : ""}${convo ? `\nConversation so far:\n${convo}\n` : ""}${args.userName ? `\nThe person you are speaking with is ${args.userName}. You ALREADY know exactly who they are — this is THEIR chart above. Address them warmly by first name where it feels natural (not every line). NEVER ask their name, who they are, or "what's on your mind" as if you don't know them — you are their personal astrologer and you already have their whole chart. Never treat a word from their message as their name.\n` : ""}${factBlock}${stage}
 ${args.relation ? `
 THE OTHER PERSON in this question — ${args.relation.name || "they"} (${args.relation.relation}). Their chart and your compatibility were CALCULATED by the app, not guessed:
 ${JSON.stringify(args.relation)}
