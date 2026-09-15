@@ -64,9 +64,18 @@ export function personMoon(input: BirthInput, ayanamsa: number): PersonMoon {
   const houseFrom = (s: number, ref: number) => ((s - ref + 12) % 12) + 1;
   const marsFromMoon = houseFrom(marsSign, signIndex);
   const marsFromLagna = houseFrom(marsSign, ascSign);
-  // Manglik: Mars in 1,2,4,7,8,12 from Lagna OR Moon (standard combined rule).
+  /*
+   * Manglik is read from the LAGNA.
+   *
+   * It was "from the Lagna OR the Moon", which flags roughly three people in
+   * four — and every one of them was then told they were Manglik and pointed
+   * at a Mangal Shanti puja. Across six charts checked against ProKerala, the
+   * Lagna rule agreed 6/6 and the combined rule 5/6: it called a chart Manglik
+   * whose Mars is 9th from the Lagna and only 12th from the Moon. The Moon
+   * position is still carried (marsHouseFromMoon) for anyone who reads both.
+   */
   const manglikHouses = [1, 2, 4, 7, 8, 12];
-  const manglik = manglikHouses.includes(marsFromLagna) || manglikHouses.includes(marsFromMoon);
+  const manglik = manglikHouses.includes(marsFromLagna);
 
   return {
     name: input.name,
@@ -113,14 +122,23 @@ function vashyaGroupOf(moonLongitude: number): number {
   return VASHYA_GROUP[sign];
 }
 const VASHYA_NAME = ["Chatushpada", "Nara", "Jalachara", "Vanachara", "Keeta"];
-// Standard Vashya score matrix [boy][girl].
+/*
+ * Vashya score matrix, [boy][girl].
+ *
+ * Published Vashya tables genuinely disagree — PyJHora ships two of them side
+ * by side (Saravali and AstroYogi). Rather than pick one from memory, both were
+ * scored against ProKerala's own koota-by-koota results for nine measured
+ * couples: this one (AstroYogi, read [boy][girl]) matched 9/9; the table this
+ * replaced matched 8/9, getting a Jalachara groom with a Vanachara bride wrong.
+ * Cells no measured couple reached are taken from the same published table.
+ */
 const VASHYA_MATRIX = [
   //         Q    N    J    W    K
-  /* Q */ [2, 1, 1, 0, 1],
-  /* N */ [1, 2, 0.5, 0, 1],
-  /* J */ [1, 1, 2, 0, 1],
-  /* W */ [1, 0, 1, 2, 0],
-  /* K */ [0.5, 1, 1, 0, 2],
+  /* Q */ [2, 1, 1, 1.5, 1],
+  /* N */ [1, 2, 1.5, 0, 1],
+  /* J */ [1, 1.5, 2, 1, 1],
+  /* W */ [0, 0, 0, 2, 0],
+  /* K */ [1, 1, 1, 0, 2],
 ];
 
 // Yoni (animal) per nakshatra (0-based). 14 yonis.
@@ -129,35 +147,35 @@ const YONI_OF_NAK = [
   0, 1, 2, 3, 3, 4, 5, 2, 5, 6, 6, 7, 8, 9, 8, 9, 10, 10, 4, 11, 12, 11, 13, 0, 13, 7, 1,
 ];
 const YONI_NAME = ["Horse", "Elephant", "Sheep", "Serpent", "Dog", "Cat", "Rat", "Cow", "Buffalo", "Tiger", "Deer", "Monkey", "Mongoose", "Lion"];
-// Classical mortal-enemy yoni pairs (score 0).
-const YONI_ENEMIES: [number, number][] = [
-  [0, 8],  // Horse - Buffalo
-  [1, 13], // Elephant - Lion
-  [2, 11], // Sheep - Monkey
-  [3, 12], // Serpent - Mongoose
-  [4, 10], // Dog - Deer
-  [5, 6],  // Cat - Rat
-  [7, 9],  // Cow - Tiger
-];
-/**
- * Yoni Kuta, scored on three tiers rather than the classical five.
+/*
+ * Yoni Kuta, the full 14x14 table ([boy][girl]; symmetric).
  *
- * Same yoni (4) and the seven mortal-enemy pairs (0) are unambiguous and
- * correct. The classical table further splits the remainder into friendly (3),
- * neutral (2) and enemy (1), but published 14x14 matrices disagree with each
- * other on many cells — so everything in between is scored 2 rather than
- * guessed at.
- *
- * Practical effect: at most 1 point of the 36 on this koota, and only ever
- * toward the middle. `simplified` is surfaced in the result so a user
- * comparing totals with another site can see exactly where a small difference
- * comes from, instead of assuming one of the two is broken.
+ * This used to be a three-tier simplification — same yoni 4, the seven mortal
+ * enemies 0, and EVERYTHING else 2 — on the grounds that published matrices
+ * disagree. Measured against ProKerala's koota-by-koota results for nine
+ * couples, the simplification got two of nine wrong (a Cow groom with a Deer
+ * bride is 3, not 2) while this table, from PyJHora (the Python port of
+ * Jagannatha Hora), matched all nine. Rounding every friendly pair down to
+ * "neutral" was not caution, it was a consistent error in one direction.
  */
+const YONI_MATRIX = [
+  /* Horse    */ [4, 2, 2, 3, 2, 2, 2, 1, 0, 1, 1, 3, 2, 1],
+  /* Elephant */ [2, 4, 3, 3, 2, 2, 2, 2, 3, 1, 2, 3, 2, 0],
+  /* Sheep    */ [2, 3, 4, 2, 1, 2, 1, 3, 3, 1, 2, 0, 3, 1],
+  /* Serpent  */ [3, 3, 2, 4, 2, 1, 1, 1, 1, 2, 2, 2, 0, 2],
+  /* Dog      */ [2, 2, 1, 2, 4, 2, 1, 2, 2, 1, 0, 2, 1, 1],
+  /* Cat      */ [2, 2, 2, 1, 2, 4, 0, 2, 2, 1, 3, 3, 2, 1],
+  /* Rat      */ [2, 2, 1, 1, 1, 0, 4, 2, 2, 2, 2, 2, 1, 2],
+  /* Cow      */ [1, 2, 3, 1, 2, 2, 2, 4, 3, 0, 3, 2, 2, 1],
+  /* Buffalo  */ [0, 3, 3, 1, 2, 2, 2, 3, 4, 1, 2, 2, 2, 1],
+  /* Tiger    */ [1, 1, 1, 2, 1, 1, 2, 0, 1, 4, 1, 1, 2, 1],
+  /* Deer     */ [1, 2, 2, 2, 0, 3, 2, 3, 2, 1, 4, 2, 2, 1],
+  /* Monkey   */ [3, 3, 0, 2, 2, 3, 2, 2, 2, 1, 2, 4, 3, 2],
+  /* Mongoose */ [2, 2, 3, 0, 1, 2, 1, 2, 2, 2, 2, 3, 4, 2],
+  /* Lion     */ [1, 0, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2, 2, 4],
+];
 function yoniScore(a: number, b: number): { score: number; simplified: boolean } {
-  if (a === b) return { score: 4, simplified: false };
-  const enemy = YONI_ENEMIES.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
-  if (enemy) return { score: 0, simplified: false };
-  return { score: 2, simplified: true };
+  return { score: YONI_MATRIX[a][b], simplified: false };
 }
 
 // Gana per nakshatra: 0 Deva, 1 Manushya, 2 Rakshasa
@@ -165,9 +183,10 @@ const GANA_OF_NAK = [
   0, 1, 2, 1, 0, 1, 0, 0, 2, 2, 1, 1, 0, 2, 0, 2, 0, 2, 2, 1, 1, 0, 2, 2, 1, 1, 0,
 ];
 const GANA_NAME = ["Deva", "Manushya", "Rakshasa"];
-// [boy][girl]
+// [boy][girl]. A Deva groom with a Rakshasa bride is 0, not 1: ProKerala scored
+// two measured couples that way, and this cell was the only one that differed.
 const GANA_MATRIX = [
-  /* Deva */ [6, 6, 1],
+  /* Deva */ [6, 6, 0],
   /* Manu */ [5, 6, 0],
   /* Raks */ [1, 0, 6],
 ];
@@ -320,11 +339,24 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
   const lordsFriendly = boy.rasiLord === girl.rasiLord ||
     (FRIENDS[boy.rasiLord]?.includes(girl.rasiLord) && FRIENDS[girl.rasiLord]?.includes(boy.rasiLord));
   const bhakootCancelled = badBhakoot && lordsFriendly;
-  const bhScore = !badBhakoot || bhakootCancelled ? 7 : 0;
+  /*
+   * The cancellation softens the DOSHA; it does not hand back the 7 points.
+   *
+   * This used to score a cancelled Bhakoot as a full 7, which put totals up to
+   * seven points above what ProKerala — and the classical table — give: a
+   * couple ProKerala scores 21/36 read here as 27, "very good" instead of
+   * "good". Across nine measured couples, 0-on-a-bad-distance matched every
+   * one. The cancellation is still reported, in the note and in the dosha.
+   */
+  const bhScore = badBhakoot ? 0 : 7;
   kootas.push({
     name: "Bhakoot", max: 7, score: bhScore,
     boy: boy.rasi, girl: girl.rasi,
-    note: bhScore === 7 ? (bhakootCancelled ? "Bhakoot dosha cancelled (friendly lords)." : "Prosperity & family welfare supported.") : `Bhakoot dosha (${pair}) — affects finances/health.`,
+    note: !badBhakoot
+      ? "Prosperity & family welfare supported."
+      : bhakootCancelled
+        ? `Bhakoot dosha (${pair}), softened because the Moon-sign lords are friendly.`
+        : `Bhakoot dosha (${pair}) — affects finances/health.`,
   });
 
   // 8) Nadi. Same nadi => 0 (Nadi dosha) unless same nakshatra (exception).
@@ -356,7 +388,14 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
   else if (girl.manglik) mangal = "Bride is Manglik, groom is not — remedies advised before marriage.";
   else mangal = "Neither is Manglik — no Mangal dosha.";
 
-  const bhakoot = bhScore === 7 ? "No Bhakoot dosha." : `Bhakoot dosha present (${pair}).`;
+  // The score and the dosha are two different questions now: a cancelled
+  // Bhakoot still scores 0 (the classical table), but as a DOSHA it is softened
+  // and should not be shown as a live danger.
+  const bhakoot = !badBhakoot
+    ? "No Bhakoot dosha."
+    : bhakootCancelled
+      ? `Bhakoot dosha present (${pair}), but cancelled — the Moon-sign lords are friendly.`
+      : `Bhakoot dosha present (${pair}).`;
   const nadi = nadiScore === 8 ? "No Nadi dosha." : "Nadi dosha present.";
 
   // `clear` is decided HERE, from the scores, and shipped alongside the text.
@@ -368,7 +407,7 @@ export function matchKundli(boy: PersonMoon, girl: PersonMoon): MatchResult {
     doshas: {
       mangal, bhakoot, nadi,
       mangalClear: !(boy.manglik !== girl.manglik),
-      bhakootClear: bhScore === 7,
+      bhakootClear: !badBhakoot || bhakootCancelled,
       nadiClear: nadiScore === 8,
     },
   };
