@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609151016",
-  "url": "/ota/web-202609151016.zip",
-  "checksum": "810de8e1c548adfb1d710757168f997dc68ed6a97121f8616ecdaa02367a82d7",
+  "build": "202609151120",
+  "url": "/ota/web-202609151120.zip",
+  "checksum": "c38e9c3284f5b68a4dfa0863542b2d7c3a7576d3394e889b6c68b392bc7434bc",
   "min_native": "1.17",
-  "notes": "Home screen back to the original layout"
+  "notes": ""
 };
