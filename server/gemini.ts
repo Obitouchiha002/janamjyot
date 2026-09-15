@@ -5,6 +5,7 @@
  * chart data we computed from Prokerala. We build a minimal, category-relevant
  * "chart packet" and pass only that — never the raw provider response.
  */
+import { wrongPlacements, correctionNote } from "./claim-check";
 import { llmGenerate } from "./llm";
 import { detectYogas } from "./yogas";
 
@@ -62,6 +63,13 @@ ACCURACY & INTEGRITY (never break these):
 - Each planet has an exact "house" and "sign" in the data — always use those
   values. NEVER guess a planet's house from its sign (Capricorn does NOT mean
   the 10th house).
+- A plain "Nth house" ALWAYS means the BIRTH CHART, and must match
+  birth_chart_facts exactly. The divisional charts label their own houses
+  (house_in_D9, house_in_D10 …) and transits label theirs
+  (transit_house_from_lagna). If you use one of those, say so in the SAME
+  sentence — "D10 mein Sun 6th house mein hai", "Jupiter abhi gochar mein 1st
+  house se guzar raha hai". Writing a D10 or transit number as a plain "Nth
+  house" states something false about this person's birth chart.
 - NEVER fabricate specific facts. Do not make up exact dates, ages, amounts,
   names or events that are not derivable from the data. For TIMING, use only the
   dasha/transit periods actually given, and express it as an approximate window
@@ -191,17 +199,48 @@ const PACKET_CONFIG: Record<Category, PacketConfig> = {
 };
 
 /** Compact a divisional chart to { ascendant_sign, planets:[{planet,sign,house}] }. */
-function compactDivisional(c: any) {
+/*
+ * A divisional chart, with its house numbers LABELLED AS ITS OWN.
+ *
+ * Every divisional used to carry a plain `house` field, exactly like the birth
+ * chart's. An audit of generated reports found one placement claim in five was
+ * false — "Sun in the 6th house" for a Sun sitting in the 9th — and every
+ * single one traced back to a divisional: the model read D10's "house: 6" and
+ * wrote it as a birth-chart fact. None were invented. So the key itself now
+ * says which chart it belongs to; "house_in_D10" cannot be mistaken for the
+ * birth chart the way a second "house" could.
+ */
+function compactDivisional(c: any, tag = "Dx") {
   if (!c) return null;
   return {
+    chart: tag,
     ascendant_sign: c.ascendant_sign ?? "",
     planets: (c.planet_positions ?? []).map((p: any) => ({
       planet: p.planet,
       sign: p.sign,
-      house: p.house,
+      [`house_in_${tag}`]: p.house,
       retrograde: p.retrograde,
     })),
   };
+}
+
+/**
+ * The birth chart's placements as plain sentences — the only placements a
+ * reading may state as "<planet> in the Nth house".
+ *
+ * Handed over in words as well as JSON because a model is much less likely to
+ * cross two numbers it reads as a sentence than two it reads as fields.
+ */
+export function birthChartFactSheet(chart: any): string {
+  const ord = (n: number) => {
+    const s = ["th", "st", "nd", "rd"], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+  const lines = (chart?.planet_positions ?? []).map((p: any) =>
+    `${p.planet} — ${p.sign}, ${ord(p.house)} house${p.retrograde ? " (retrograde)" : ""}`,
+  );
+  const lagna = chart?.ascendant?.sign || chart?.d1_chart?.ascendant_sign || "";
+  return [`Lagna (1st house): ${lagna}`, ...lines].join("; ");
 }
 
 /**
@@ -233,6 +272,9 @@ export function buildFullChartContext(chart: any, cfg?: PacketConfig) {
   const wants = (d: "D6" | "D10" | "D11") => !cfg || cfg.divisionals.includes(d);
   const wantsD9 = !cfg || cfg.includeD9;
   return {
+    // Read this before anything else: the only "<planet> in the Nth house"
+    // statements that are true of THIS person's birth chart.
+    birth_chart_facts: birthChartFactSheet(chart),
     birth_summary: chart.summary,
     /*
      * The calculation basis, WITHOUT the birth datetime.
@@ -266,10 +308,10 @@ export function buildFullChartContext(chart: any, cfg?: PacketConfig) {
         retrograde: p.retrograde,
       })),
     },
-    d9_navamsa: wantsD9 ? compactDivisional(chart.d9_chart) : undefined,
-    d10_dasamsa_career: wants("D10") ? compactDivisional(chart.divisional_charts?.D10) : undefined,
-    d6_shashtamsa_health: wants("D6") ? compactDivisional(chart.divisional_charts?.D6) : undefined,
-    d11_ekadasamsa_gains: wants("D11") ? compactDivisional(chart.divisional_charts?.D11) : undefined,
+    d9_navamsa: wantsD9 ? compactDivisional(chart.d9_chart, "D9") : undefined,
+    d10_dasamsa_career: wants("D10") ? compactDivisional(chart.divisional_charts?.D10, "D10") : undefined,
+    d6_shashtamsa_health: wants("D6") ? compactDivisional(chart.divisional_charts?.D6, "D6") : undefined,
+    d11_ekadasamsa_gains: wants("D11") ? compactDivisional(chart.divisional_charts?.D11, "D11") : undefined,
     dasha: {
       current: chart.dasha?.current ?? null,
       next_7_years: chart.dasha?.next_7_years ?? [],
@@ -1060,6 +1102,41 @@ export function tidyReport<T>(value: T): T {
   return value;
 }
 
+/** planet → house it is transiting now, from the compact transit packet. */
+function transitHouseMap(transit: any): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of transit?.transiting_planets ?? []) {
+    const h = Number(p.transit_house_from_lagna ?? p.house_from_lagna);
+    if (p.planet && h) out[p.planet] = h;
+  }
+  return out;
+}
+
+/**
+ * Generate, fact-check every birth-chart placement, and regenerate ONCE with a
+ * correction that names exactly what was wrong.
+ *
+ * Only the regeneration costs anything, and only when a draft is wrong. The
+ * retry is kept only if it is actually better — a second draft with as many
+ * errors as the first is not an improvement worth the new wording.
+ */
+async function generateChecked(
+  prompt: string, chart: any, transit: any, opts: Parameters<typeof llmGenerate>[1],
+): Promise<string> {
+  const text = await llmGenerate(prompt, opts);
+  const tr = transitHouseMap(transit);
+  const wrong = wrongPlacements(text, chart, tr);
+  if (!wrong.length) return text;
+  console.warn(`[claims] ${wrong.length} false birth-chart placement(s) — regenerating once:`,
+    wrong.map((w) => `${w.planet} ${w.said}→${w.actual}`).join(", "));
+  const retry = await llmGenerate(prompt + correctionNote(wrong), opts).catch(() => null);
+  if (!retry) return text;
+  const still = wrongPlacements(retry, chart, tr);
+  console.warn(`[claims] after correction: ${still.length} left`);
+  return still.length < wrong.length ? retry : text;
+}
+
+
 /**
  * "Here is what already happened" — the section that decides whether a person
  * believes the rest of the report.
@@ -1234,7 +1311,7 @@ ${JSON.stringify(fullContext, null, 2)}`;
     // (original note)
   // allowance on hidden reasoning otherwise, and the JSON arrives cut in half
   // — which is exactly how a paid-for report turned into an error.
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
+  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
 
   const j = parseJsonLoose(text);
   if (!j) return { error: "Failed to parse AI report", raw: text };
@@ -1300,7 +1377,7 @@ Give 5 to 7 sections. Keep each body a few natural sentences, not a giant essay.
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(context, null, 2)}`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
+  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
   {
     const j = parseJsonLoose(text);
     if (!j) return { error: "Failed to parse report", raw: text };

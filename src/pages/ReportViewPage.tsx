@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ReportProgress } from "@/components/ReportProgress";
 import { useParams } from "react-router-dom";
 import { Download, Share2, Sparkles, Loader2 } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
@@ -63,7 +64,7 @@ export default function ReportViewPage() {
     if (data.disclaimer) { y += 4; wrap(data.disclaimer, 9.5, [150, 150, 150], 12, "helvetica", "italic"); }
 
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(180, 150, 80);
-    doc.text("JanamJyot · janamjyot.vercel.app", M, PH - 28);
+    doc.text("JanamJyot · janamjyot.lzworth.in", M, PH - 28);
     return doc;
   };
 
@@ -93,19 +94,13 @@ export default function ReportViewPage() {
       } else {
         const text = `*${md(data.title)}*\n\n${md(data.intro)}\n\n` +
           (data.sections || []).map((s: any) => `*${md(s.heading)}*\n${md(s.body)}`).join("\n\n");
-        await shareText(data.title, text, "https://janamjyot.vercel.app");
+        await shareText(data.title, text, "https://janamjyot.lzworth.in");
       }
     } catch { /* ignore */ } finally { setBusy(""); }
   };
 
   if (loading) {
-    return (
-      <div className="space-y-3 pt-2">
-        <div className="skeleton h-[140px]" />
-        <div className="skeleton h-[130px]" />
-        <div className="skeleton h-[130px]" />
-      </div>
-    );
+    return <ReportProgress />;
   }
   if (failed || !data) {
     return (

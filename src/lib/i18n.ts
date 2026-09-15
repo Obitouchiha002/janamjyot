@@ -198,6 +198,12 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Colour": { hi: "रंग", hinglish: "Rang" },
 
   // --- home (the launch layout) ------------------------------------------
+  "Preparing your report": { hi: "आपकी रिपोर्ट तैयार हो रही है", hinglish: "Aapki report taiyaar ho rahi hai" },
+  "Reading your birth chart": { hi: "आपकी जन्म कुंडली पढ़ी जा रही है", hinglish: "Aapki janm kundli padhi ja rahi hai" },
+  "Lining up your dasha periods": { hi: "आपकी दशाओं का क्रम बनाया जा रहा है", hinglish: "Aapki dashaon ka kram banaya ja raha hai" },
+  "Writing each area of your life": { hi: "जीवन के हर क्षेत्र पर लिखा जा रहा है", hinglish: "Jeevan ke har kshetra par likha ja raha hai" },
+  "Checking every placement against your chart": { hi: "हर ग्रह-स्थिति आपकी कुंडली से जाँची जा रही है", hinglish: "Har grah-sthiti aapki kundli se jaanchi ja rahi hai" },
+  "This usually takes under a minute. You can keep this screen open.": { hi: "आम तौर पर एक मिनट से कम लगता है। यह स्क्रीन खुली रखें।", hinglish: "Aam taur par ek minute se kam lagta hai. Ye screen khuli rakhein." },
   "Dasha": { hi: "दशा", hinglish: "Dasha" },
   "Moon": { hi: "चंद्र", hinglish: "Chandra" },
   "Good night": { hi: "शुभ रात्रि", hinglish: "Shubh ratri" },

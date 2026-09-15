@@ -195,11 +195,14 @@ export function compactTransitForAI(tr: TransitResult) {
     as_of: tr.datetime,
     note: "LIVE planetary transits right now. Use these (together with the dasha) for the PRESENT and near-FUTURE phases of the answer.",
     natal_reference: { lagna: tr.natal.lagna, moon_rashi: tr.natal.moon },
+    // Labelled as TRANSIT houses. A plain "house_from_lagna" was being read as
+    // a birth-chart placement, so a report would say "Jupiter in the 1st house"
+    // about a Jupiter that is only passing through it this year.
     transiting_planets: tr.planets.map((p) => ({
       planet: p.planet,
       sign: p.sign,
-      house_from_lagna: p.house_from_lagna,
-      house_from_moon: p.house_from_moon,
+      transit_house_from_lagna: p.house_from_lagna,
+      transit_house_from_moon: p.house_from_moon,
       retrograde: p.retrograde,
     })),
     highlights: tr.highlights,

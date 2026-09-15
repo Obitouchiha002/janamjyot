@@ -12,14 +12,15 @@
     "check:accuracy": "tsx server/__checks__/accuracy.ts",
     "check:panchang": "tsx server/__checks__/panchang.ts",
     "check:credits": "tsx server/__checks__/credits.ts",
-    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals && npm run check:hindu-calendar",
+    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals && npm run check:hindu-calendar && npm run check:claims",
     "sync:app": "node scripts/prune-app-dist.mjs && cap sync android",
     "check:failover": "tsx server/__checks__/failover.ts",
     "check:day-signals": "tsx server/__checks__/day-signals.ts",
     "check:hindu-calendar": "tsx server/__checks__/hindu-calendar.ts",
     "check:credits-race": "tsx server/__checks__/credits-race.ts",
     "ota:publish": "node scripts/ota-publish.mjs",
-    "build:apk": "node scripts/ota-publish.mjs && npx cap sync android && (cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleRelease) && node scripts/copy-apk.mjs"
+    "build:apk": "node scripts/ota-publish.mjs && npx cap sync android && (cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleRelease) && node scripts/copy-apk.mjs",
+    "check:claims": "tsx server/__checks__/claims.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

@@ -245,7 +245,7 @@ export async function renderShareCardPremium(data: ShareCardData): Promise<strin
   c.fillText('free Janam Kundli', tx, qy + 88);
   c.fillStyle = 'rgba(255,255,255,0.4)';
   c.font = '500 22px system-ui, -apple-system, sans-serif';
-  c.fillText('janamjyot.vercel.app', tx, qy + 124);
+  c.fillText('janamjyot.lzworth.in', tx, qy + 124);
 
   return canvas.toDataURL('image/png');
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { PastTimeline } from "@/components/PastTimeline";
+import { ReportProgress } from "@/components/ReportProgress";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp } from "lucide-react";
@@ -632,9 +633,7 @@ export default function LifeReportPage() {
           </Button>
         </div>
       ) : loading ? (
-        <div className="text-center py-24 text-muted-foreground flex flex-col items-center">
-          <Sparkles className="animate-spin h-10 w-10 mb-4 text-accent"/>Preparing your personalized report…
-        </div>
+        <ReportProgress />
       ) : error || !report ? (
         <div className="text-center py-16 space-y-4">
           <p className="text-muted-foreground">{error || "No report available."}</p>
