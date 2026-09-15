@@ -5,7 +5,7 @@
  * chart data we computed from Prokerala. We build a minimal, category-relevant
  * "chart packet" and pass only that — never the raw provider response.
  */
-import { wrongPlacements, correctionNote } from "./claim-check";
+import { chartClaimErrors } from "./claim-check";
 import { llmGenerate } from "./llm";
 import { detectYogas } from "./yogas";
 
@@ -240,7 +240,22 @@ export function birthChartFactSheet(chart: any): string {
     `${p.planet} — ${p.sign}, ${ord(p.house)} house${p.retrograde ? " (retrograde)" : ""}`,
   );
   const lagna = chart?.ascendant?.sign || chart?.d1_chart?.ascendant_sign || "";
-  return [`Lagna (1st house): ${lagna}`, ...lines].join("; ");
+  /*
+   * House lords, stated rather than left to be counted. Without them the model
+   * counts signs from the lagna in its head and miscounts — "Venus, your 10th
+   * lord" for a Gemini lagna whose 10th lord is Jupiter, twice in six live
+   * answers. Grouped by planet so it reads as the sentence people are told:
+   * "Saturn rules the 8th and 9th".
+   */
+  const rules = new Map<string, number[]>();
+  for (const h of chart?.d1_chart?.houses ?? []) {
+    if (!h?.sign_lord || !h?.house) continue;
+    rules.set(h.sign_lord, [...(rules.get(h.sign_lord) ?? []), Number(h.house)]);
+  }
+  const lordLine = rules.size
+    ? `House lords: ${[...rules.entries()].map(([pl, hs]) => `${pl} rules ${hs.sort((a, b) => a - b).map(ord).join(" & ")}`).join(", ")}`
+    : "";
+  return [`Lagna (1st house): ${lagna}`, ...lines, lordLine].filter(Boolean).join("; ");
 }
 
 /**
@@ -412,13 +427,24 @@ export function buildChartPacket(chart: any, category: Category, transit?: any) 
 
   // Always include EVERY chart, then add a "focus" block pointing the AI at the
   // houses/planets/vargas most relevant to the question's topic.
+  /*
+   * Where each focus house's lord sits, in the same few fields every other
+   * placement in the packet uses. This used to carry the lord's whole planet
+   * record — longitude, sign_id, pada, the sign's own lord — twice for a lord
+   * that rules two focus houses: hundreds of tokens of numbers no answer reads,
+   * on the free tier where every token is a slice of someone's next question.
+   */
   const focusHouses = cfg.houses.map((n) => {
     const h = getHouse(chart, n);
+    const l = houseLordPlacement(chart, n);
+    const lp = l?.lord_placement;
     return {
       house: n,
       sign: h?.sign ?? "",
       planets_in_house: h?.planets ?? [],
-      lord_info: houseLordPlacement(chart, n),
+      lord: l?.lord ?? null,
+      lord_in_house: lp?.house ?? null,
+      lord_in_sign: lp?.sign ?? null,
     };
   });
 
@@ -432,7 +458,13 @@ export function buildChartPacket(chart: any, category: Category, transit?: any) 
   const focusPlanets =
     category === "general"
       ? []
-      : cfg.planets.map((name: string) => getPlanet(chart, name)).filter(Boolean);
+      : cfg.planets
+          .map((name: string) => getPlanet(chart, name))
+          .filter(Boolean)
+          .map((p: any) => ({
+            planet: p.planet, sign: p.sign, house: p.house, degree: p.degree,
+            nakshatra: p.nakshatra, retrograde: !!p.retrograde,
+          }));
 
   /*
    * Today, and how old this person is today — computed here, never left to the
@@ -583,7 +615,7 @@ ${languageInstruction(args.language)}`;
   // Tries each configured AI provider in turn. No output cap — the answer length
   // adapts to the question (see prompt). thinkingBudget:0 keeps Gemini 2.5 from
   // spending tokens on hidden reasoning and avoids truncation.
-  return await llmGenerate(prompt, { temperature: 0.85, thinkingBudget: 0 });
+  return await generateChecked(prompt, args.chart, args.transit, { temperature: 0.8, thinkingBudget: 0, purpose: "ask" });
 }
 
 /**
@@ -636,7 +668,8 @@ read their chart, acknowledge the feeling behind the question if there is one,
 then give a real, grounded answer with timing and one practical step.
 2-3 messages separated by lines of only "|||", no preamble message.`;
 
-  const raw = await llmGenerate(prompt, { temperature: 0.85, thinkingBudget: 0 });
+  // Same fact-check as the main chat: a persona's voice is no licence to get the chart wrong.
+  const raw = await generateChecked(prompt, args.chart, args.transit, { temperature: 0.8, thinkingBudget: 0, purpose: "consult" });
   return splitBubbles(raw);
 }
 
@@ -660,6 +693,95 @@ talk about them.
 • This chat — ask anything about your chart, today/tomorrow, or the app.
 • Free: everyday things (kundli, charts, panchang, daily guidance, 2 kundlis). Deep readings use credits; a ₹1 trial opens everything for 3 days.`;
 
+/*
+ * The two optional parts of a chat prompt, sent only when a question can use
+ * them (see promptNeeds). Kept word-for-word as they were when they went out
+ * with every question.
+ */
+const PART4_TASKS = `PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
+  • You can also DO things, not only talk about them. If the person is asking
+    for one of these — not merely mentioning it — write the marker "<<DO>>" on
+    its own line and then EXACTLY ONE of these words, nothing else:
+      match        they want a kundli matched with someone
+      life_report  they want their full life report
+      timeline     they want their next years laid out
+      career       they want a career report
+      wealth       they want a money/wealth report
+      marriage     they want a marriage report
+      d1           they want to SEE their birth chart / lagna kundli / D1
+      d9           they want to SEE their navamsa / D9 chart
+      pdf          they want their life report as a PDF to keep or send
+      add_person   the question is about SOMEONE ELSE's own life and needs that
+                   person's kundli — write this whenever you have just told them
+                   you cannot answer for another person from this chart, so the
+                   offer is something they can act on rather than a suggestion
+  • The app turns this into a real action for them — for "match" it opens the
+    other person's details right inside the chat and runs the real matching;
+    for "d1"/"d9" the chart is DRAWN under your message; for "pdf" the file is
+    built and handed to them there.
+  • With "d1" or "d9", the chart appears right below what you wrote. Use PART 1
+    to say what it MEANS for them in one or two plain lines — the kind of person
+    it describes, the area of life it leans on — and keep every planet name,
+    house number and yoga in PART 2 where they belong. "Aapka Lagna Mithun hai,
+    jisme Shani virajmaan hain, 7th house mein Budh-Shukra ki yuti" is PART 2
+    written in the wrong place. After this they can ask about anything in the
+    chart and you are both looking at the same one.
+  • Do NOT write this marker for an ordinary question that merely touches the
+    topic. "Meri shaadi kab hogi?" is a question, answer it. "Meri kundli
+    match kar do" is a task. When in doubt, leave it out.
+  • In PART 1, do not describe the form or tell them to go elsewhere in the
+    app — just answer warmly and let the action appear.
+
+`;
+
+const PART5_FACTS = `PART 5 — facts they just confirmed (after a "<<FACTS>>" marker), OPTIONAL:
+  • If THIS message states something factual about their own life, record it as
+    "key: value" lines, one per line, so it is never asked for or contradicted
+    again. Use these keys where they fit:
+      marital_status (single/married/divorced/widowed) · marriage_year ·
+      children (a number) · employment · job_title · city · studying ·
+      health_note · partner_name
+  • ONLY what THEY stated. Never what you inferred, never what the chart
+    suggests, never a maybe. "Meri shaadi 2021 mein hui" gives
+    marital_status: married and marriage_year: 2021. "Shaadi ka soch raha hoon"
+    gives nothing.
+  • If they correct something, write the new value — the newest statement wins.
+  • Nothing to record? Leave it out entirely.
+
+`;
+
+/** One earlier chat turn, kept to its gist. */
+function gist(text: unknown, max = 280): string {
+  const t = String(text ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+/*
+ * Which optional prompt parts a message can use.
+ *
+ * Deliberately generous — a missed task is a button that did not appear, while
+ * an extra part only costs tokens — so anything that looks like a request, a
+ * mention of another person, or a statement about their own life opts in.
+ * A short reply to a question we just asked ("haan, married hoon") counts as a
+ * statement too: it is usually the answer that fact was waiting for.
+ */
+export function promptNeeds(question: string, history?: { role: string; text: string }[]) {
+  const q = String(question || "").toLowerCase();
+  const actions =
+    /\b(match|matching|milan|milao|mila|report|pdf|timeline|download|share|d1|d9|navamsa|navamsh|navansh|lagna|chart|kundli|kundali|janam ?patri|dikha|dikhao|dikhaiye|bana|banao|banaiye|bhejo|add)\b/.test(q) ||
+    /(मिलान|मिला|रिपोर्ट|पीडीएफ|कुंडली|कुण्डली|चार्ट|दिखा|बना|नवांश|लग्न)/.test(q) ||
+    /\b(bhai|bhaiya|behen|bahen|didi|papa|pita|pitaji|mummy|mumma|maa|mother|father|mom|dad|pati|patni|husband|wife|beta|beti|son|daughter|dost|friend|boyfriend|girlfriend|bf|gf|partner|fiance|fiancee|sasur|saas|bhabhi|jiju|uncle|aunty|chacha|chachi|mama|mami|nana|nani|dada|dadi|brother|sister|uska|uski|uske|unka|unki|unke|usko|unko)\b/.test(q) ||
+    /(भाई|बहन|दीदी|पापा|पिता|मम्मी|माँ|माता|पति|पत्नी|बेटा|बेटी|दोस्त|सास|ससुर|भाभी|उसका|उसकी|उनका|उनकी)/.test(q);
+  const lastYou = [...(history ?? [])].reverse().find((m) => m.role !== "user");
+  const answeringUs = !!lastYou && /\?\s*$/.test(String(lastYou.text ?? "").trim()) && q.split(/\s+/).length <= 14;
+  const facts =
+    answeringUs ||
+    /\b(19|20)\d\d\b/.test(q) ||
+    /\b(married|unmarried|single|divorce|divorced|widow|widowed|engaged|shaadi ho|shaadi hui|shadi ho|shadi hui|shaadi nahi|shadi nahi|shaadi ki|meri wife|meri biwi|mere pati|my wife|my husband|bacche|bachche|bache|children|kids|job|naukri|business|kaam karta|kaam karti|student|padhai|padh raha|padh rahi|college|school|rehta|rehti|live in|i am a|i'm a|main ek|mai ek)\b/.test(q) ||
+    /(शादी|विवाह|तलाक|बच्च|नौकरी|जॉब|बिज़नेस|व्यापार|पढ़ाई|रहता|रहती)/.test(q);
+  return { actions, facts };
+}
+
 /**
  * The ONE universal chat answer.
  *
@@ -677,6 +799,7 @@ talk about them.
  * in when relevant so "how is tomorrow" and "what does this feature do" both get
  * a grounded, non-vague answer.
  */
+
 export async function answerUniversal(args: {
   chart: any;
   question: string;
@@ -696,7 +819,25 @@ export async function answerUniversal(args: {
   /** A linked person (Rishta): their calculated chart summary and the computed match. */
   relation?: any;
 }): Promise<{ answer: string; reason: string; next: string[]; action?: string; facts?: Record<string, string | number> }> {
-  const packet = buildChartPacket(args.chart, args.category, args.transit);
+  const packet: any = buildChartPacket(args.chart, args.category, args.transit);
+
+  /*
+   * Only the prompt THIS question needs.
+   *
+   * A chat was ~7,000 tokens, and the free Groq tier allows 8,000 a minute per
+   * model — about one chat a minute before the next person is pushed to a
+   * weaker model. The instructions for actions (~640 tokens) and for recording
+   * facts (~230) went out with every question, though most questions are
+   * neither a task nor a statement about the person's life, and the dasha
+   * periods already lived through only matter to a question about the past.
+   *
+   * Nothing that guards ACCURACY is conditional: the system prompt, every
+   * placement and tense rule in PART 1 and the reason in PART 2 go out with
+   * every question. Staying on the strongest model is itself the accuracy win —
+   * the weaker fallback is where wrong placements and English drift came from.
+   */
+  const need = promptNeeds(args.question, args.history);
+  if (!args.pastContext && packet?.all_charts?.dasha?.past) delete packet.all_charts.dasha.past;
   /*
    * The age, stated on its own, immediately above the question.
    *
@@ -766,9 +907,11 @@ export async function answerUniversal(args: {
    * called at all, which is both reliable and free. Two mechanisms for one job
    * was one too many, and the prompt was the half that made the replies worse.
    */
+  // Earlier turns are kept to their gist: the model needs to know what was
+  // said, not to re-read eight full answers, which cost more than the chart.
   const convo = (args.history ?? [])
     .slice(-8)
-    .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.text}`)
+    .map((m) => `${m.role === "user" ? "User" : "You"}: ${gist(m.text)}`)
     .join("\n");
 
   const prompt = `${SYSTEM_PROMPT}
@@ -878,60 +1021,32 @@ ${args.suggested?.length ? `  • You have ALREADY offered these — do not repe
 ${args.suggested.map((x) => `      - ${x}`).join("\n")}` : ""}
   • Same language as PART 1.
 
-PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
-  • You can also DO things, not only talk about them. If the person is asking
-    for one of these — not merely mentioning it — write the marker "<<DO>>" on
-    its own line and then EXACTLY ONE of these words, nothing else:
-      match        they want a kundli matched with someone
-      life_report  they want their full life report
-      timeline     they want their next years laid out
-      career       they want a career report
-      wealth       they want a money/wealth report
-      marriage     they want a marriage report
-      d1           they want to SEE their birth chart / lagna kundli / D1
-      d9           they want to SEE their navamsa / D9 chart
-      pdf          they want their life report as a PDF to keep or send
-      add_person   the question is about SOMEONE ELSE's own life and needs that
-                   person's kundli — write this whenever you have just told them
-                   you cannot answer for another person from this chart, so the
-                   offer is something they can act on rather than a suggestion
-  • The app turns this into a real action for them — for "match" it opens the
-    other person's details right inside the chat and runs the real matching;
-    for "d1"/"d9" the chart is DRAWN under your message; for "pdf" the file is
-    built and handed to them there.
-  • With "d1" or "d9", the chart appears right below what you wrote. Use PART 1
-    to say what it MEANS for them in one or two plain lines — the kind of person
-    it describes, the area of life it leans on — and keep every planet name,
-    house number and yoga in PART 2 where they belong. "Aapka Lagna Mithun hai,
-    jisme Shani virajmaan hain, 7th house mein Budh-Shukra ki yuti" is PART 2
-    written in the wrong place. After this they can ask about anything in the
-    chart and you are both looking at the same one.
-  • Do NOT write this marker for an ordinary question that merely touches the
-    topic. "Meri shaadi kab hogi?" is a question, answer it. "Meri kundli
-    match kar do" is a task. When in doubt, leave it out.
-  • In PART 1, do not describe the form or tell them to go elsewhere in the
-    app — just answer warmly and let the action appear.
-
-PART 5 — facts they just confirmed (after a "<<FACTS>>" marker), OPTIONAL:
-  • If THIS message states something factual about their own life, record it as
-    "key: value" lines, one per line, so it is never asked for or contradicted
-    again. Use these keys where they fit:
-      marital_status (single/married/divorced/widowed) · marriage_year ·
-      children (a number) · employment · job_title · city · studying ·
-      health_note · partner_name
-  • ONLY what THEY stated. Never what you inferred, never what the chart
-    suggests, never a maybe. "Meri shaadi 2021 mein hui" gives
-    marital_status: married and marriage_year: 2021. "Shaadi ka soch raha hoon"
-    gives nothing.
-  • If they correct something, write the new value — the newest statement wins.
-  • Nothing to record? Leave it out entirely.
-
-Write PART 1, the marker "<<REASON>>", PART 2, then — only if they apply — the
-markers "<<NEXT>>", "<<DO>>" and "<<FACTS>>" with their parts. Nothing else.
+${need.actions ? PART4_TASKS : ""}${need.facts ? PART5_FACTS : ""}Write PART 1, the marker "<<REASON>>", PART 2, then — only if they apply — the
+marker "<<NEXT>>"${need.actions ? ', "<<DO>>"' : ""}${need.facts ? ' and "<<FACTS>>"' : ""} with their parts. Nothing else.
 
 ${languageInstruction(args.language)}`;
 
-  const raw = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0 });
+  /*
+   * Checked before anyone reads it, the way reports are.
+   *
+   * A chat answer is shorter than a report but read more closely — it is the
+   * thing people screenshot and compare with another app. A false birth-chart
+   * placement, or the wrong running dasha, is caught here and the answer is
+   * written again once with the exact correction. That second call only
+   * happens when something was wrong, so on the free tier it costs nothing on
+   * the answers that were right.
+   */
+  const genOpts = { temperature: 0.7, thinkingBudget: 0, purpose: "chat" } as const;
+  let raw = await llmGenerate(prompt, genOpts);
+  {
+    const tr = transitHouseMap(args.transit);
+    const errs = chartClaimErrors(raw, args.chart, tr);
+    if (errs.count) {
+      console.warn(`[claims] chat: ${errs.summary} error(s) — regenerating once`);
+      const retry = await llmGenerate(prompt + errs.note(), genOpts).catch(() => null);
+      if (retry && chartClaimErrors(retry, args.chart, tr).count < errs.count) raw = retry;
+    }
+  }
 
   // Parsed defensively: a model that skips a marker must still produce a usable
   // answer rather than an empty bubble, so every part is optional on the way out.
@@ -1033,7 +1148,7 @@ EXACTLY these 3 short bubbles, nothing more:
 Only 3 bubbles. Do NOT explain strengths or list career/money/love/health — save
 everything for when they actually ask. Warm, human, brief.`;
 
-  const raw = await llmGenerate(prompt, { temperature: 0.85, thinkingBudget: 0 });
+  const raw = await generateChecked(prompt, args.chart, undefined, { temperature: 0.8, thinkingBudget: 0, purpose: "consult" });
   return splitBubbles(raw);
 }
 
@@ -1139,15 +1254,14 @@ async function generateChecked(
 ): Promise<string> {
   const text = await llmGenerate(prompt, opts);
   const tr = transitHouseMap(transit);
-  const wrong = wrongPlacements(text, chart, tr);
-  if (!wrong.length) return text;
-  console.warn(`[claims] ${wrong.length} false birth-chart placement(s) — regenerating once:`,
-    wrong.map((w) => `${w.planet} ${w.said}→${w.actual}`).join(", "));
-  const retry = await llmGenerate(prompt + correctionNote(wrong), opts).catch(() => null);
+  const errs = chartClaimErrors(text, chart, tr);
+  if (!errs.count) return text;
+  console.warn(`[claims] report: ${errs.summary} error(s) — regenerating once`);
+  const retry = await llmGenerate(prompt + errs.note(), opts).catch(() => null);
   if (!retry) return text;
-  const still = wrongPlacements(retry, chart, tr);
-  console.warn(`[claims] after correction: ${still.length} left`);
-  return still.length < wrong.length ? retry : text;
+  const still = chartClaimErrors(retry, chart, tr).count;
+  console.warn(`[claims] after correction: ${still} left`);
+  return still < errs.count ? retry : text;
 }
 
 
@@ -1557,11 +1671,11 @@ EXISTING NOTES:
 ${args.existingNotes || "(none yet)"}
 
 THEY SAID: ${args.question}
-ASTROLOGER REPLIED: ${args.reply}
+ASTROLOGER REPLIED: ${gist(args.reply, 500)}
 
 Updated notes:`;
 
-  const out = await llmGenerate(prompt, { temperature: 0.3, thinkingBudget: 0 });
+  const out = await llmGenerate(prompt, { temperature: 0.3, thinkingBudget: 0, light: true, purpose: "memory" });
   return String(out || "").trim();
 }
 

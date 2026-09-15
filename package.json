@@ -12,7 +12,7 @@
     "check:accuracy": "tsx server/__checks__/accuracy.ts",
     "check:panchang": "tsx server/__checks__/panchang.ts",
     "check:credits": "tsx server/__checks__/credits.ts",
-    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals && npm run check:hindu-calendar && npm run check:claims && npm run check:matching",
+    "check": "npm run lint && npm run check:accuracy && npm run check:panchang && npm run check:credits && npm run check:failover && npm run check:day-signals && npm run check:hindu-calendar && npm run check:claims && npm run check:matching && npm run check:rate-limit",
     "sync:app": "node scripts/prune-app-dist.mjs && cap sync android",
     "check:failover": "tsx server/__checks__/failover.ts",
     "check:day-signals": "tsx server/__checks__/day-signals.ts",
@@ -21,7 +21,8 @@
     "ota:publish": "node scripts/ota-publish.mjs",
     "build:apk": "node scripts/ota-publish.mjs && npx cap sync android && (cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleRelease) && node scripts/copy-apk.mjs",
     "check:claims": "tsx server/__checks__/claims.ts",
-    "check:matching": "tsx server/__checks__/matching.ts"
+    "check:matching": "tsx server/__checks__/matching.ts",
+    "check:rate-limit": "tsx server/__checks__/rate-limit.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

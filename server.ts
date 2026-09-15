@@ -169,6 +169,7 @@ import {
   matchQuestionChips,
   generateMatchReport,
   updateChatNotes,
+  promptNeeds,
   generateFriendAdvice,
   generateDailyHoroscope,
   generateDailyTip,
@@ -3979,6 +3980,18 @@ const PAST_RE = /\b(pichh?le|pichh?li|beete|beeta|guzre|past|last|previous|ab ta
 // rather than to the model's imagination.
 const APP_RE = /\b(app|feature|button|screen|kaise (use|kaam)|kaam kaise|how (do|to)|use kaise|option|setting|notif|kya kar sakte|kya kya kar|kya karte ho|what can you|who are you|tum kaun|aap kaun|kya kar sakta|kya bata sakte|help me with|madad)/i;
 
+/*
+ * Does this message tell us something about their life worth keeping in the
+ * chat notes? Generous on purpose — a missed note is a fact asked for twice —
+ * but "kal ka din kaisa hai" and a tapped suggestion carry nothing.
+ */
+function worthNoting(question: string, history: { role: string; text: string }[]): boolean {
+  const q = String(question).toLowerCase();
+  if (promptNeeds(question, history).facts) return true;
+  if (/\b(pareshan|tension|stress|dar|darr|worried|worry|confus|soch raha|soch rahi|decide|decision|chahta|chahti|plan|offer|loan|shift|move|abroad|videsh|breakup|jhagda|jhagde|ladai|problem|dikkat|takleef|beemar|bimar|operation|pregnan|exam|interview|promotion|transfer|resign|naukri chhod|job chhod)\b/.test(q)) return true;
+  return q.split(/\s+/).length >= 14;
+}
+
 app.post("/api/chat/universal", async (req, res) => {
   const chartId = req.body?.chartId;
   const question = req.body?.question;
@@ -4058,7 +4071,6 @@ app.post("/api/chat/universal", async (req, res) => {
     const distress = distressLevel(question);
     if (distress === "severe") {
       const { answer, next } = severeReply(language, userName);
-      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
       await insertChatMessage({ chartId, role: "assistant", message: answer, context: "chat", responseJson: { category: "wellbeing", next } });
       console.log("[chat-u] severe distress — fixed reply, not charged");
       return res.json({ answer, reason: "", category: "wellbeing", next });
@@ -4076,7 +4088,6 @@ app.post("/api/chat/universal", async (req, res) => {
      */
     if (isGreetingOnly(question)) {
       const g = greetingReply(language, userName);
-      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
       await insertChatMessage({
         chartId, role: "assistant", message: g.answer, context: "chat",
         responseJson: { category: "greeting", next: g.next, card: "chart" },
@@ -4147,7 +4158,6 @@ app.post("/api/chat/universal", async (req, res) => {
     const need = whatToAsk(question, knownFacts);
     if (need) {
       const c = clarifyReply(need, language, userName);
-      await insertChatMessage({ chartId, role: "user", message: question, context: "chat" });
       await insertChatMessage({
         chartId, role: "assistant", message: c.answer, context: "chat",
         responseJson: { category: "clarify", next: c.next },
@@ -4213,6 +4223,11 @@ app.post("/api/chat/universal", async (req, res) => {
         .catch((e) => console.warn("[chat-u] fact merge skipped:", e?.message));
     }
 
+    // Notes only when they said something that could be worth remembering. A
+    // question like "mera career kaisa rahega" holds nothing durable, and the
+    // notes call on every message was a second model request per chat on a
+    // free tier counted in tokens per minute.
+    if (!worthNoting(question, history)) return;
     updateChatNotes({ existingNotes: memory, question, reply: answer })
       .then((notes) => (notes && notes !== memory ? saveChatMemory(chartId, notes) : undefined))
       .catch((e) => console.warn("[chat-u] memory update skipped:", e?.message));
@@ -4346,6 +4361,7 @@ async function handleConsult(req: express.Request, res: express.Response) {
 
     // Refresh the long-term notes AFTER responding — this is bookkeeping, so it
     // must never make the user wait for their reply.
+    if (!worthNoting(question, history as any)) return;
     updateChatNotes({ existingNotes: memory, question, reply: bubbles.join(" ") })
       .then((notes) => (notes && notes !== memory ? saveChatMemory(chartId, notes) : undefined))
       .catch((e) => console.warn("[consult] memory update skipped:", e?.message));

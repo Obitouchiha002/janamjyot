@@ -35,6 +35,15 @@ export interface GenOpts {
   private?: boolean;
   /** What this call was for — chat, life_report, match… Recorded for costing. */
   purpose?: string;
+  /**
+   * Small bookkeeping (notes, labels) that a light model does as well as a big
+   * one. Sent to the light models first, with minimal reasoning, so it does not
+   * spend the strong models' per-minute token budget that the next person's
+   * actual question needs.
+   */
+  light?: boolean;
+  /** Set by llmGenerate: aborts a call that has run past its time. */
+  signal?: AbortSignal;
 }
 
 interface Provider {
@@ -47,6 +56,8 @@ interface Provider {
    * someone's privacy, and only one of those is recoverable.
    */
   trainsOnContent?: boolean;
+  /** Largest prompt+reply this provider accepts, in tokens, when it is known to be small. */
+  maxContext?: number;
   /** Paid-equivalent rate, US$ per million tokens, for costing free calls too. */
   rate?: { in: number; out: number };
 }
@@ -82,6 +93,10 @@ export interface ProviderStat {
   lastUsedAt?: string;
   /** Rate-limit headers, when the provider returns them (Groq/OpenAI/OpenRouter). */
   rateLimit?: Record<string, string>;
+  /** When `rateLimit` was read (ms since epoch) — the numbers age as the window refills. */
+  rateLimitAt?: number;
+  /** Do not send this provider anything before this time (ms since epoch). */
+  coolUntil?: number;
 }
 
 const statsMap = new Map<string, ProviderStat>();
@@ -107,11 +122,72 @@ function recordRateLimit(name: string, headers: Headers) {
   ];
   const rl: Record<string, string> = {};
   for (const k of keys) {
-    const v = headers.get(k);
+    // Cerebras names its per-minute bucket "…-tokens-minute"; read as the same.
+    const v = headers.get(k) ?? headers.get(k.replace(/(requests|tokens)$/, "$1-minute"));
     if (v) rl[k] = v;
   }
-  if (Object.keys(rl).length) stat(name).rateLimit = rl;
+  if (Object.keys(rl).length) {
+    stat(name).rateLimit = rl;
+    stat(name).rateLimitAt = Date.now();
+  }
 }
+
+/** "7.66s", "2m59.5s", "1h2m", "450ms" or plain seconds → milliseconds. */
+export function parseDurationMs(v: string | null | undefined): number {
+  if (!v) return 0;
+  const t = String(v).trim();
+  if (/^\d+(\.\d+)?$/.test(t)) return Math.round(Number(t) * 1000);
+  let ms = 0;
+  for (const [, n, u] of t.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
+    ms += Number(n) * (u === "h" ? 3600e3 : u === "m" ? 60e3 : u === "s" ? 1e3 : 1);
+  }
+  return Math.round(ms);
+}
+
+/*
+ * How long until this provider can take a prompt of this size.
+ *
+ * Groq's free tier is a token bucket — 8,000 a minute per model, refilling
+ * continuously — and one chat is several thousand of them. A 429 there almost
+ * never means "gone for the day"; it means "a few seconds". Treating it as a
+ * failure is what dropped people to the weakest model mid-conversation, where
+ * the answers drifted into English and got placements wrong.
+ *
+ * Two sources, whichever says wait longer: an explicit cool-down set by a 429,
+ * and the bucket as the provider last reported it, refilled for the time since.
+ */
+function waitMs(p: Provider, estTokens: number): number {
+  const s = stat(p.name);
+  const now = Date.now();
+  let wait = Math.max(0, (s.coolUntil ?? 0) - now);
+  const rl = s.rateLimit;
+  const limit = Number(rl?.["x-ratelimit-limit-tokens"] ?? 0);
+  const remaining = Number(rl?.["x-ratelimit-remaining-tokens"] ?? NaN);
+  if (limit > 0 && Number.isFinite(remaining) && s.rateLimitAt && estTokens <= limit) {
+    const perMs = limit / 60_000;
+    const available = Math.min(limit, remaining + (now - s.rateLimitAt) * perMs);
+    if (estTokens > available) wait = Math.max(wait, Math.ceil((estTokens - available) / perMs));
+  }
+  return wait;
+}
+
+/*
+ * The small models in a chain. A reply from one of these is worth a short wait
+ * for a strong model instead: they are where wrong placements and a slide into
+ * English came from. Override with AI_WEAK_MODELS (a regex).
+ */
+const WEAK = new RegExp(env("AI_WEAK_MODELS") || "gpt-oss-20b|flash-lite|8b|ollama", "i");
+/** Longest a single reply will wait, in total, for a rate limit to clear. */
+const MAX_WAIT_MS = Number(env("AI_MAX_WAIT_MS") || 12_000);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/*
+ * Time limits. The serverless function is killed at 60s, so the whole chain —
+ * waits, failed attempts and the answer — has to fit inside that, with room to
+ * save the reply and respond.
+ */
+const DEADLINE_MS = Number(env("AI_DEADLINE_MS") || 50_000);
+const CALL_TIMEOUT_MS = Number(env("AI_CALL_TIMEOUT_MS") || 25_000);
+const CALL_TIMEOUT_LONG_MS = Number(env("AI_CALL_TIMEOUT_LONG_MS") || 45_000);
 
 // ---- provider builders ----------------------------------------------------
 function geminiProvider(apiKey: string, model: string, tag: string): Provider {
@@ -129,6 +205,7 @@ function geminiProvider(apiKey: string, model: string, tag: string): Provider {
             ? { thinkingConfig: { thinkingBudget: opts.thinkingBudget } }
             : {}),
           ...(opts.json ? { responseMimeType: "application/json" } : {}),
+          ...(opts.signal ? { abortSignal: opts.signal } : {}),
         },
       });
       return res.text ?? "";
@@ -147,6 +224,7 @@ function openAICompatProvider(
     async generate(prompt, opts) {
       const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
+        signal: opts.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
@@ -157,12 +235,23 @@ function openAICompatProvider(
           temperature: opts.temperature ?? 0.9,
           ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
           ...(opts.json ? { response_format: { type: "json_object" } } : {}),
+          ...(opts.light && /gpt-oss/i.test(model) ? { reasoning_effort: "low" } : {}),
         }),
       });
       recordRateLimit(tag, res.headers);
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error(`${res.status} ${t.slice(0, 200)}`);
+        const err: any = new Error(`${res.status} ${t.slice(0, 200)}`);
+        if (res.status === 429) {
+          // Groq also says it in the body: "Please try again in 7.66s."
+          const inBody = t.match(/try again in ([\d.hms]+)/i)?.[1];
+          err.retryAfterMs =
+            parseDurationMs(res.headers.get("retry-after")) ||
+            parseDurationMs(inBody) ||
+            parseDurationMs(res.headers.get("x-ratelimit-reset-tokens")) ||
+            parseDurationMs(res.headers.get("x-ratelimit-reset-requests"));
+        }
+        throw err;
       }
       const j: any = await res.json();
       /*
@@ -197,6 +286,7 @@ function ollamaProvider(baseUrl: string, model: string, tag: string): Provider {
     async generate(prompt, opts) {
       const res = await fetch(`${root}/api/chat`, {
         method: "POST",
+        signal: opts.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model,
@@ -278,7 +368,7 @@ function buildProviders(): Provider[] {
   /*
    * Gemini models, tried in order. Flash first: its free-tier quota is large
    * enough that the limit is practically never reached, where 2.5-pro is capped
-   * at a few dozen a day. Override with GEMINI_MODELS.
+   * at a few dozen a day. Add models with GEMINI_MODELS (see below).
    *
    * The list ENDS with `gemini-flash-latest` on purpose. Google retires named
    * versions — gemini-2.0-flash and gemini-2.0-flash-lite both went 404 in
@@ -287,16 +377,25 @@ function buildProviders(): Provider[] {
    * whatever is current. Pinned versions lead so behaviour stays stable, and the
    * alias sits at the back so a retirement can never take the app down again.
    */
-  const geminiModels = (
-    env("GEMINI_MODELS") ||
-    env("GEMINI_MODEL") ||
-    "gemini-2.5-flash,gemini-flash-latest"
-  )
-    .split(",")
-    .map((m) => m.trim())
-    .filter(Boolean);
+  /*
+   * Current models lead; GEMINI_MODELS adds to them rather than replacing them.
+   *
+   * Production pinned a list that aged out from under it: gemini-2.0-flash went
+   * 404 and gemini-2.5-flash's free quota was spent, so every chat that reached
+   * Gemini burned five requests before a flash-lite answered generically. The
+   * newer flash models had their own untouched free quota the whole time.
+   * Checked Sept 2026: gemini-3.6-flash answers a full chart prompt in ~4s in
+   * good Hinglish; 3.5-flash is right but ~15s. A stale name in the env now
+   * costs one 404 every six hours instead of a failed hop on every message.
+   * GEMINI_MODELS_ONLY=true restores "use exactly the env list".
+   */
+  const envModels = (env("GEMINI_MODELS") || env("GEMINI_MODEL") || "")
+    .split(",").map((m) => m.trim()).filter(Boolean);
+  const geminiModels = env("GEMINI_MODELS_ONLY") === "true" && envModels.length
+    ? envModels
+    : [...new Set(["gemini-3.6-flash", "gemini-3.5-flash", ...envModels, "gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"])];
 
-  const byName: Record<string, Provider[]> = { ollama: [], gemini: [], groq: [], openrouter: [], openai: [], anthropic: [] };
+  const byName: Record<string, Provider[]> = { ollama: [], gemini: [], groq: [], cerebras: [], openrouter: [], openai: [], anthropic: [] };
 
   // Ollama — your local AI. Enabled when OLLAMA_MODEL (or OLLAMA_BASE_URL) is set.
   // Tried FIRST by default so chats run on your machine with no limits; the cloud
@@ -349,6 +448,25 @@ function buildProviders(): Provider[] {
       );
     }
   }
+  /*
+   * Cerebras — a second free home for the same strong models Groq serves.
+   *
+   * Free tier (checked Sept 2026): gpt-oss-120b and qwen-3.8-27b, each 5
+   * requests and 30K tokens a minute, 1M tokens a day — roughly 150 chats a
+   * day per model, in their own buckets, on top of Groq's. Cerebras states it
+   * does not store, log or reuse prompts, so it is privacy-safe like Groq.
+   * The free tier caps context at 8,192 tokens; `maxContext` makes the router
+   * skip it for a report prompt that would not fit instead of wasting a call.
+   */
+  if (env("CEREBRAS_API_KEY")) {
+    const models = (env("CEREBRAS_MODELS") || "gpt-oss-120b,qwen-3.8-27b")
+      .split(",").map((m) => m.trim()).filter(Boolean);
+    for (const m of models) {
+      const p = openAICompatProvider(env("CEREBRAS_API_KEY")!, "https://api.cerebras.ai/v1", m, `cerebras:${m}`);
+      p.maxContext = Number(env("CEREBRAS_MAX_CONTEXT") || 8192);
+      byName.cerebras.push(p);
+    }
+  }
   if (env("OPENROUTER_API_KEY")) {
     byName.openrouter.push(
       openAICompatProvider(
@@ -388,9 +506,17 @@ function buildProviders(): Provider[] {
   // local Ollama LAST — it's the final safety net (slow on most machines, lower
   // accuracy than the cloud models) so chat never fully dies, but it's only used
   // when everything else is exhausted. Override with AI_PROVIDER_ORDER.
-  const order = (env("AI_PROVIDER_ORDER") || "gemini,groq,openrouter,openai,anthropic,ollama")
+  const order = (env("AI_PROVIDER_ORDER") || "gemini,groq,cerebras,openrouter,openai,anthropic,ollama")
     .split(",")
     .map((s) => s.trim().toLowerCase());
+  // A provider with a key but missing from a hand-written AI_PROVIDER_ORDER is
+  // still used — after the listed ones — rather than silently never called.
+  for (const name of Object.keys(byName)) {
+    if (!order.includes(name) && byName[name].length) {
+      console.warn(`[llm] ${name} is configured but not in AI_PROVIDER_ORDER — added at the end`);
+      order.push(name);
+    }
+  }
   const ordered: Provider[] = [];
   for (const name of order) {
     for (const p of byName[name] ?? []) {
@@ -426,6 +552,7 @@ function buildProviders(): Provider[] {
 const PROVIDER_META: Record<string, { trains: boolean; rate: { in: number; out: number } }> = {
   gemini:     { trains: env("GEMINI_PAID_TIER") !== "true", rate: { in: 0.30, out: 2.50 } },
   groq:       { trains: false,                              rate: { in: 0.20, out: 0.60 } },
+  cerebras:   { trains: false,                              rate: { in: 0.35, out: 0.75 } },
   openrouter: { trains: env("OPENROUTER_ZDR") !== "true",   rate: { in: 0.50, out: 1.50 } },
   openai:     { trains: false,                              rate: { in: 0.40, out: 1.60 } },
   anthropic:  { trains: false,                              rate: { in: 3.00, out: 15.00 } },
@@ -542,6 +669,7 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
   const estTokens = Math.ceil(prompt.length / 3.5) + (opts.maxTokens ?? 1200);
   const fits = (p: Provider) => {
     const cap = Number(stat(p.name).rateLimit?.["x-ratelimit-limit-tokens"] ?? 0);
+    if (p.maxContext && estTokens > p.maxContext) return false;
     return !cap || estTokens <= cap;
   };
   const sized = usable.filter(fits);
@@ -553,16 +681,112 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
     usable = sized;
   }
 
+  /*
+   * Walk the chain — but a rate limit that clears in a few seconds is waited
+   * out, not treated as the provider being down.
+   *
+   * Picking the next provider:
+   *   • The next one in order is ready → use it, unless it is a WEAK model and
+   *     a strong one ahead of it (same privacy class) will be ready within the
+   *     wait budget; then wait for the strong one.
+   *   • It is cooling down → prefer a READY strong provider of the same privacy
+   *     class further down (another Groq model has its own bucket); else wait
+   *     if it fits the budget; else skip it for this reply.
+   * A private prompt is therefore never sent to a training provider just
+   * because a safe one needed three seconds.
+   */
+  const begun = Date.now();
+  const rank = new Map(usable.map((p, i) => [p, i]));
+  const queue = [...usable];
+  const skipped: Provider[] = [];
+  const retried = new Set<Provider>();
   let lastErr: any;
   let attempt = 0;
-  for (const p of usable) {
+  if (opts.light) {
+    // Light models first — within each privacy class, so this never moves a
+    // private prompt ahead onto a provider that trains on it.
+    const cls = (p: Provider) => (p.trainsOnContent ? 1 : 0);
+    queue.sort((a, b) => cls(a) - cls(b) || Number(!WEAK.test(a.name)) - Number(!WEAK.test(b.name)) || rank.get(a)! - rank.get(b)!);
+    queue.forEach((p, i) => rank.set(p, i));
+  }
+  let waited = 0;
+  const budget = () => Math.min(MAX_WAIT_MS - waited, DEADLINE_MS - (Date.now() - begun) - 15_000);
+  const pause = async (ms: number, why: string) => {
+    const t = Math.max(0, Math.ceil(ms));
+    if (!t) return;
+    console.log(`[llm] waiting ${(t / 1000).toFixed(1)}s for ${why}`);
+    await sleep(t);
+    waited += t;
+  };
+  const pick = async (): Promise<Provider | undefined> => {
+    while (queue.length) {
+      const head = queue[0];
+      const w = waitMs(head, estTokens);
+      if (w === 0) {
+        if (WEAK.test(head.name) && !opts.light) {
+          // A strong model further down (another provider serving the same
+          // model, in its own bucket) beats the weak one in front of it.
+          const later = queue.find((q) => q !== head && !WEAK.test(q.name) && q.trainsOnContent === head.trainsOnContent && waitMs(q, estTokens) === 0);
+          if (later) {
+            queue.splice(queue.indexOf(later), 1);
+            return later;
+          }
+          const strong = queue
+            .filter((q) => q !== head && !WEAK.test(q.name) && q.trainsOnContent === head.trainsOnContent && rank.get(q)! < rank.get(head)!)
+            .map((q) => ({ q, w: waitMs(q, estTokens) }))
+            .filter((x) => x.w <= budget())
+            .sort((a, b) => a.w - b.w)[0];
+          if (strong) {
+            await pause(strong.w, strong.q.name);
+            queue.splice(queue.indexOf(strong.q), 1);
+            return strong.q;
+          }
+        }
+        return queue.shift();
+      }
+      const readyPeer = queue.find((q) => q !== head && !WEAK.test(q.name) && q.trainsOnContent === head.trainsOnContent && waitMs(q, estTokens) === 0);
+      if (readyPeer) {
+        queue.splice(queue.indexOf(readyPeer), 1);
+        return readyPeer;
+      }
+      if (w <= budget()) {
+        await pause(w, head.name);
+        return queue.shift();
+      }
+      skipped.push(queue.shift()!);
+      console.log(`[llm] ${head.name} rate-limited for ${(w / 1000).toFixed(0)}s — skipped for this reply`);
+    }
+    // Every provider was skipped as cooling and none was tried: try the best
+    // of them anyway, rather than fail a reply on a guess about a rate limiter.
+    return attempt === 0 ? skipped.shift() : undefined;
+  };
+
+  for (let p = await pick(); p; p = await pick()) {
     attempt++;
     const s = stat(p.name);
     s.requests++;
     s.lastUsedAt = new Date().toISOString();
     const started = Date.now();
+    const left = DEADLINE_MS - (started - begun);
+    if (left < 4000) {
+      console.warn(`[llm] out of time after ${attempt - 1} attempt(s) — not trying ${p.name}`);
+      break;
+    }
+    const ac = new AbortController();
+    const limit = Math.min(left, (opts.maxTokens ?? 0) > 2000 ? CALL_TIMEOUT_LONG_MS : CALL_TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), limit);
     try {
-      const out = await p.generate(prompt, opts);
+      /*
+       * Every call has a time limit. A provider that retries internally — the
+       * Gemini SDK does, through a run of 503s — once held a single chat for
+       * 132 seconds. The server is killed at 60, so the person got an error
+       * after a two-minute wait, from a question another model would have
+       * answered in three.
+       */
+      const out = await Promise.race([
+        p.generate(prompt, { ...opts, signal: ac.signal }),
+        new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error(`timeout after ${Math.round(limit / 1000)}s`)))),
+      ]).finally(() => clearTimeout(timer));
       if (out && out.trim()) {
         s.success++;
         s.lastStatus = "ok";
@@ -583,8 +807,32 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
       if (/429|quota|rate.?limit|exhaust/i.test(msg)) {
         s.quotaHits++;
         s.lastStatus = "quota";
+        const after = Number(e?.retryAfterMs) || 0;
+        if (after > 0) {
+          s.coolUntil = Date.now() + after;
+          // One more go at the same model when the wait is short — the next
+          // pick() waits only if nothing as good is ready sooner.
+          if (!retried.has(p) && after <= budget()) {
+            retried.add(p);
+            const at = queue.findIndex((q) => rank.get(q)! > rank.get(p!)!);
+            queue.splice(at === -1 ? queue.length : at, 0, p);
+          }
+        } else {
+          s.coolUntil = Date.now() + 60_000;
+        }
       } else {
         s.lastStatus = "error";
+        /*
+         * Errors that will say the same thing next time are not re-asked on
+         * every message: a retired model (404 "no longer available"), an
+         * account that cannot pay (403), a model "experiencing high demand"
+         * (503) or one that just timed out. Each of these cost a round-trip on
+         * every chat, in front of the provider that was actually going to answer.
+         */
+        if (/\b404\b|no longer available|not found/i.test(msg)) s.coolUntil = Date.now() + 6 * 3600_000;
+        else if (/\b(401|403)\b|payment|permission|denied/i.test(msg)) s.coolUntil = Date.now() + 3600_000;
+        else if (/\b503\b|high demand|overloaded|unavailable/i.test(msg)) s.coolUntil = Date.now() + 30_000;
+        else if (/timeout after/i.test(msg)) s.coolUntil = Date.now() + 60_000;
       }
       s.lastError = msg.slice(0, 180);
       lastErr = e;
