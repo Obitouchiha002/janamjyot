@@ -63,6 +63,8 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AIStatusPage = lazy(() => import('./pages/AIStatusPage'));
 const HelpPage = lazy(() => import('./pages/HelpPage'));
 const MatchingPage = lazy(() => import('./pages/MatchingPage'));
+const DecidePage = lazy(() => import('./pages/DecidePage'));
+const DecideHistoryPage = lazy(() => import('./pages/DecideHistoryPage'));
 const MorePage = lazy(() => import('./pages/MorePage'));
 const PanchangPage = lazy(() => import('./pages/PanchangPage'));
 const MuhuratPage = lazy(() => import('./pages/MuhuratPage'));
@@ -192,6 +194,8 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/ai-status" element={<AIStatusPage />} />
       <Route path="/help" element={<HelpPage />} />
       <Route path="/match" element={<MatchingPage />} />
+      <Route path="/decide" element={<DecidePage />} />
+      <Route path="/decide/history" element={<DecideHistoryPage />} />
       <Route path="/more" element={<MorePage />} />
       <Route path="/panchang" element={<PanchangPage />} />
       <Route path="/muhurat" element={<MuhuratPage />} />

@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react';
 import {
   Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
-  MessageCircle, Orbit, ScrollText, Gem, User,
+  MessageCircle, Orbit, ScrollText, Gem, User, Compass,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import TodayCard from '@/components/TodayCard';
@@ -76,6 +76,9 @@ function greetingKey(): string {
 }
 
 const ACTIONS = [
+  // First, and deliberately: this is the thing people open the app at midnight
+  // for. Everything else here is a reading; this one makes a decision with them.
+  { label: 'What should I do?', sub: 'Decide together', to: '/decide', icon: Compass, tint: '#2F9E7E' },
   { label: 'Matching', sub: 'Guna Milan', to: '/match', icon: HeartHandshake, tint: '#F26D9B' },
   { label: 'Panchang', sub: 'Today', to: '/panchang', icon: CalendarDays, tint: '#E8B44A' },
   { label: 'Yogas', sub: 'Chart yogas', to: '/yogas', icon: Gem, tint: '#7DD3C0' },

@@ -747,6 +747,10 @@ const PART4_TASKS = `PART 4 — a task (after a "<<DO>>" marker), OPTIONAL:
       d1           they want to SEE their birth chart / lagna kundli / D1
       d9           they want to SEE their navamsa / D9 chart
       pdf          they want their life report as a PDF to keep or send
+      decide       they are stuck on a REAL DECISION and want help making it —
+                   "message karun ya nahi", "job chhod doon", "ghar mein bata
+                   doon". Write this whenever the question is a choice they have
+                   to make, not a prediction they want.
       add_person   the question is about SOMEONE ELSE's own life and needs that
                    person's kundli — write this whenever you have just told them
                    you cannot answer for another person from this chart, so the
@@ -803,7 +807,16 @@ function gist(text: unknown, max = 280): string {
  */
 export function promptNeeds(question: string, history?: { role: string; text: string }[]) {
   const q = String(question || "").toLowerCase();
+  /*
+   * A choice they have to make, not a prediction they want. These are what the
+   * "decide" action is for, and without them PART 4 never goes out for the
+   * exact messages this app is best at — "usse message karun ya nahi".
+   */
+  const isDecision =
+    /\b(ya nahi|ya na|karun|karoon|karu|karoo|kar doon|kar dun|de doon|de dun|bhej doon|bhejun|bhej dun|chhod doon|chhod dun|bata doon|bata dun|le loon|le lun|should i|shall i|kya karun|kya karoon|faisla|decide|decision)\b/.test(q) ||
+    /(करूँ|करूं|या नहीं|फ़ैसला|फैसला|बता दूँ|छोड़ दूँ)/.test(q);
   const actions =
+    isDecision ||
     /\b(match|matching|milan|milao|mila|report|pdf|timeline|download|share|d1|d9|navamsa|navamsh|navansh|lagna|chart|kundli|kundali|janam ?patri|dikha|dikhao|dikhaiye|bana|banao|banaiye|bhejo|add)\b/.test(q) ||
     /(मिलान|मिला|रिपोर्ट|पीडीएफ|कुंडली|कुण्डली|चार्ट|दिखा|बना|नवांश|लग्न)/.test(q) ||
     /\b(bhai|bhaiya|behen|bahen|didi|papa|pita|pitaji|mummy|mumma|maa|mother|father|mom|dad|pati|patni|husband|wife|beta|beti|son|daughter|dost|friend|boyfriend|girlfriend|bf|gf|partner|fiance|fiancee|sasur|saas|bhabhi|jiju|uncle|aunty|chacha|chachi|mama|mami|nana|nani|dada|dadi|brother|sister|uska|uski|uske|unka|unki|unke|usko|unko)\b/.test(q) ||
@@ -1117,7 +1130,7 @@ ${languageInstruction(args.language)}`;
 
   // A task the person asked for, if any. Kept to a fixed vocabulary so a model
   // cannot invent an action the app has no way to perform.
-  const ACTIONS = ["match", "life_report", "timeline", "career", "wealth", "marriage", "d1", "d9", "pdf", "add_person"];
+  const ACTIONS = ["match", "life_report", "timeline", "career", "wealth", "marriage", "d1", "d9", "pdf", "add_person", "decide"];
   let action = "";
   const dIdx = rest.indexOf("<<DO>>");
   if (dIdx !== -1) {
@@ -1273,9 +1286,39 @@ function splitBullets(text: string): string {
   return text.includes("•") ? text.replace(/\s+•\s+/g, "\n• ").trim() : text;
 }
 
+/*
+ * A paragraph nobody reads is a paragraph nobody wrote.
+ *
+ * Models answer in one block. On a phone that is fourteen lines of unbroken
+ * text, and the eye slides off it — the reading can be perfect and still not
+ * be read. Asking for line breaks in the prompt works most of the time, which
+ * is another way of saying it fails often enough to see, and which model
+ * answers is decided at runtime.
+ *
+ * So it is done here: a long block is split at sentence ends into chunks of
+ * two or three sentences. Anything already structured — bullets, existing
+ * breaks — is left exactly as it is.
+ */
+export function breakParagraphs(text: string, perChunk = 2): string {
+  const t = String(text ?? "");
+  if (t.length < 320 || t.includes("\n") || t.includes("•")) return t;
+  // Sentence ends: ., !, ?, or the Devanagari danda, followed by a space.
+  const parts = t.match(/[^.!?।]+[.!?।]+["'\u201d\u2019)]*\s*/g);
+  if (!parts || parts.length < 4) return t;
+  const out: string[] = [];
+  for (let i = 0; i < parts.length; i += perChunk) {
+    out.push(parts.slice(i, i + perChunk).join("").trim());
+  }
+  // A lonely tail sentence reads as a mistake — give it to the chunk above.
+  if (out.length > 1 && out[out.length - 1].length < 60) {
+    out[out.length - 2] += " " + out.pop();
+  }
+  return out.join("\n\n");
+}
+
 /** capBold over every string in a report object, however deeply nested. */
 export function tidyReport<T>(value: T): T {
-  if (typeof value === "string") return capBold(splitBullets(value)) as unknown as T;
+  if (typeof value === "string") return capBold(breakParagraphs(splitBullets(value))) as unknown as T;
   if (Array.isArray(value)) return value.map(tidyReport) as unknown as T;
   if (value && typeof value === "object") {
     const out: any = {};
@@ -1318,16 +1361,65 @@ async function generateChecked(
    * report at all, and the person paid for a report. The error is logged either
    * way, so a model that keeps doing this is still visible.
    */
-  if (Date.now() - started > Number(process.env.AI_CLAIM_RETRY_BUDGET_MS || 20_000)) {
+  /*
+   * A long reading gets longer to fix itself.
+   *
+   * The budget exists so a chat answer cannot blow the function's sixty
+   * seconds waiting for a second draft. A report is a different trade: its
+   * parts run concurrently, someone paid for it, and a wrong house number in a
+   * document they keep is worth ten more seconds. A sweep caught exactly that —
+   * "Sun in the 10th" survived in a part whose first draft had taken 21s.
+   */
+  const budget = Number(process.env.AI_CLAIM_RETRY_BUDGET_MS || ((opts?.maxTokens ?? 0) > 2000 ? 32_000 : 20_000));
+  if (Date.now() - started > budget) {
     console.warn(`[claims] ${errs.summary} error(s) — no time to regenerate, sending as written`);
     return text;
   }
-  console.warn(`[claims] report: ${errs.summary} error(s) — regenerating once`);
-  const retry = await llmGenerate(prompt + errs.note(), opts).catch(() => null);
-  if (!retry) return text;
-  const still = chartClaimErrors(retry, chart, tr).count;
-  console.warn(`[claims] after correction: ${still} left`);
-  return still < errs.count ? retry : text;
+  /*
+   * Up to two corrections for a long reading, one for a chat answer.
+   *
+   * A single rewrite fixed most of them and left about one false claim per
+   * full report — which for something people pay for and keep is one too many.
+   * The second pass costs a call only on the drafts that are still wrong.
+   */
+  /*
+   * One correction, not two.
+   *
+   * The second pass almost never found anything the first had missed, and it
+   * pushed a seven-area report to seventy-nine seconds — past the sixty the
+   * function is killed at, which turns a slightly-wrong report into no report.
+   * Sending the first draft to a strong model (opts.strong) does the same job
+   * earlier and for free.
+   */
+  const rounds = 1;
+  let best = text;
+  let bestCount = errs.count;
+  let note = errs.note();
+  for (let i = 0; i < rounds; i++) {
+    console.warn(`[claims] ${bestCount} error(s) — correction ${i + 1} of ${rounds}`);
+    /*
+     * The rewrite reserves less room than the draft did.
+     *
+     * A correction is the same prompt plus a few lines, and the reservation is
+     * counted against the provider's per-request ceiling — so asking for the
+     * original 3,300 tokens again put the fix at ~8,600 and Groq refused every
+     * one of them ("too large"), sending the correction to whatever was left.
+     * A rewrite is never longer than what it rewrites.
+     */
+    const retry = await llmGenerate(prompt + note, {
+      ...opts, strong: true, maxTokens: Math.min(opts?.maxTokens ?? 2600, 2600),
+    }).catch(() => null);
+    if (!retry) break;
+    const again = chartClaimErrors(retry, chart, tr);
+    if (again.count < bestCount) { best = retry; bestCount = again.count; note = again.note(); }
+    if (!bestCount) break;
+    // Stop while there is still room to return something: the function is
+    // killed at sixty seconds, and a second correction that lands at sixty-four
+    // is a report nobody receives.
+    if (Date.now() - started > 34_000) break;
+  }
+  console.warn(`[claims] after correction: ${bestCount} left`);
+  return best;
 }
 
 
@@ -1414,7 +1506,9 @@ Return ONLY this JSON:
   ]
 }`;
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.75, thinkingBudget: 0, maxTokens: 4096 });
+  // Fact-checked like every other reading: the past is the half people can
+  // check against their own life, so a false placement here costs the most.
+  const text = await generateChecked(prompt, args.chart, undefined, { json: true, temperature: 0.75, thinkingBudget: 0, maxTokens: 4096, purpose: "past_timeline", strong: true });
   const j = parseJsonLoose(text) ?? {};
   const given = new Map(args.periods.map((p: any) => [p.period, p]));
   const rows = (Array.isArray(j.timeline) ? j.timeline : [])
@@ -1547,17 +1641,17 @@ area of their life>."
 Do not invent events (no job titles, no illnesses, no named people) — describe
 the KIND of period it is, concretely enough to recognise.
 
-  "past" — walk timeline.lived_periods, oldest first, one bullet each (4-5
-    bullets), ONE OR TWO SENTENCES per bullet. This has to read like a timeline
-    they can check against their own life.
+  "past" — walk timeline.lived_periods, oldest first, one bullet each (3-4
+    bullets), ONE sentence per bullet. This has to read like a timeline they
+    can check against their own life.
   "present" — exactly ONE bullet: timeline.current_period and its dates only.
     Do NOT give the mahadasha its own bullet or date range here; if it matters,
     mention it inside the same sentence. Make this bullet 2-3 sentences — the
     planet and house behind it, how it is actually showing up in this area right
     now, and what it asks of them.
-  "future" — walk timeline.next_periods, nearest first, 3 bullets, one or two
-    sentences each. This is also where the current mahadasha's own end date
-    belongs, if it helps.
+  "future" — walk timeline.next_periods, nearest first, 3 bullets, ONE sentence
+    each. This is also where the current mahadasha's own end date belongs, if it
+    helps.
 
 For each area produce an object with EXACTLY these string keys:
   "summary"   (the overall pattern, said warmly),
@@ -1577,10 +1671,16 @@ cut off mid-sentence and is thrown away.
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(fullContext)}
 
+THE ONLY TRUE BIRTH-CHART PLACEMENTS — every plain "Nth house" you write must
+match this line exactly. A number from a D9/D10/D6/D11 chart or from a transit
+is NOT a birth-chart house, and if you mean one of those, say so in the same
+sentence:
+${fullContext.birth_chart_facts}
+
 FINAL CHECK BEFORE YOU OUTPUT: does every bullet in every past/present/future
-field carry a **bolded** phrase and the real dates from "timeline"? Is every
-field concrete rather than generic filler? Fix anything that fails before
-answering.
+field carry a **bolded** phrase and the real dates from "timeline"? Does every
+house number match the line above? Is every field concrete rather than generic
+filler? Fix anything that fails before answering.
 
 ${languageInstruction(language)}`;
 
@@ -1595,7 +1695,7 @@ ${languageInstruction(language)}`;
   // area of this shape (four past bullets, one present, three future, five
   // short prose fields) measures ~800 tokens, so a part is kept to three.
   const text = await generateChecked(prompt, chart, transit, {
-    temperature: 0.8, thinkingBudget: 0, maxTokens: 3300, purpose: "life_report",
+    temperature: 0.8, thinkingBudget: 0, maxTokens: 3300, purpose: "life_report", strong: true,
   });
   const j = parseJsonLoose(text);
   if (!j) {
@@ -1719,6 +1819,32 @@ export const REPORT_TYPES: Record<string, { title: string; focus: string }> = {
  * A deep, premium single-theme report (career / wealth / marriage / annual /
  * mahadasha). Returns { title, intro, sections:[{heading, body}], disclaimer }.
  */
+/*
+ * How a long reading has to be laid out to be read at all.
+ *
+ * Two failures, both seen on a phone: one unbroken block of fourteen lines,
+ * and a reading that OPENS with "Venus Mahadasha ne aapke rishte mein…". The
+ * second is worse — the first sentence is the one that decides whether the
+ * rest gets read, and spending it on vocabulary the reader does not have loses
+ * them before the useful part. The astrology is not removed; it is moved to
+ * the end, where someone who wants it will find it and everyone else will not
+ * be blocked by it.
+ */
+const PROSE_FORMAT = `HOW TO LAY THIS OUT — a reading nobody can read is worth nothing:
+• SHORT paragraphs: two or three sentences, then a blank line. Never a block of
+  more than four lines.
+• Where you are listing periods, areas or steps, use "• " bullets, one per line.
+• Bold the single most important phrase in each paragraph with **double
+  asterisks** — one per paragraph, never a whole sentence.
+• PLAIN LANGUAGE FIRST. The opening sentence of every section must be about
+  THEIR LIFE, never about a planet, a period, a house or a yoga. Write "2021 se
+  2025 tak padhai aur naye rishton ka daur tha" — not "Venus Mahadasha ne…".
+• ALL the technical detail — planet names, house numbers, dasha and antardasha
+  names, yogas, Sade Sati — belongs in the LAST section and nowhere else. Name
+  that section "Kyun — chart mein kya hai" (or its equivalent in the reply
+  language). Being able to check the reading matters, so do not drop the
+  technical part; just keep it where it belongs.`;
+
 export async function generateFocusedReport(chart: any, type: string, language: string, transit?: any): Promise<any> {
   const cfg = REPORT_TYPES[type];
   if (!cfg) return { error: "Unknown report type" };
@@ -1730,11 +1856,11 @@ ${languageInstruction(language)}
 
 Write a detailed, premium personal report focused ONLY on ${cfg.focus}
 
-Ground EVERY point in this person's actual chart — mention the specific house,
-planet or dasha naturally inside your sentences (not as a label). Be SPECIFIC:
-name concrete fields, amounts of time (years or age windows from the dasha), and
-real examples — never vague filler. Warm and human, addressing them directly.
-Bold the few most important words in each section with **double asterisks**.
+Ground EVERY point in this person's actual chart. Be SPECIFIC: name concrete
+fields, amounts of time (years or age windows from the dasha), and real
+examples — never vague filler. Warm and human, addressing them directly.
+
+${PROSE_FORMAT}
 
 Respond with a SINGLE valid JSON object of EXACTLY this shape:
 {
@@ -1743,12 +1869,22 @@ Respond with a SINGLE valid JSON object of EXACTLY this shape:
   "sections": [ { "heading": "short section title", "body": "a few natural sentences" } ],
   "disclaimer": "one short kind line (for wealth: not financial advice; for the rest: guidance not certainty)"
 }
-Give 5 to 7 sections. Keep each body a few natural sentences, not a giant essay.
+Give 5 to 7 sections, and make the LAST one the technical "Kyun — chart mein
+kya hai" section described above. Keep each body to two or three short
+paragraphs, not a giant essay.
 
 This person's COMPLETE calculated chart data (interpret only this):
-${JSON.stringify(context, null, 2)}`;
+${JSON.stringify(context)}
 
-  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
+THE ONLY TRUE BIRTH-CHART PLACEMENTS — every plain "Nth house" must match this
+line exactly; a D9/D10/D6/D11 or transit number must be named as one in the same
+sentence:
+${birthChartFactSheet(chart)}
+
+FINAL CHECK: does every house number match the line above, and does the last
+section hold all the technical detail?`;
+
+  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 3500, purpose: "report", strong: true });
   {
     const j = parseJsonLoose(text);
     if (!j) return { error: "Failed to parse report", raw: text };
@@ -1856,9 +1992,20 @@ range from dasha_windows. Keep every field a few natural sentences, never a gian
 essay.
 
 This person's COMPLETE calculated chart data (interpret only this):
-${JSON.stringify(context, null, 2)}`;
+${JSON.stringify(context)}
 
-  const text = await llmGenerate(prompt, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
+THE ONLY TRUE BIRTH-CHART PLACEMENTS — a plain "Nth house" must match this line.
+A transit is not a birth placement: if you mean where a planet is passing NOW,
+say "gochar mein" in the same sentence.
+${birthChartFactSheet(chart)}`;
+
+  // The forecast is checked too: its dates come from real dasha windows, and a
+  // placement invented around them would make the whole thing unfalsifiable.
+  // 3000, not 4096: the budget is reserved against the provider's per-request
+  // ceiling, and a forecast has never needed more than half of it — while the
+  // bigger reservation pushed the whole call past Groq's limit and into a
+  // slower provider, which is where the 46-second generations came from.
+  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 3000, purpose: "timeline", strong: true });
   try {
     const j = parseJsonLoose(text) ?? {};
     return {
@@ -2178,6 +2325,291 @@ export function matchQuestionChips(language: string): string[] {
  * claiming to know what a third person privately feels or will decide.
  */
 /**
+ * The part before the answer: someone talking, and being talked back to.
+ *
+ * The first version of this feature asked for the decision in a box and then
+ * put three multiple-choice questions on the screen. It worked, and it felt
+ * like a form — which is the one thing the chatbot people already use at one
+ * in the morning never feels like. They do not arrive with a well-formed
+ * question; they arrive with "aaj bahut bura din tha, usne reply nahi kiya"
+ * and they want someone to react to THAT before anything else.
+ *
+ * So: short replies in their own words, ONE question at a time, chips only as
+ * suggestions they can ignore, and no card until there is actually something
+ * to decide. If they only came to say it out loud, that is a complete use of
+ * this screen and the model is told so.
+ *
+ * Cheap on purpose — no chart, no divisionals, a few hundred tokens — and
+ * marked `light`, so the strong models stay free for the card itself.
+ */
+export async function decisionTalk(args: {
+  history: Array<{ role: "user" | "assistant"; text: string }>;
+  facts?: Record<string, unknown>;
+  memory?: string;
+  userName?: string;
+  language: string;
+  /** How many questions this conversation has already put to them. */
+  asked?: number;
+  /** They have stated a choice outright — stop gathering and decide. */
+  mustDecide?: boolean;
+}): Promise<{ reply: string; ask: { question: string; options: string[] } | null; ready: boolean; summary: string }> {
+  const convo = args.history
+    .slice(-10)
+    .map((m) => `${m.role === "user" ? "Them" : "You"}: ${gist(m.text, 400)}`)
+    .join("\n");
+
+  const prompt = `${PERSONA}
+
+${languageInstruction(args.language)}
+
+You are talking with ${args.userName || "someone"} who has opened a screen called
+"ab kya karun" — what should I do. They may arrive with a clear decision, or
+with a bad day and no question at all. Both are fine.
+
+${args.facts && Object.keys(args.facts).length ? `What they have already told us about their life (never ask for these again):\n${JSON.stringify(args.facts)}\n` : ""}${args.memory ? `From earlier conversations:\n${args.memory}\n` : ""}
+The conversation so far:
+${convo}
+
+Reply as a JSON object, exactly:
+{
+  "reply": string,
+  "ask": { "question": string, "options": [string, string, string] } | null,
+  "ready": true | false,
+  "summary": string
+}
+
+HOW TO TALK — this is the whole thing:
+• Answer what they ACTUALLY said, in their own words. If they said their day was
+  bad and someone did not reply, say something about that, not about decisions.
+  Never open with "I understand" or "That sounds hard" — those are noises, not
+  replies. Say the specific thing you noticed.
+• Two or three SHORT lines. Like a friend texting, not a counsellor writing.
+• Never lecture, never list, never give advice in this part. You are listening.
+• Use their name occasionally, not every message.
+• Never mention astrology, planets, periods or charts here. Not once.
+• Their language, always — even if they typed in another one.
+
+${args.mustDecide
+    ? `THEY HAVE NOW NAMED THE CHOICE ITSELF ("… karun ya nahi"). Stop gathering.
+Reply to what they just said in one or two lines, set "ask" to null, set
+"ready" to true, and put their decision in "summary" in their own words.\n`
+    : args.asked && args.asked >= 3
+      ? `You have already asked them ${args.asked} questions. Ask NOTHING more —
+set "ask" to null and decide whether there is a decision here ("ready").\n`
+      : ""}
+NEVER REPEAT YOURSELF. Do not say again what you already said one message ago —
+not the same sympathy, not the same observation, not the same question reworded.
+Each reply moves one step forward or it is noise.
+
+"ask" — ONE question, never a list of them:
+• The single thing you most need to know to help, phrased like a person:
+  "Achha… pichhli baar baat kaise khatam hui thi?"
+• "options" are three SHORT answers to the question you just asked — two to four
+  words each, the way they would reply ("Jhagda hua tha", "Usne ignore kiya").
+  They must fit YOUR question: options that answer some other question are worse
+  than none. They can also just type, so options are suggestions, never the only
+  way through.
+• Do NOT ask something they already answered, and do not ask more than four
+  questions across the whole conversation. When you have enough, set ask to null.
+• If they are only venting and there is no decision in sight, do not interrogate
+  them. Ask gently whether they want help deciding something, or just to talk.
+
+"ready":
+• true when there IS a decision to make and you know enough to make it — usually
+  after one or two questions.
+• false while you are still listening, or when there is nothing to decide.
+
+"summary" — one plain line naming the decision as THEY would say it
+("usse aaj message karun ya nahi"), or "" when there is no decision yet. This
+is what the card gets built from, so it must be their situation, not a category.
+
+${languageInstruction(args.language)}`;
+
+  /*
+   * Not `light`. Everywhere else the small models are fine, but this is the
+   * part where the app either sounds like a person or does not, and the weak
+   * one repeats itself and answers a question nobody asked. The prompt is small
+   * (no chart, no divisionals), so the strong model is affordable here.
+   */
+  const text = await llmGenerate(prompt, {
+    temperature: 0.85, thinkingBudget: 0, maxTokens: 700, purpose: "decide_talk",
+  });
+  const j = parseJsonLoose(text) ?? {};
+  const options = Array.isArray(j?.ask?.options) ? j.ask.options.slice(0, 3).map(String) : [];
+  // A model that keeps asking questions is a model that never helps. When they
+  // have named the choice, or three questions have already gone by, the decision
+  // is ready whatever the model thinks.
+  const forced = !!args.mustDecide || (args.asked ?? 0) >= 3;
+  return {
+    reply: String(j.reply ?? "").trim(),
+    ask: forced ? null : (j?.ask?.question ? { question: String(j.ask.question), options } : null),
+    ready: forced || j.ready === true,
+    summary: String(j.summary ?? "").trim(),
+  };
+}
+
+/**
+ * A decision, answered — the card people actually came for.
+ *
+ * The shape is the feature. A paragraph of "on one hand, on the other hand" is
+ * what they already got from a chatbot at 1am and it is why they are still
+ * awake: it costs nothing to write and decides nothing. So this returns a
+ * verdict word, the reason in one line, the exact thing to send if sending is
+ * the decision, and — the part that makes a "no" survivable — what to do if it
+ * goes the other way.
+ *
+ * The WHEN is not here. It is computed from the panchang before this is called
+ * and handed in, because a model asked for a time will write a confident one
+ * that means nothing, and the timing is the one thing in this card that a
+ * chatbot cannot fake.
+ *
+ * Two rules matter more than the rest:
+ *   • Nothing about what the OTHER person will do. Their chart is not here and
+ *     their mind is their own. "She will say yes" is the sentence that ends
+ *     with someone standing outside a building at midnight.
+ *   • Nothing that works ON someone. No lines engineered to guilt, corner or
+ *     wear a person down — the draft is what this person honestly wants to say,
+ *     said well.
+ */
+/*
+ * The window, with its vocabulary removed.
+ *
+ * The panchang explains itself in its own words — "Udveg is running until
+ * 3:20 PM" — and a model handed that sentence repeats it, so a card that
+ * promised no jargon opened with a Sanskrit term the reader had to look up.
+ * The app still shows the real reason in small print; the model gets the clock
+ * and nothing else.
+ */
+function plainWindow(w: any) {
+  return { when: w?.when, act_between: w?.window, do_not_act_between: w?.avoid, date: w?.date };
+}
+
+/** Words that have no business in a decision card, whatever the model thinks. */
+const JARGON = /\b(mahadasha|antardasha|antar ?dasha|dasha|dasa|bhukti|nakshatra|rashi|rasi|lagna|ascendant|kundli|kundali|navamsa|navamsha|d9|d10|gochar|transit|retrograde|vakri|sade ?sati|shani|mangal|manglik|rahu|ketu|shukra|budh|guru|brihaspati|surya|chandra|saturn|jupiter|venus|mercury|mars|yoga|yog|choghadiya|chogadiya|udveg|amrit|shubh|labh|rog|kaal|muhurat|muhurta|panchang|tithi|house)\b/i;
+
+export async function generateDecision(args: {
+  question: string;
+  kind: string;
+  answers: Record<string, string>;
+  chart: any;
+  facts?: Record<string, unknown>;
+  memory?: string;
+  window?: any;
+  transit?: any;
+  wantsDraft: boolean;
+  userName?: string;
+  language: string;
+  history?: Array<{ question: string; verdict: string; outcome?: string }>;
+}): Promise<any> {
+  const packet = {
+    their_chart: buildChartPacket(args.chart, detectCategory(args.question), args.transit),
+    what_they_told_us: args.facts ?? {},
+    their_answers: args.answers,
+    /*
+     * How their own past decisions actually went. Two lines of this is worth
+     * more than another paragraph of chart: someone who has rushed the last
+     * three and regretted them needs to hear that, from their own record.
+     */
+    past_decisions: (args.history ?? []).slice(-5),
+  };
+
+  const prompt = `${REPORT_SYSTEM}
+
+${languageInstruction(args.language)}
+
+${args.userName ? `You are helping ${args.userName}. ` : ""}They are stuck on a real decision and want an answer, not a lecture. This is a "${args.kind}" decision.
+
+WHAT THEY ASKED: "${args.question}"
+
+Their answers to the two or three things that change this, their chart, what
+they have told us about their life, and how their own past decisions went:
+${JSON.stringify(packet)}
+${args.memory ? `\nWhat earlier conversations established about them:\n${args.memory}\n` : ""}
+${args.window ? `THE TIMING IS ALREADY DECIDED, from the panchang for their own place — use this clock window EXACTLY, never a different time, and never name the tradition it came from:\n${JSON.stringify(plainWindow(args.window))}\n` : "No clock window could be computed — do not invent one; speak of days, not hours.\n"}
+Answer as a SINGLE valid JSON object, exactly this shape:
+{
+  "verdict": "yes" | "no" | "wait",
+  "headline": string,
+  "why": string,
+  "draft": ${args.wantsDraft ? `{ "direct": string, "soft": string } or null` : "null"},
+  "if_it_goes_wrong": string,
+  "avoid": [string, string],
+  "confidence": "high" | "medium" | "low"
+}
+
+WHAT EACH ONE IS:
+• verdict — "yes" do it, "no" don't, "wait" do it but not yet. Pick one. A
+  decision tool that will not decide is a worse chatbot.
+• THE CLOCK WINDOW ABOVE IS THE ONLY TIMING. Never contradict it: if it says
+  today, do not write "kal karna", and if it names hours, do not name different
+  ones. "wait" means wait for THAT window, not for another day.
+• headline — one short line in their language, the answer in plain words, e.g.
+  "Haan — par aaj raat nahi, kal subah." Under 12 words.
+• why — two or three sentences. The REAL reason: what they told you, the shape
+  of their own period, and what usually happens in this situation. Plain words,
+  no house numbers, no planet names, no Sanskrit.
+• draft — ${args.wantsDraft
+    ? `the actual message to send, if this decision is about saying something to
+  someone. "direct" says it plainly; "soft" says the same thing more gently.
+  Both in THEIR voice — short, human, no emojis, nothing theatrical, nothing
+  that guilts or corners the other person. If the decision is not about sending
+  a message, use null.`
+    : `always null for this request.`}
+• if_it_goes_wrong — what to do if the answer is no, the reply never comes, the
+  offer falls through. Concrete and kind: a next step and a timeframe, so a bad
+  outcome is a plan and not a collapse.
+• avoid — exactly two things NOT to do in the next few days, specific to this
+  situation ("double message mat bhejna", "raat 11 ke baad mat likhna").
+• confidence — how sure this is, honestly. "low" when they have told you very
+  little.
+
+NEVER:
+• Never say what the other person will do, feel, or decide. You do not have
+  their chart and you cannot read a mind. Say what THIS person can control.
+• Never write anything designed to pressure, guilt, corner or wear someone down.
+• Never guarantee an outcome, and never promise that something will work.
+• Never tell them to leave a job, take a loan, break up, move out or spend a
+  large amount — say what the period supports and leave the choice with them.
+• No diagnosis, no medicine, no legal instruction.
+• Never mention planets, houses, dashas or any Sanskrit term anywhere in this
+  card. They came for an answer, not a reading.
+
+Every string in their language. No markdown except plain text. Be short —
+this is a card someone reads in fifteen seconds at one in the morning.
+
+${languageInstruction(args.language)}`;
+
+  const opts = { temperature: 0.7, thinkingBudget: 0, maxTokens: 1200, purpose: "decide" } as const;
+  let text = await llmGenerate(prompt, opts);
+  /*
+   * One rewrite when the card talks like an astrologer.
+   *
+   * "Abhi Sade Sati chal rahi hai" is exactly what this feature is not: they
+   * asked whether to send a message. The rule is in the prompt and models
+   * still reach for the vocabulary, so it is checked here and sent back once —
+   * which costs a call only on the cards that earned it.
+   */
+  if (JARGON.test(String(text))) {
+    const bad = String(text).match(JARGON)?.[0] ?? "";
+    console.warn(`[decide] card used astrology vocabulary ("${bad}") — rewriting once`);
+    const retry = await llmGenerate(
+      prompt + `\n\nCORRECTION — your previous draft used the word "${bad}". This card must contain NO astrology vocabulary at all: no planets, houses, periods, yogas, panchang or Sanskrit terms, in any field. Say what it MEANS for them in ordinary words instead. Rewrite the whole card.\n`,
+      opts,
+    ).catch(() => null);
+    if (retry && !JARGON.test(retry)) text = retry;
+  }
+  const j = parseJsonLoose(text);
+  if (!j?.headline) throw new Error("Decision came back unreadable");
+  const verdict = ["yes", "no", "wait"].includes(String(j.verdict)) ? j.verdict : "wait";
+  return tidyReport({
+    ...j,
+    verdict,
+    avoid: Array.isArray(j.avoid) ? j.avoid.slice(0, 2).map(String) : [],
+    draft: args.wantsDraft && j.draft?.direct ? { direct: String(j.draft.direct), soft: String(j.draft.soft ?? "") } : null,
+  });
+}
+
+/**
  * Marriage Outlook — what living this marriage would actually be like.
  *
  * A score and a verdict answer "should we", and people then ask the questions
@@ -2252,6 +2684,10 @@ WHAT EACH PART MEANS:
   pressure, family friction: things people can act on.
 • supporting_planets — the actual placements behind that scenario, named
   (7th lord, Venus, Jupiter, Moon, the koota that carried or cost them).
+  ALWAYS SAY WHOSE CHART a placement is in, by their first name: "Priya ka Venus
+  11th mein, Arjun ka Jupiter 2nd mein". A bare "Venus 11th house mein" in a
+  reading about two people is true of one of them and false about the other,
+  and the reader has no way to tell which.
 • dasha_support — the real periods, with the dates given above, that make that
   scenario more or less likely.
 • current_period_note — what the LIVE transits and running periods say about

@@ -663,7 +663,15 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {t.action && chartId && <ChatAction action={t.action} chartId={chartId} />}
+                {/* The question that produced this action — so a decision opens
+                    already filled in rather than asking them to type it twice. */}
+                {t.action && chartId && (
+                  <ChatAction
+                    action={t.action}
+                    chartId={chartId}
+                    question={[...turns.slice(0, i)].reverse().find((x) => x.role === "user")?.answer}
+                  />
+                )}
 
                 {!!t.next?.length && !t.error && (
                   <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-border/60 pt-2.5">

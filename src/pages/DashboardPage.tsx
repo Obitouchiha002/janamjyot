@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useT } from "@/lib/i18n";
 import { useCachedFetch } from '@/lib/useCachedFetch';
 import { ShareCardHost } from '@/components/mobile/ShareCardSheet';
+import ChartAvatar from '@/components/ChartAvatar';
 import { haptic } from '@/lib/native';
 import { useParams } from 'react-router-dom';
 import {
@@ -83,39 +84,60 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 pt-2">
-      {/* identity */}
-      <section className="m-card m-enter p-5">
-        <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
-            <User className="h-6 w-6" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="truncate text-[19px] font-bold leading-tight">{b.name}</h2>
-            <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-muted-foreground">
+      {/* ── Who this kundli is ───────────────────────────────────────────
+          The one card on this screen that is about a PERSON, so it is the one
+          card allowed to carry their colour: a gradient taken from their moon
+          sign, an avatar the app draws itself, and their two signs stated
+          plainly instead of left to the jargon cards below. */}
+      <section className="m-card m-enter relative overflow-hidden p-5">
+        <span className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-accent/20 blur-2xl" />
+        <div className="relative flex items-start gap-3.5">
+          <ChartAvatar name={b.name} size={58} />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[20px] font-bold leading-tight">{b.name}</h2>
+            <p className="mt-1 flex items-center gap-1.5 truncate text-[12.5px] text-muted-foreground">
               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
               {fmtBirth(b.date_of_birth, b.time_of_birth)}
             </p>
             {/* The whole place, on two lines if it needs them — it was cut to "Mum…". */}
-            <p className="mt-0.5 flex items-start gap-1 text-[12px] leading-snug text-muted-foreground">
-              <MapPin className="mt-[1px] h-3.5 w-3.5 shrink-0" />
+            <p className="mt-0.5 flex items-start gap-1.5 text-[12.5px] leading-snug text-muted-foreground">
+              <MapPin className="mt-[2px] h-3.5 w-3.5 shrink-0" />
               {b.place_of_birth}
             </p>
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2.5">
+        {/* Their signs, in colour, where a beginner can actually see them. */}
+        <div className="relative mt-3.5 flex flex-wrap gap-2">
+          {[[t("Moon"), moon], [t("Sun"), sun], [t("Lagna"), data.summary?.lagna]].map(([label, value]) =>
+            value && value !== 'N/A' ? (
+              <span
+                key={String(label)}
+                className="rounded-full bg-accent/12 px-3 py-1.5 text-[12px] font-bold text-accent"
+              >
+                {label} · {t(String(value))}
+              </span>
+            ) : null,
+          )}
+        </div>
+
+        {/* Two buttons, two words each: the label used to wrap onto a second
+            line inside a pill, which reads as a broken button. */}
+        <div className="relative mt-4 grid grid-cols-2 gap-2.5">
           <Pressable
             to={`/chat/${chartId}`}
             feedback="medium"
-            className="flex items-center justify-center gap-1.5 rounded-full bg-accent py-3 text-[13px] font-bold leading-tight text-accent-foreground shadow-lg shadow-accent/25"
+            className="flex items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[14.5px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
           >
-            <MessageCircle className="h-[17px] w-[17px] shrink-0" strokeWidth={2.4} /> {t("Talk to Astrologer")}
+            <MessageCircle className="h-[18px] w-[18px] shrink-0" strokeWidth={2.4} />
+            <span className="whitespace-nowrap">{t("Ask")}</span>
           </Pressable>
           <Pressable
             to={`/reports/${chartId}`}
-            className="flex items-center justify-center gap-1.5 rounded-full border border-border py-3 text-[13.5px] font-bold"
+            className="flex items-center justify-center gap-2 rounded-full border-2 border-border py-3.5 text-[14.5px] font-bold"
           >
-            <FileText className="h-[17px] w-[17px]" /> Reports
+            <FileText className="h-[18px] w-[18px] shrink-0" />
+            <span className="whitespace-nowrap">{t("Reports")}</span>
           </Pressable>
         </div>
 
@@ -123,10 +145,10 @@ export default function DashboardPage() {
         <Pressable
           onClick={() => { haptic.tap(); setSharing(true); }}
           subtle
-          className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-full border border-dashed border-accent/50 py-3 text-[13px] font-bold text-accent"
+          className="relative mt-2.5 flex w-full items-center justify-center gap-2 rounded-full bg-muted py-3 text-[13.5px] font-bold text-foreground/75"
         >
           <Share2 className="h-[16px] w-[16px]" />
-          {t("Share my Kundli")}
+          <span className="whitespace-nowrap">{t("Share my Kundli")}</span>
         </Pressable>
       </section>
 

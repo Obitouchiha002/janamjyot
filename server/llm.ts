@@ -42,6 +42,13 @@ export interface GenOpts {
    * actual question needs.
    */
   light?: boolean;
+  /**
+   * This one is worth the good model. A paid report or a fact-checked reading
+   * goes to the small models only when nothing else is left — they are where
+   * the wrong house numbers come from, and a wrong number in a document someone
+   * keeps is worse than a slower answer.
+   */
+  strong?: boolean;
   /** Set by llmGenerate: aborts a call that has run past its time. */
   signal?: AbortSignal;
 }
@@ -187,7 +194,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 const DEADLINE_MS = Number(env("AI_DEADLINE_MS") || 50_000);
 const CALL_TIMEOUT_MS = Number(env("AI_CALL_TIMEOUT_MS") || 25_000);
-const CALL_TIMEOUT_LONG_MS = Number(env("AI_CALL_TIMEOUT_LONG_MS") || 45_000);
+/*
+ * 30s, not 45: a long call that eats 45 of the chain's 50 seconds leaves no
+ * room to ask anyone else, so one slow provider failed a whole report instead
+ * of being stepped over. A report part that has not answered in half a minute
+ * is not about to.
+ */
+const CALL_TIMEOUT_LONG_MS = Number(env("AI_CALL_TIMEOUT_LONG_MS") || 30_000);
 
 // ---- provider builders ----------------------------------------------------
 function geminiProvider(apiKey: string, model: string, tag: string): Provider {
@@ -702,6 +715,12 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
   const retried = new Set<Provider>();
   let lastErr: any;
   let attempt = 0;
+  if (opts.strong) {
+    // Weak models to the back, privacy class preserved.
+    const cls = (p: Provider) => (p.trainsOnContent ? 1 : 0);
+    queue.sort((a, b) => cls(a) - cls(b) || Number(WEAK.test(a.name)) - Number(WEAK.test(b.name)) || rank.get(a)! - rank.get(b)!);
+    queue.forEach((p, i) => rank.set(p, i));
+  }
   if (opts.light) {
     // Light models first — within each privacy class, so this never moves a
     // private prompt ahead onto a provider that trains on it.

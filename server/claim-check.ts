@@ -53,10 +53,19 @@ export function wrongPlacements(
     const said = Number(m[1]);
     if (!said || said > 12) continue;
     const at = m.index ?? 0;
-    const around = text.slice(Math.max(0, at - 70), at + m[0].length + 25).toLowerCase();
+    // Enough of the sentence AFTER the number to catch "10th house ka swami
+    // hone se" — the qualifier that turns a placement into a lordship often
+    // follows the house rather than preceding it.
+    const around = text.slice(Math.max(0, at - 70), at + m[0].length + 45).toLowerCase();
     if (/transit|gochar|guzar|moving through/.test(around)) continue;
     if (/\bd(9|10|6|11|60)\b|navamsa|navamsha|dasamsa|dashamsa|varga/.test(around)) continue;
-    if (/lord|swami|svami|adhipati|स्वामी|ruler/.test(around)) continue;
+    if (/lord|swami|svami|adhipati|malik|owner|owns|govern|rules|ruling|\brule\b|karak|स्वामी|मालिक|ruler/.test(around)) continue;
+    /*
+     * An aspect is not a placement. "Jupiter ki drishti 10th house par" is
+     * true of a Jupiter sitting in the 1st — that is what an aspect IS — and
+     * calling it a false placement sends a correct reading back to be rewritten.
+     */
+    if (/drishti|drusti|dristi|drsti|dekh|nazar|aspect|aspects|aspecting|प्रभाव डाल|दृष्टि/.test(around)) continue;
     if (/from (the )?moon|chandra se|moon se/.test(around)) continue;
 
     // The planet named nearest before the house, within the same clause.
@@ -187,20 +196,65 @@ export function wrongLordships(text: string, chart: any): WrongLordship[] {
   return out;
 }
 
+export interface WrongWindow {
+  period: string;
+  said: string;
+  actual: string;
+  excerpt: string;
+}
+
+/*
+ * "Venus-Saturn (2021–2025)" when that period actually ran 2023–2027.
+ *
+ * The life report now writes dated periods, which is what makes it checkable
+ * by the person reading it — and therefore what makes a wrong date worse than
+ * a vague sentence. The dates are handed to the model; this catches the times
+ * it rewrites them anyway. A year either side is allowed: periods are stated
+ * loosely in prose ("2023 se") and a boundary month can round either way.
+ */
+const WINDOW_RE = /\b([A-Z][a-z]{2,9})\s*[-–]\s*([A-Z][a-z]{2,9})\b[^()\n]{0,40}?\(?\s*(\d{4})\s*[–\-—to ]{1,4}\s*(\d{4})\s*\)?/g;
+
+export function wrongDashaWindows(text: string, chart: any): WrongWindow[] {
+  const rows: any[] = chart?.dasha?.antardasha ?? [];
+  if (!rows.length) return [];
+  const out: WrongWindow[] = [];
+  for (const m of text.matchAll(WINDOW_RE)) {
+    const maha = canonical(m[1]);
+    const antar = canonical(m[2]);
+    if (!PLANETS.includes(maha) || !PLANETS.includes(antar)) continue;
+    const saidFrom = Number(m[3]);
+    const saidTo = Number(m[4]);
+    if (saidTo < saidFrom) continue;
+    const row = rows.find((a: any) => canonical(String(a.mahadasha ?? "")) === maha && canonical(String(a.lord ?? "")) === antar);
+    if (!row) continue;
+    const realFrom = Number(String(row.from).slice(0, 4));
+    const realTo = Number(String(row.to).slice(0, 4));
+    if (Math.abs(realFrom - saidFrom) <= 1 && Math.abs(realTo - saidTo) <= 1) continue;
+    out.push({
+      period: `${maha}-${antar}`,
+      said: `${saidFrom}–${saidTo}`,
+      actual: `${realFrom}–${realTo}`,
+      excerpt: m[0].replace(/\s+/g, " ").trim(),
+    });
+  }
+  return out;
+}
+
 /** Every checkable false chart claim in `text`, and a note correcting them. */
 export function chartClaimErrors(text: string, chart: any, transitHouses: Record<string, number> = {}) {
   const placements = wrongPlacements(text, chart, transitHouses);
   const dasha = wrongDashaClaims(text, chart);
   const lords = wrongLordships(text, chart);
+  const windows = wrongDashaWindows(text, chart);
   return {
-    count: placements.length + dasha.length + lords.length,
-    summary: `${placements.length} placement / ${dasha.length} dasha / ${lords.length} lordship`,
-    note: () => correctionNote(placements, dasha, lords),
+    count: placements.length + dasha.length + lords.length + windows.length,
+    summary: `${placements.length} placement / ${dasha.length} dasha / ${lords.length} lordship / ${windows.length} date`,
+    note: () => correctionNote(placements, dasha, lords, windows),
   };
 }
 
 /** The correction a regeneration is sent, naming exactly what was wrong. */
-export function correctionNote(wrong: WrongPlacement[], dasha: WrongDasha[] = [], lords: WrongLordship[] = []): string {
+export function correctionNote(wrong: WrongPlacement[], dasha: WrongDasha[] = [], lords: WrongLordship[] = [], windows: WrongWindow[] = []): string {
   const uniq = new Map<string, WrongPlacement>();
   for (const w of wrong) uniq.set(`${w.planet}:${w.said}`, w);
   const lines = [...uniq.values()].map(
@@ -208,6 +262,9 @@ export function correctionNote(wrong: WrongPlacement[], dasha: WrongDasha[] = []
   );
   for (const l of lords) {
     lines.push(`- You wrote ${l.planet} as lord of the ${l.house} house. The ${l.house} house's lord is ${l.actual}.`);
+  }
+  for (const w of windows) {
+    lines.push(`- You dated ${w.period} as ${w.said}. That period actually runs ${w.actual} — the real dates were given to you.`);
   }
   for (const d of dasha) {
     lines.push(`- You wrote that the running ${d.level} is ${d.said}'s. It is ${d.actual}'s — see dasha.current.`);

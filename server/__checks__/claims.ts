@@ -8,7 +8,7 @@
  *
  *   npm run check:claims
  */
-import { wrongPlacements, wrongDashaClaims, wrongLordships } from "../claim-check";
+import { wrongPlacements, wrongDashaClaims, wrongLordships, wrongDashaWindows } from "../claim-check";
 
 // A chart where Sun is in the 9th, Saturn the 8th, Jupiter the 4th, Mars the 10th.
 const chart = {
@@ -34,6 +34,10 @@ const cases: Array<[string, string, number]> = [
   ["nearest planet, not first",            "Mercury-Rahu period mein Jupiter 4th house mein hai.",  0],
   ["nearest planet is the false one",      "Mercury-Rahu period mein Mars 2nd house mein hai.",     1],
   ["two claims, one false",                "Sun 9th house mein hai; Saturn 3rd house mein hai.",    1],
+  ["an aspect is not a placement",         "Jupiter ki drishti 10th house par hai.",                0],
+  ["lordship stated after the house",      "Jupiter 10th house ka swami hone se career strong hai.", 0],
+  ["English lordship after the house",     "Jupiter governs the 10th house for you.",               0],
+  ["English aspect, also fine",            "Jupiter aspects the 10th house from there.",            0],
 ];
 
 let failed = 0;
@@ -86,8 +90,29 @@ for (const [label, text, want] of lordCases) {
 }
 cases.push(...lordCases);
 
+// Real antardasha rows: Venus-Saturn ran 2023-11-28 → 2027-01-27.
+const wchart = { dasha: { antardasha: [
+  { mahadasha: "Venus", lord: "Saturn", from: "2023-11-28", to: "2027-01-27" },
+  { mahadasha: "Venus", lord: "Mercury", from: "2027-01-27", to: "2029-11-27" },
+] } };
+const windowCases: Array<[string, string, number]> = [
+  ["dates as given",            "**Venus-Saturn (2023–2027)**: mehnat ka daur.",     0],
+  ["a year of slack is fine",   "Venus-Saturn (2024–2027) mein dhyan rakhein.",      0],
+  ["invented dates",            "**Venus-Saturn (2021–2025)** mein padhai achhi rahi.", 1],
+  ["a period we do not have",   "Sun-Rahu (2031–2033) acha rahega.",                 0],
+  ["prose, right dates",        "Venus-Mercury 2027 to 2029 tak achha samay hai.",   0],
+  ["prose, wrong dates",        "Venus-Mercury 2030 to 2033 tak achha samay hai.",   1],
+];
+for (const [label, text, want] of windowCases) {
+  const got = wrongDashaWindows(text, wchart).length;
+  const ok = got === want;
+  if (!ok) failed++;
+  console.log(`${ok ? "ok  " : "FAIL"}  ${label.padEnd(36)} expected ${want}, got ${got}`);
+}
+cases.push(...windowCases);
+
 if (failed) {
   console.error(`\nFAIL — ${failed} of ${cases.length} cases wrong.`);
   process.exit(1);
 }
-console.log(`\nPASS — ${cases.length} cases: false placements flagged; labelled divisionals, transits, lordships and Moon-relative houses left alone; a wrongly named running dasha or house lord is flagged, future periods and divisional lordships are not.`);
+console.log(`\nPASS — ${cases.length} cases: false placements flagged; labelled divisionals, transits, lordships and Moon-relative houses left alone; a wrongly named running dasha, house lord or period date is flagged, while future periods, divisional lordships and a year of rounding are not.`);

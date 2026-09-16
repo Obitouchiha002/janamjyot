@@ -335,6 +335,28 @@ CREATE TABLE IF NOT EXISTS match_history (
 );
 CREATE INDEX IF NOT EXISTS idx_match_history_owner ON match_history(owner_id, created_at DESC);
 
+-- Decisions someone worked through ("ab kya karun"), and how they actually went.
+--
+-- The outcome column is the point. Advice nobody checks is entertainment; a
+-- record of what was decided, what was advised and what happened is the only
+-- thing here that gets better the longer a person stays — and it is theirs,
+-- not something a chatbot can hand them on day one.
+CREATE TABLE IF NOT EXISTS decisions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id   UUID NOT NULL,
+  chart_id   UUID,
+  kind       TEXT NOT NULL DEFAULT 'other',
+  question   TEXT NOT NULL,
+  answers    JSONB,
+  card       JSONB NOT NULL,
+  -- what they told us happened: 'went_well' | 'went_badly' | 'no_reply' |
+  -- 'did_not_do' | 'still_waiting'. NULL until they say.
+  outcome    TEXT,
+  outcome_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_decisions_owner ON decisions(owner_id, created_at DESC);
+
 -- Passwordless e-mail sign-in codes. Kept in their OWN table (not on app_users)
 -- because a first-time user has no account row yet when the code is sent.
 -- Only the HASH of the code is stored.
@@ -528,7 +550,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
   id         BIGSERIAL PRIMARY KEY,
   user_id    UUID,
   device_id  TEXT,
-  action     TEXT NOT NULL,   -- 'chart' | 'report' | 'ask' | 'match' | 'daily'
+  action     TEXT NOT NULL,   -- 'chart' | 'report' | 'ask' | 'match' | 'daily' | 'decide'
   meta       JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -633,7 +655,7 @@ export type PlanId = "free" | "pro" | "unlimited";
 export type AccountStatus = "active" | "blocked" | "banned";
 
 /** The metered actions. Everything else is free to call. */
-export type QuotaAction = "chart" | "report" | "ask" | "match" | "daily";
+export type QuotaAction = "chart" | "report" | "ask" | "match" | "daily" | "decide";
 
 export interface Quotas {
   /** Total saved charts allowed. */
@@ -644,6 +666,8 @@ export interface Quotas {
   ask: number;
   /** Kundli matches per day. */
   match: number;
+  /** Decisions ("ab kya karun") — a LIFETIME count on free, per day on paid. */
+  decide: number;
   /** Everyday readings (Today, daily guidance, today-plan, timeline) per day.
    *  A fair-use ceiling on AI spend, not a product limit — set high enough
    *  that ordinary use never sees it. */
@@ -656,9 +680,9 @@ export const PLANS: Record<PlanId, Quotas> = {
   // judge the app, not enough to live in it. Daily readings stay per-day and
   // generous, because they are the habit worth building and cost us almost
   // nothing to serve.
-  free: { chart: 2, report: 2, ask: 5, match: 3, daily: 40 },
-  pro: { chart: 25, report: 20, ask: 100, match: 25, daily: 200 },
-  unlimited: { chart: -1, report: -1, ask: -1, match: -1, daily: -1 },
+  free: { chart: 2, report: 2, ask: 5, match: 3, decide: 3, daily: 40 },
+  pro: { chart: 25, report: 20, ask: 100, match: 25, decide: 20, daily: 200 },
+  unlimited: { chart: -1, report: -1, ask: -1, match: -1, decide: -1, daily: -1 },
 };
 
 /** A rolling window. `total` is a lifetime cap, not a rate. */
@@ -679,7 +703,10 @@ export type QuotaWindow = "day" | "week" | "month" | "total";
  * allowances stay per-day.
  */
 export const PLAN_WINDOW: Record<PlanId, Partial<Record<QuotaAction, QuotaWindow>>> = {
-  free: { ask: "week", match: "week" },
+  // Decisions are three in a LIFETIME on free, not three a week: this is the
+  // feature someone is meant to try, feel understood by, and then pay for —
+  // and a weekly refill is exactly enough to never need to.
+  free: { ask: "week", match: "week", decide: "total" },
   pro: {},
   unlimited: {},
 };
@@ -695,6 +722,7 @@ export const QUOTA_WINDOW: Record<QuotaAction, QuotaWindow> = {
   report: "month",
   ask: "day",
   match: "day",
+  decide: "day",
   // The everyday surfaces (Today, daily guidance, today-plan, timeline) are a
   // separate, generous per-DAY bucket. They were briefly metered as "report",
   // which is 2 per MONTH on free — so simply opening the Home screen twice
@@ -1498,6 +1526,7 @@ export const CREDIT_PRICES: Record<string, number> = {
   matching: 19,     // full Ashtakoot + PDF
   timeline: 15,
   chart: 10,        // a kundli beyond the free ones
+  decide: 5,        // one decision card, with its timing and its draft
 };
 
 /**
@@ -2770,6 +2799,75 @@ export async function deleteMatch(ownerId: string, id: string): Promise<boolean>
   if (!USE_PG) return false;
   const r = await pool!.query(`DELETE FROM match_history WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
   return (r.rowCount ?? 0) > 0;
+}
+
+/** Save a decision card so it can be reopened — and asked about later. */
+export async function saveDecision(args: {
+  ownerId: string; chartId?: string | null; kind: string;
+  question: string; answers: any; card: any;
+}): Promise<string | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(
+    `INSERT INTO decisions (owner_id, chart_id, kind, question, answers, card)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [args.ownerId, args.chartId ?? null, args.kind, args.question.slice(0, 500),
+     JSON.stringify(args.answers ?? {}), JSON.stringify(args.card)],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/** Their decision diary, newest first. */
+export async function listDecisions(ownerId: string, limit = 30): Promise<any[]> {
+  if (!USE_PG) return [];
+  const { rows } = await pool!.query(
+    `SELECT id, kind, question, card, outcome, created_at
+       FROM decisions WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [ownerId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id, kind: r.kind, question: r.question,
+    verdict: r.card?.verdict ?? "", headline: r.card?.headline ?? "",
+    outcome: r.outcome,
+    created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+  }));
+}
+
+/** One decision, in full — owner in the WHERE clause, never checked after. */
+export async function getDecision(ownerId: string, id: string): Promise<any | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(
+    `SELECT id, kind, question, answers, card, outcome, created_at
+       FROM decisions WHERE id = $1 AND owner_id = $2`,
+    [id, ownerId],
+  );
+  return rows[0] ?? null;
+}
+
+/** What actually happened. The half of this feature that makes the rest true. */
+export async function setDecisionOutcome(ownerId: string, id: string, outcome: string): Promise<boolean> {
+  if (!USE_PG) return false;
+  const r = await pool!.query(
+    `UPDATE decisions SET outcome = $3, outcome_at = now() WHERE id = $1 AND owner_id = $2`,
+    [id, ownerId, outcome],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/**
+ * The last few decisions, for the next one to be read against.
+ *
+ * Only what was asked, what was advised and what happened — never the whole
+ * card. A prompt does not need the drafts they sent; it needs to know that the
+ * last three times they were told to wait, they did not, and it went badly.
+ */
+export async function recentDecisionOutcomes(ownerId: string, limit = 5): Promise<Array<{ question: string; verdict: string; outcome?: string }>> {
+  if (!USE_PG) return [];
+  const { rows } = await pool!.query(
+    `SELECT question, card->>'verdict' AS verdict, outcome
+       FROM decisions WHERE owner_id = $1 ORDER BY created_at DESC LIMIT $2`,
+    [ownerId, limit],
+  );
+  return rows.map((r) => ({ question: String(r.question).slice(0, 120), verdict: r.verdict ?? "", outcome: r.outcome ?? undefined }));
 }
 
 export async function deleteChart(chartId: string): Promise<void> {

@@ -23,7 +23,8 @@
     "check:claims": "tsx server/__checks__/claims.ts",
     "check:matching": "tsx server/__checks__/matching.ts",
     "check:rate-limit": "tsx server/__checks__/rate-limit.ts",
-    "check:report-json": "tsx server/__checks__/report-json.ts"
+    "check:report-json": "tsx server/__checks__/report-json.ts",
+    "check:ai": "tsx server/__checks__/accuracy-ai.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

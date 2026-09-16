@@ -27,7 +27,11 @@ function renderInline(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+?\*\*)/g).map((part, i) => {
     const m = /^\*\*([\s\S]+?)\*\*$/.exec(part);
     return m
-      ? <strong key={i} className="font-bold text-foreground">{m[1]}</strong>
+      ? (
+          // Bold in the same colour barely registers as a highlight; the accent
+          // is what makes a scanning eye stop.
+          <strong key={i} className="font-bold text-accent">{m[1]}</strong>
+        )
       : <span key={i}>{part}</span>;
   });
 }
@@ -40,9 +44,14 @@ export default function AnswerText({ text }: { text: string }) {
   const flushBullets = (key: string) => {
     if (!bullets.length) return;
     out.push(
-      <ul key={key} className="list-disc pl-5 space-y-1.5 my-2">
+      <ul key={key} className="my-3 space-y-2.5 pl-1">
         {bullets.map((b, i) => (
-          <li key={i} className="text-sm leading-relaxed text-foreground/90">{renderInline(b)}</li>
+          <li key={i} className="flex gap-2.5 text-[14.5px] leading-relaxed text-foreground/90">
+            {/* A dot of our own, not a list marker: the accent ties a list to
+                the rest of the app, and it lines up with wrapped text. */}
+            <span className="mt-[9px] h-[5px] w-[5px] shrink-0 rounded-full bg-accent" />
+            <span className="min-w-0">{renderInline(b)}</span>
+          </li>
         ))}
       </ul>
     );
@@ -62,17 +71,19 @@ export default function AnswerText({ text }: { text: string }) {
     flushBullets(`ul-${idx}`);
     if (isHeading(line)) {
       out.push(
-        <h4 key={`h-${idx}`} className="text-[13px] font-bold uppercase tracking-wide text-accent mt-3 first:mt-0">
+        <h4 key={`h-${idx}`} className="mt-5 text-[12.5px] font-bold uppercase tracking-wider text-accent first:mt-0">
           {line.replace(/\*\*/g, "").replace(/:$/, "")}
         </h4>
       );
     } else {
       out.push(
-        <p key={`p-${idx}`} className="text-sm leading-relaxed text-foreground/90 my-1">{renderInline(line)}</p>
+        <p key={`p-${idx}`} className="text-[14.5px] leading-[1.75] text-foreground/90">{renderInline(line)}</p>
       );
     }
   });
   flushBullets("ul-end");
 
-  return <div className="space-y-0.5">{out}</div>;
+  // Real air between paragraphs. The old half-step gap ran everything into one
+  // block on a phone, which is where this is read.
+  return <div className="space-y-3">{out}</div>;
 }

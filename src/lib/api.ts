@@ -44,10 +44,19 @@ export const IS_NATIVE = Capacitor.isNativePlatform();
 const BASE_KEY = 'jj:api-base';
 
 const configuredBase = (() => {
+  /*
+   * On the web the API is always the origin the page came from, whatever
+   * VITE_API_BASE says.
+   *
+   * That variable exists for the APK, where the page is served from inside the
+   * phone and the backend has to be named. The same .env.local builds both, so
+   * the web bundle was picking it up too — and a build opened on localhost
+   * then called the LIVE domain, cross-origin, and every request died as
+   * "Failed to fetch" before it reached a server anyone could debug.
+   */
+  if (!IS_NATIVE) return '';
   const fromEnv = (import.meta as any).env?.VITE_API_BASE as string | undefined;
   if (fromEnv) return fromEnv.replace(/\/$/, '');
-  // On the web the app is served by the same origin as the API.
-  if (!IS_NATIVE) return '';
   console.error('[api] VITE_API_BASE is not set — the native app has no backend to call.');
   return '';
 })();

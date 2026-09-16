@@ -79,6 +79,11 @@ import {
   getChatMemory,
   saveChatMemory,
   getChartFacts,
+  saveDecision,
+  listDecisions,
+  getDecision,
+  setDecisionOutcome,
+  recentDecisionOutcomes,
   mergeChartFacts,
   clearChatMemory,
   createUser,
@@ -165,6 +170,8 @@ import {
   generateMatchSummary,
   generateMatchVerdict,
   generateMarriageOutlook,
+  generateDecision,
+  decisionTalk,
   answerMatchQuestion,
   answerMatchYear,
   matchQuestionChips,
@@ -192,6 +199,7 @@ import { pastMilestones, recentPastPeriods } from "./server/past-timeline";
 import { computeRemedies } from "./server/remedies";
 import { buildPanchang } from "./server/panchang";
 import { buildRightNow, ACTIVITIES } from "./server/right-now";
+import { decisionKind, clarifiersFor, decisionWindow, refusalFor } from "./server/decide";
 import { buildDaySignals, buildUpcomingDaySignals, buildDayPlan, buildUpcomingDayPlans } from "./server/day-signals";
 import { hinduDay } from "./server/hindu-calendar";
 import { buildMuhurat, scanMonth } from "./server/muhurat";
@@ -2055,6 +2063,7 @@ async function checkQuota(
     window === "day" ? "Your limit resets tomorrow."
     : window === "week" ? "Your limit resets 7 days after each use."
     : window === "month" ? "Your limit resets 30 days after each use."
+    : action === "decide" ? "Free decisions are a one-time set, not a weekly refill."
     : "Deleting a kundli does not give the slot back.";
 
   const what: Record<QuotaAction, string> = {
@@ -2062,6 +2071,9 @@ async function checkQuota(
     report: `You can generate ${limit} report${limit === 1 ? "" : "s"} per month on this plan.`,  // report stays monthly on every plan
     ask: `You can ask ${limit} question${limit === 1 ? "" : "s"} ${per} on this plan.`,
     match: `You can run ${limit} kundli match${limit === 1 ? "" : "es"} ${per} on this plan.`,
+    decide: window === "total"
+      ? `You have used all ${limit} of your free decisions.`
+      : `You can work through ${limit} decision${limit === 1 ? "" : "s"} ${per} on this plan.`,
     daily: `You've opened your daily readings ${limit} times today — that's the fair-use limit.`,
   };
 
@@ -3773,6 +3785,201 @@ app.get("/api/chart/:chartId/report/:type", async (req, res) => {
  * opened many times a day, so it must answer immediately and never disagree
  * with itself between two checks a minute apart.
  */
+/* ── Faisla — "ab kya karun?" ─────────────────────────────────────────────
+   A decision, not a reading. Three steps, and only the middle one costs an AI
+   call: what kind of decision this is and which facts change it are rules, the
+   window is the panchang, and the model only writes the card. */
+
+/**
+ * POST /api/decide/start — free, instant: the two or three things worth asking
+ * before answering, and nothing else. No AI, no credit, no charge.
+ */
+app.post("/api/decide/start", (req, res) => {
+  const question = String(req.body?.question ?? "").trim();
+  if (!question) return res.status(400).json({ error: "question is required" });
+  if (question.length > 400) return res.status(400).json({ error: "That is too long — say it in a line or two." });
+  const language = normalizeLanguage(req.body?.language, "en");
+  const refusal = refusalFor(question);
+  if (refusal) return res.json({ refusal, kind: "other", clarifiers: [] });
+  const kind = decisionKind(question);
+  res.json({ kind, clarifiers: clarifiersFor(kind, language), refusal: null });
+});
+
+/**
+ * POST /api/decide/talk — the conversation before the answer.
+ *
+ * Free and uncharged. This is someone saying what happened, and being answered;
+ * charging for that would turn the one screen that is meant to feel human into
+ * a meter. The card underneath it is what costs — and only when they want it.
+ *
+ * Distress is checked on every turn, not only the first: people work up to what
+ * is actually wrong, and the third message is often the one that matters.
+ */
+app.post("/api/decide/talk", async (req: any, res) => {
+  if (!featureOn("chat")) return res.status(503).json({ error: "AI is temporarily disabled by the admin." });
+  const raw = Array.isArray(req.body?.history) ? req.body.history : [];
+  const history = raw.slice(-10).map((m: any) => ({
+    role: m?.role === "assistant" ? "assistant" : "user",
+    text: String(m?.text ?? "").slice(0, 1200),
+  })).filter((m: any) => m.text);
+  if (!history.length) return res.status(400).json({ error: "Say something first." });
+
+  const language = normalizeLanguage(req.body?.language, "en");
+  const lastUser = [...history].reverse().find((m: any) => m.role === "user")?.text ?? "";
+
+  // Some things are not decisions and must never reach a model that will try
+  // to answer them like one.
+  const refusal = refusalFor(lastUser);
+  if (refusal) return res.json({ refusal, reply: "", ask: null, ready: false });
+  if (distressLevel(lastUser) === "severe") {
+    const chartId = String(req.body?.chartId ?? "");
+    const name = chartId ? undefined : undefined;
+    const { answer } = severeReply(language, name);
+    return res.json({ reply: answer, ask: null, ready: false, distress: "severe" });
+  }
+
+  try {
+    const chartId = String(req.body?.chartId ?? "");
+    const chart = chartId ? await getNormalizedChart(chartId).catch(() => null) : null;
+    if (chart && !canAccessChart(req, chart)) {
+      return res.status(403).json({ error: "This chart is not available on this account/device." });
+    }
+    const [factsRaw, memory] = await Promise.all([
+      chartId ? getChartFacts(chartId).catch(() => ({})) : Promise.resolve({}),
+      chartId ? getChatMemory(chartId).catch(() => "") : Promise.resolve(""),
+    ]);
+    const { partner_chart_id, partner_relation, ...facts } = (factsRaw as any) ?? {};
+
+    /*
+     * When to stop asking, decided here rather than by the model.
+     *
+     * Asked to judge its own readiness, it kept finding one more thing to ask —
+     * including after the person had spelt the choice out ("message karun ya
+     * rehne doon"). Two plain signals end the gathering: they named the choice,
+     * or three questions have already gone by.
+     */
+    const asked = history.filter((m: any) => m.role === "assistant" && m.text.includes("?")).length;
+    const mustDecide = /\b(ya nahi|ya na|ya rehne|ya chhod|karun|karoon|kar doon|kar dun|bhej doon|bhejun|should i|shall i|kya karun|batao main|faisla)\b/i.test(lastUser)
+      || /(करूँ|करूं|या नहीं|फ़ैसला)/.test(lastUser);
+
+    const out = await decisionTalk({
+      history, facts, memory, asked, mustDecide,
+      userName: String(chart?.birth_details?.name || "").trim().split(/\s+/)[0] || undefined,
+      language,
+    });
+    if (!out.reply) return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });
+    res.json(out);
+  } catch (err: any) {
+    console.error("[decide-talk] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/**
+ * POST /api/decide — the card.
+ *
+ * Charged as a "decide": three in a lifetime on the free plan, then credits.
+ * Settled only once the card exists, like every other paid thing here.
+ */
+app.post("/api/decide", async (req: any, res) => {
+  if (!featureOn("chat")) return res.status(503).json({ error: "AI is temporarily disabled by the admin." });
+  const question = String(req.body?.question ?? "").trim();
+  if (!question) return res.status(400).json({ error: "question is required" });
+  const refusal = refusalFor(question);
+  if (refusal) return res.status(200).json({ refusal });
+
+  const chartId = String(req.body?.chartId ?? "");
+  const chart = chartId ? await getNormalizedChart(chartId).catch(() => null) : null;
+  if (chartId && !chart) return res.status(404).json({ error: "Chart not found" });
+  if (chart && !canAccessChart(req, chart)) {
+    return res.status(403).json({ error: "This chart is not available on this account/device." });
+  }
+
+  const auth = await charge(req, res, "decide", "decide");
+  if (!auth) return;
+  try {
+    const language = normalizeLanguage(req.body?.language, chart?.birth_details?.language || "en");
+    const kind = decisionKind(question);
+    const answers = typeof req.body?.answers === "object" && req.body.answers ? req.body.answers : {};
+
+    // The when, computed here — never asked of the model.
+    const b = chart?.birth_details ?? {};
+    const window = decisionWindow({
+      kind,
+      latitude: Number(req.body?.latitude ?? b.latitude),
+      longitude: Number(req.body?.longitude ?? b.longitude),
+      timezone: String(req.body?.timezone ?? b.timezone ?? "Asia/Kolkata"),
+      ayanamsa: AYANAMSA,
+    });
+
+    let transit: any = null;
+    if (chart) {
+      try { transit = compactTransitForAI(buildTransit(chart, AYANAMSA, new Date().toISOString())); }
+      catch (e: any) { console.warn("[decide] transit skipped:", e?.message); }
+    }
+
+    const [facts, memory, history] = await Promise.all([
+      chartId ? getChartFacts(chartId).catch(() => ({})) : Promise.resolve({}),
+      chartId ? getChatMemory(chartId).catch(() => "") : Promise.resolve(""),
+      recentDecisionOutcomes(req.user.id).catch(() => []),
+    ]);
+    const { partner_chart_id, partner_relation, ...lifeFacts } = (facts as any) ?? {};
+
+    const card = await generateDecision({
+      question, kind, answers, chart, facts: lifeFacts, memory, window, transit,
+      /*
+       * A draft belongs with any decision about SAYING something — "boss ko
+       * resignation bata doon" is a career decision and still ends with a
+       * message somebody has to write at eleven at night. Kind alone missed
+       * those, so the words for telling, asking and sending decide it too.
+       */
+      wantsDraft: ["message", "relationship", "family"].includes(kind)
+        || /\b(message|msg|text|whatsapp|dm|reply|call|bata doon|bata dun|bol doon|bol dun|likh doon|likh dun|puchh loon|pooch loon|email|bhej doon|bhej dun|bataun|bolun)\b|(मैसेज|बता दूँ|बोल दूँ|पूछ लूँ|लिख दूँ)/i.test(question),
+      userName: String(chart?.birth_details?.name || "").trim().split(/\s+/)[0] || undefined,
+      language, history,
+    });
+
+    const id = await saveDecision({
+      ownerId: req.user.id, chartId: chartId || null, kind, question, answers, card,
+    }).catch((e) => { console.warn("[decide] not saved:", e?.message); return null; });
+
+    const me = identityOf(req as any);
+    await recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "decide", meta: { kind } }).catch(() => {});
+    await settleCharge(req, auth.charge, "decide", chartId || null, { category: kind });
+    res.json({ id, kind, window, ...card });
+  } catch (err: any) {
+    console.error("[decide] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/** GET /api/decide/history — their decision diary. */
+app.get("/api/decide/history", requireAuth, async (req: any, res) => {
+  res.json({ decisions: await listDecisions(req.user.id).catch(() => []) });
+});
+
+/** GET /api/decide/:id — one decision, reopened. */
+app.get("/api/decide/:id", requireAuth, async (req: any, res) => {
+  const row = await getDecision(req.user.id, req.params.id).catch(() => null);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  res.json(row);
+});
+
+/**
+ * POST /api/decide/:id/outcome — "what actually happened".
+ *
+ * Free and uncharged, deliberately: this is the answer that makes every later
+ * decision better, and nobody pays to tell you the truth about their week.
+ */
+const OUTCOMES = ["went_well", "went_badly", "no_reply", "did_not_do", "still_waiting"];
+app.post("/api/decide/:id/outcome", requireAuth, async (req: any, res) => {
+  const outcome = String(req.body?.outcome ?? "");
+  if (!OUTCOMES.includes(outcome)) return res.status(400).json({ error: "Unknown outcome" });
+  const ok = await setDecisionOutcome(req.user.id, req.params.id, outcome).catch(() => false);
+  if (!ok) return res.status(404).json({ error: "Not found" });
+  res.json({ ok: true });
+});
+
 app.get("/api/right-now", (req, res) => {
   const latitude = Number(req.query.lat);
   const longitude = Number(req.query.lon);

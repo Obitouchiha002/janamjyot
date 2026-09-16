@@ -47,7 +47,10 @@ const L = {
 } satisfies Record<string, Tri>;
 
 /** What each non-form action offers, and where it goes. */
-const SIMPLE: Record<string, { label: Tri; to: (c: string) => string }> = {
+const SIMPLE: Record<string, { label: Tri; to: (c: string, q: string) => string }> = {
+  // "Message karun ya nahi" is not a reading, it is a decision — it goes to the
+  // Faisla flow with the question already filled in, so nobody retypes it.
+  decide:      { label: { en: "Work this decision out with me", hi: "यह फ़ैसला साथ में तय करें", hinglish: "Ye faisla saath mein tay karein" }, to: (_c, q) => `/decide${q ? `?q=${encodeURIComponent(q)}` : ""}` },
   life_report: { label: { en: "Open my full life report", hi: "मेरी पूरी लाइफ रिपोर्ट खोलें", hinglish: "Meri poori life report kholein" }, to: (c) => `/report/${c}` },
   timeline:    { label: { en: "See my next years",        hi: "मेरे आने वाले साल देखें",     hinglish: "Mere aane wale saal dekhein" }, to: (c) => `/timeline/${c}` },
   career:      { label: { en: "Open my career report",    hi: "मेरी करियर रिपोर्ट खोलें",    hinglish: "Meri career report kholein" }, to: (c) => `/reports/${c}/career` },
@@ -58,7 +61,7 @@ const SIMPLE: Record<string, { label: Tri; to: (c: string) => string }> = {
   add_person:  { label: { en: "Make their kundli",         hi: "उनकी कुंडली बनाएँ",           hinglish: "Unki kundli banayein" },        to: (c) => `/create-chart?return=${encodeURIComponent(`/chat/${c}`)}` },
 };
 
-export default function ChatAction({ action, chartId }: { action: string; chartId: string }) {
+export default function ChatAction({ action, chartId, question }: { action: string; chartId: string; question?: string }) {
   const lang = getLang() as Lang;
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
@@ -67,7 +70,7 @@ export default function ChatAction({ action, chartId }: { action: string; chartI
   if (simple) {
     return (
       <Pressable
-        to={simple.to(chartId)}
+        to={simple.to(chartId, question ?? "")}
         feedback="medium"
         className="mt-2.5 flex w-full items-center gap-2.5 rounded-xl border border-accent/35 bg-accent/8 px-3.5 py-3 text-left"
       >
