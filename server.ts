@@ -164,6 +164,7 @@ import {
   tidyReport,
   generateMatchSummary,
   generateMatchVerdict,
+  generateMarriageOutlook,
   answerMatchQuestion,
   answerMatchYear,
   matchQuestionChips,
@@ -2784,6 +2785,50 @@ app.post("/api/match/ask", async (req, res) => {
     res.json(out);
   } catch (err: any) {
     console.error("[match-ask] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
+/**
+ * POST /api/match/outlook — what living this marriage would be like.
+ *
+ * Its own request, not part of /match/deep: it is the longest thing the AI
+ * writes for a couple, and most people read the score and the verdict and stop.
+ * Generating it for everyone would spend a model call, and the free tier's
+ * per-minute budget, on a screen half of them never scroll to.
+ *
+ * Each person's transit is computed against their OWN lagna and moon, so
+ * "right now" means something different for each of them — which is the point.
+ */
+app.post("/api/match/outlook", async (req, res) => {
+  if (!featureOn("match")) return res.status(503).json({ error: "Matching is temporarily disabled." });
+  const b = twoBirths(req, res);
+  if (!b) return;
+  const auth = await charge(req, res, "ask", "match_outlook");
+  if (!auth) return;
+  try {
+    const language = normalizeLanguage(req.body?.language, "en");
+    const { base, boy, girl, timing, doshas } = deepLayersFrom(b.boy, b.girl);
+    const now = new Date().toISOString();
+    // buildTransit needs only where their lagna and moon sit.
+    const transitFor = (p: any) => {
+      try {
+        return compactTransitForAI(buildTransit({ summary: { lagna: p.lagna, rashi: p.moon_sign } }, AYANAMSA, now));
+      } catch (e: any) {
+        console.warn("[match-outlook] transit skipped:", e?.message);
+        return null;
+      }
+    };
+    const out = await generateMarriageOutlook({
+      base, boy, girl, timing, doshas,
+      boyTransit: transitFor(boy), girlTransit: transitFor(girl), language,
+    });
+    const me = identityOf(req as any);
+    await recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "ask", meta: { kind: "match_outlook" } }).catch(() => {});
+    await settleCharge(req, auth.charge, "match_outlook", null, { category: "marriage" });
+    res.json(out);
+  } catch (err: any) {
+    console.error("[match-outlook] error:", err?.message);
     res.status(500).json({ error: friendlyError(err?.message) });
   }
 });

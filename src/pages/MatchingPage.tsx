@@ -3,7 +3,7 @@ import { getLang } from "@/lib/prefs";
 import { useT } from "@/lib/i18n";
 import {
   FinalVerdict, PersonPanel, PlanetTable, TimingWindows, DoshaPanel,
-  MatchChat, YearOutlook, WeddingDates, MatchHistory, SectionTitle,
+  MatchChat, YearOutlook, WeddingDates, MarriageOutlook, MatchHistory, SectionTitle,
 } from "@/components/match/DeepMatch";
 import { useAuth } from "@/auth";
 import { HeartHandshake, Bot, Mars, Venus, CheckCircle2, FileText, Download, Loader2, Share2 } from "lucide-react";
@@ -723,6 +723,7 @@ export default function MatchingPage() {
             <section className="m-enter space-y-2.5" style={{ animationDelay: '0.11s' }}>
               <SectionTitle>{t("The year ahead")}</SectionTitle>
               <YearOutlook boyInput={inputs.boy} girlInput={inputs.girl} lang={lang} />
+              <MarriageOutlook boyInput={inputs.boy} girlInput={inputs.girl} lang={lang} />
               <WeddingDates boyInput={inputs.boy} girlInput={inputs.girl} />
             </section>
           )}

@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609160746",
-  "url": "/ota/web-202609160746.zip",
-  "checksum": "e9eb0fba42e43a9efb2884e3d63e9c9f817ed0ac18d17ad59c13403d4f80be43",
+  "build": "202609160841",
+  "url": "/ota/web-202609160841.zip",
+  "checksum": "a2a27c836a4cf249130d1f2ac61fec41775cd1d1d5b6b8dcf3ebce7bec1692ca",
   "min_native": "1.17",
-  "notes": "Life report ab 7 hisson mein — travel aur business bhi, aur har daur ki asli tareekhon ke saath."
+  "notes": "Life report ab 7 hisson mein (travel, business bhi) asli tareekhon ke saath, aur matching mein naya Marriage Outlook."
 };

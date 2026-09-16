@@ -594,6 +594,125 @@ export function YearOutlook({
   );
 }
 
+/* ── 7b. Marriage Outlook — what living it would actually be like ────────
+   Loaded on a tap, not with the rest of the screen: it is the longest thing
+   the AI writes for a couple and most people read the score and stop, so it
+   costs a model call only for the ones who ask for it. */
+
+const SCENARIOS: Array<{ key: string; label: string; tint: string }> = [
+  { key: "best", label: "If it goes well", tint: "#16A34A" },
+  { key: "realistic", label: "Most likely", tint: "#B7791F" },
+  { key: "worst", label: "If ignored", tint: "#DC2626" },
+];
+
+export function MarriageOutlook({
+  boyInput, girlInput, lang,
+}: { boyInput: any; girlInput: any; lang: string }) {
+  const t = useT();
+  const [data, setData] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState("realistic");
+
+  const load = async () => {
+    haptic.tap();
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/match/outlook", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boy: boyInput, girl: girlInput, language: lang }),
+      });
+      const d = await res.json();
+      if (d.error) setErr(d.error); else setData(d);
+    } catch {
+      setErr(t("Network error."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!data && !busy) {
+    return (
+      <div className="m-card p-4">
+        <p className="text-[14.5px] font-bold leading-snug text-foreground">
+          {t("How this marriage would actually go")}
+        </p>
+        <p className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
+          {t("Three honest versions — at its best, most likely, and if the weak points are ignored — plus how you two would be together day to day, about money and about children.")}
+        </p>
+        {err && <p className="mt-2 text-[13px] font-medium text-destructive">{err}</p>}
+        <button
+          onClick={load}
+          className="mt-3 w-full rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground"
+        >
+          {t("Read the outlook")}
+        </button>
+      </div>
+    );
+  }
+
+  if (busy) {
+    return (
+      <div className="m-card space-y-2 p-4">
+        <div className="skeleton h-[16px]" />
+        <div className="skeleton h-[16px]" />
+        <div className="skeleton h-[16px] w-2/3" />
+      </div>
+    );
+  }
+
+  const sc = data.scenarios?.[tab] ?? {};
+  const c = data.compatibility ?? {};
+  const pair = (label: string, value: any) =>
+    value ? (
+      <div className="rounded-2xl border-2 border-border bg-muted/40 p-3">
+        <p className="text-[11.5px] font-bold uppercase tracking-wide text-muted-foreground">{t(label)}</p>
+        <p className="selectable mt-1 text-[13.5px] leading-relaxed text-foreground/90">{value}</p>
+      </div>
+    ) : null;
+
+  return (
+    <div className="m-card space-y-3 p-4">
+      {/* Which version you are reading. All three come from the same chart. */}
+      <div className="flex flex-wrap gap-1.5">
+        {SCENARIOS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => { haptic.tap(); setTab(s.key); }}
+            className={`rounded-full border-2 px-3 py-1.5 text-[12.5px] font-bold transition-colors ${
+              tab === s.key ? "text-white" : "border-border bg-card text-muted-foreground"
+            }`}
+            style={tab === s.key ? { background: s.tint, borderColor: s.tint } : undefined}
+          >
+            {t(s.label)}
+          </button>
+        ))}
+      </div>
+
+      <p className="selectable text-[14px] leading-relaxed text-foreground">{sc.outlook}</p>
+      <div className="space-y-2">
+        {pair("Right now", sc.current_period_note)}
+        {pair("The periods behind it", sc.dasha_support)}
+        {pair("In the charts", sc.supporting_planets)}
+      </div>
+
+      <div className="space-y-2 border-t-2 border-border pt-3">
+        <p className="text-[13px] font-bold uppercase tracking-wide text-muted-foreground">{t("Together")}</p>
+        {pair("Emotionally", c.emotional)}
+        {pair("Physical bond", c.physical)}
+        {pair("Children", c.children?.outlook ? `${c.children.outlook} ${c.children.timing_note ?? ""}`.trim() : null)}
+        {pair("Money", c.financial)}
+      </div>
+
+      {data.conclusion && (
+        <p className="selectable border-t-2 border-border pt-3 text-[13.5px] leading-relaxed text-foreground/90">
+          {data.conclusion}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ── 8. Wedding dates for THIS couple ────────────────────────────────── */
 
 export function WeddingDates({

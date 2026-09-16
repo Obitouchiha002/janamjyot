@@ -2177,6 +2177,120 @@ export function matchQuestionChips(language: string): string[] {
  * Same safety floor as the main chat: no "don't marry", no diagnosis, no
  * claiming to know what a third person privately feels or will decide.
  */
+/**
+ * Marriage Outlook — what living this marriage would actually be like.
+ *
+ * A score and a verdict answer "should we", and people then ask the questions
+ * the score cannot: how will we be with each other, about money, about
+ * children, and is this a good stretch or a hard one right now. Three honest
+ * scenarios beat one confident paragraph, because a chart is a lean, not a
+ * transcript — and naming the worst case plainly is what makes the best case
+ * worth anything.
+ *
+ * The limits are in the prompt for a reason, not decoration: physical
+ * compatibility is written the way a family astrologer would say it out loud,
+ * and children are spoken of as a supportive or demanding window — never a
+ * promise, never a diagnosis, never a reason for someone to stop seeing a
+ * doctor.
+ */
+export async function generateMarriageOutlook(args: {
+  base: any; boy: any; girl: any; timing: any; doshas: any[];
+  boyTransit?: any; girlTransit?: any; language: string;
+}): Promise<any> {
+  const person = (p: any, transit: any) => ({
+    name: p.name, lagna: p.lagna, moon_sign: p.moon_sign, nakshatra: p.nakshatra,
+    seventh_house_d1: p.seventh_d1, seventh_house_d9: p.seventh_d9,
+    venus: p.venus, jupiter: p.jupiter,
+    own_marriage_promise: p.promise,
+    current_period: p.current_dasha,
+    supportive_marriage_windows: (p.marriage_windows ?? []).slice(0, 3),
+    transit_now: transit?.transiting_planets
+      ?.filter((t: any) => ["Jupiter", "Saturn", "Rahu", "Ketu"].includes(t.planet))
+      ?.map((t: any) => ({ planet: t.planet, sign: t.sign, from_their_lagna: t.transit_house_from_lagna, from_their_moon: t.transit_house_from_moon })),
+  });
+  const packet = {
+    ashtakoot: { total: args.base?.total, max: args.base?.max, verdict: args.base?.verdict, kootas: args.base?.kootas },
+    doshas: args.doshas,
+    timing_alignment: args.timing,
+    boy: person(args.boy, args.boyTransit),
+    girl: person(args.girl, args.girlTransit),
+  };
+
+  const prompt = `${REPORT_SYSTEM}
+
+${languageInstruction(args.language)}
+
+Two people are considering marriage. Everything below — their Ashtakoot score,
+each koota, the doshas, both charts' 7th house in D1 and D9, Venus and Jupiter,
+each person's own marriage promise, their running periods and the live transits
+over each of their charts — is ALREADY CALCULATED. Interpret only this. Never
+invent a placement, a date or a score.
+
+Write their MARRIAGE OUTLOOK as a single valid JSON object, exactly this shape:
+{
+  "scenarios": {
+    "best":      { "outlook": string, "supporting_planets": string, "dasha_support": string, "current_period_note": string },
+    "realistic": { "outlook": string, "supporting_planets": string, "dasha_support": string, "current_period_note": string },
+    "worst":     { "outlook": string, "supporting_planets": string, "dasha_support": string, "current_period_note": string }
+  },
+  "compatibility": {
+    "emotional": string,
+    "physical": string,
+    "children": { "outlook": string, "timing_note": string },
+    "financial": string
+  },
+  "conclusion": string
+}
+
+WHAT EACH PART MEANS:
+• scenarios — the SAME chart read three ways, and all three must be plausible
+  from it. "best" is what this marriage looks like when both of them do the work
+  their charts ask for; "realistic" is the likeliest everyday shape of it;
+  "worst" is what it looks like if the weak points are ignored. Be honest in
+  "worst" — a worst case that sounds pleasant is useless — but never predict a
+  divorce, a death, an illness or a disaster. Speak of strain, distance, money
+  pressure, family friction: things people can act on.
+• supporting_planets — the actual placements behind that scenario, named
+  (7th lord, Venus, Jupiter, Moon, the koota that carried or cost them).
+• dasha_support — the real periods, with the dates given above, that make that
+  scenario more or less likely.
+• current_period_note — what the LIVE transits and running periods say about
+  that scenario right now, for THIS couple. 1-2 sentences.
+• emotional — Moon to Moon, Venus, Graha Maitri, Gana: how they will feel with
+  each other day to day, argue, and make up.
+• physical — their physical and intimate bond, written with dignity, the way a
+  family astrologer would say it out loud in front of both families. Venus,
+  Mars, the 7th and its lord. Never explicit, never crude, never a technique.
+• children — favourability ONLY, from the 5th house, its lord, Jupiter and the
+  periods. NEVER a promise of children, never a number, never a warning of
+  infertility, never anything a doctor should be saying. "timing_note" names
+  the supportive window from the dasha, in years.
+• financial — the 2nd and 11th houses of both charts together, and whether
+  their earning periods support each other.
+• conclusion — 2-3 sentences, warm, honest, and clearly THEIR situation, not
+  advice that would fit any couple. Close by saying this is guidance, not a
+  guarantee, in one short natural clause.
+
+Two or three sentences per string. Plain, warm, specific — name the years, the
+placements and the real pattern. No markdown, no bullet characters.
+
+THE COUPLE'S CALCULATED DATA:
+${JSON.stringify(packet)}
+
+FINAL CHECK: is every date and score taken from the data above? Is "worst"
+genuinely honest without predicting divorce, illness or death? Are children
+spoken of as a favourable or demanding window only? Fix anything that fails.
+
+${languageInstruction(args.language)}`;
+
+  const text = await llmGenerate(prompt, {
+    temperature: 0.75, thinkingBudget: 0, maxTokens: 2600, purpose: "match_outlook",
+  });
+  const j = parseJsonLoose(text);
+  if (!j?.scenarios?.realistic) throw new Error("Outlook came back unreadable");
+  return tidyReport(j);
+}
+
 export async function answerMatchQuestion(args: {
   base: any; boy: any; girl: any; timing: any; doshas: any[];
   question: string; language: string;
