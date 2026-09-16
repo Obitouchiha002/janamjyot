@@ -18,8 +18,8 @@ VedicAstra-SOP.html
 # deploy because of it. Only the version the app actually points at needs to be
 # served; the previous one stays as a fallback while the update rolls out.
 public/*.apk
-!public/JanamJyot-v1.16.apk
 !public/JanamJyot-v1.17.apk
+!public/JanamJyot-v1.18.apk
 
 # The Android project. 149MB of Gradle cache, intermediate dex and build
 # outputs that the web deploy has no use for — and the single reason every
