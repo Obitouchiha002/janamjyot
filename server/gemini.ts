@@ -2552,8 +2552,11 @@ WHAT EACH ONE IS:
     ? `the actual message to send, if this decision is about saying something to
   someone. "direct" says it plainly; "soft" says the same thing more gently.
   Both in THEIR voice — short, human, no emojis, nothing theatrical, nothing
-  that guilts or corners the other person. If the decision is not about sending
-  a message, use null.`
+  that guilts or corners the other person.
+  WRITE IT EVEN WHEN THE ANSWER IS "no" OR "wait" — then it is the message for
+  when the time comes. Telling someone not to send anything tonight and handing
+  them nothing for tomorrow is half an answer, and they will write it at 2am
+  themselves. Only use null when the decision is not about contacting anyone.`
     : `always null for this request.`}
 • if_it_goes_wrong — what to do if the answer is no, the reply never comes, the
   offer falls through. Concrete and kind: a next step and a timeframe, so a bad
