@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609151120",
-  "url": "/ota/web-202609151120.zip",
-  "checksum": "c38e9c3284f5b68a4dfa0863542b2d7c3a7576d3394e889b6c68b392bc7434bc",
+  "build": "202609160504",
+  "url": "/ota/web-202609160504.zip",
+  "checksum": "71e70d6229f10eb2fd0a90c04f6c207b8499911616038ba2774ebe870738275f",
   "min_native": "1.17",
-  "notes": ""
+  "notes": "Pehli screen wali tour hata di — app seedha khulta hai. Chat tez aur zyada sahi jawab."
 };

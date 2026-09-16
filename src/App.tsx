@@ -30,7 +30,6 @@ import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
 import UpdateSheet from './components/mobile/UpdateSheet';
 import LanguageGate, { languageChosen } from './components/LanguageGate';
-import Onboarding, { onboardingSeen } from './components/Onboarding';
 import { depthOf, hidesTabBar } from './components/mobile/routes';
 
 import LoginPage from './pages/LoginPage';
@@ -233,7 +232,6 @@ function Shell() {
   const [locked, setLocked] = useState(() => isNative && isLockEnabled());
   // First launch asks for the language before the app says a word.
   const [langOk, setLangOk] = useState(languageChosen);
-  const [tourDone, setTourDone] = useState(onboardingSeen);
   useEffect(() => {
     if (!isNative) return;
     let handle: any;
@@ -345,31 +343,15 @@ function Shell() {
   if (!langOk) return <LanguageGate onDone={() => setLangOk(true)} />;
 
   /*
-   * The first-run tour, once, after the language and before the app.
+   * No first-run tour.
    *
-   * Deliberately NOT gated on "has no kundli": someone who deletes their last
-   * one is not a new user and does not want to be introduced to the app again.
-   * A single flag, set by finishing OR skipping, is the honest rule.
-   *
-   * Finishing it lands on the create-kundli screen, because that is the one
-   * action the rest of the app is built on; skipping lands on Home like before.
+   * Three slides stood between a new person and the app, and on a real phone
+   * the "Next" button did nothing — so the very first screen of the app was a
+   * dead end. A tour is not worth one person being unable to get in, and the
+   * thing it was explaining (make a kundli from your birth details) is what
+   * the home screen already says. New accounts still land on /create-chart
+   * from sign-in, which was the only genuinely useful thing the tour did.
    */
-  if (!tourDone) {
-    return (
-      <Onboarding
-        signedIn={!!user}
-        onSkip={() => setTourDone(true)}
-        onStart={() => {
-          setTourDone(true);
-          // Navigating here even while signed out is deliberate: the sign-in
-          // wall below renders over this path, and the moment they are in, the
-          // location is already /create-chart — so they land where the tour
-          // said they would rather than on a home screen they have to search.
-          navigate('/create-chart');
-        }}
-      />
-    );
-  }
 
   // The emailed password-reset link must open even while signed out, so it
   // bypasses the launch auth gate below.
