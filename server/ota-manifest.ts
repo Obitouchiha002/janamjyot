@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609160504",
-  "url": "/ota/web-202609160504.zip",
-  "checksum": "71e70d6229f10eb2fd0a90c04f6c207b8499911616038ba2774ebe870738275f",
+  "build": "202609160746",
+  "url": "/ota/web-202609160746.zip",
+  "checksum": "e9eb0fba42e43a9efb2884e3d63e9c9f817ed0ac18d17ad59c13403d4f80be43",
   "min_native": "1.17",
-  "notes": "Pehli screen wali tour hata di — app seedha khulta hai. Chat tez aur zyada sahi jawab."
+  "notes": "Life report ab 7 hisson mein — travel aur business bhi, aur har daur ki asli tareekhon ke saath."
 };

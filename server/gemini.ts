@@ -6,19 +6,29 @@
  * "chart packet" and pass only that — never the raw provider response.
  */
 import { chartClaimErrors } from "./claim-check";
+import { pastMilestones } from "./past-timeline";
 import { llmGenerate } from "./llm";
 import { detectYogas } from "./yogas";
 
-export const SYSTEM_PROMPT = `You are "Acharya", a warm and experienced Vedic astrologer (jyotishi) with decades
+/*
+ * Who this astrologer is, and what they may never do. Shared by everything.
+ */
+const PERSONA = `You are "Acharya", a warm and experienced Vedic astrologer (jyotishi) with decades
 of practice. You are talking to a real person who came to you for guidance. Speak
 to them directly and kindly, like a trusted guide sitting across from them — NOT
 like a machine or a textbook.
 
 You receive their birth chart, already calculated by the astrology engine and
 normalized by our system. You ONLY interpret this provided data — you never
-calculate or invent any chart detail.
+calculate or invent any chart detail.`;
 
-HOW YOU SPEAK (be a real person, never robotic):
+/*
+ * How to TALK. A chat only — a report is JSON with its own fields, and these
+ * rules told it to keep replies to "2-4 short paragraphs" and to answer in two
+ * parts, which is not what a report is. Splitting them also gives a report
+ * prompt back the ~700 tokens that pushed it over Groq's per-request ceiling.
+ */
+const VOICE_RULES = `HOW YOU SPEAK (be a real person, never robotic):
 - You are talking to ONE specific person, not writing a horoscope column. Make
   every reply feel written FOR them — reference their exact placements and dasha,
   and use their NAME naturally once or twice. Never generic lines that could apply
@@ -55,9 +65,12 @@ Your answer MUST come in TWO parts:
    around age 28-30, likely in the next 2-3 years during favorable dasha periods."
 2. EXPLANATION (second): Then explain WHY — ground it in their actual chart data
    (house positions, planet placements, dasha timing). Make the astrology clear
-   and understandable.
+   and understandable.`;
 
-ACCURACY & INTEGRITY (never break these):
+/*
+ * What must be true of every word, wherever it is written. Never optional.
+ */
+const TRUTH_RULES = `ACCURACY & INTEGRITY (never break these):
 - Use ONLY the supplied chart data. Never invent planets, signs, houses,
   nakshatras or dashas.
 - Each planet has an exact "house" and "sign" in the data — always use those
@@ -89,6 +102,18 @@ CARE & ETHICS (do this naturally, never as a stiff disclaimer):
   guide gently and suggest a professional where it truly matters.
 - For sensitive topics, close with one short, kind line that astrology offers
   guidance, not certainty.`;
+
+export const SYSTEM_PROMPT = `${PERSONA}
+
+${VOICE_RULES}
+
+${TRUTH_RULES}`;
+
+/** The same astrologer, writing a report instead of talking. */
+export const REPORT_SYSTEM = `${PERSONA}
+
+${TRUTH_RULES}`;
+
 
 /**
  * The languages a client may ask for.
@@ -126,13 +151,24 @@ const LANGUAGE_NAMES: Record<string, string> = {
   ur: "Urdu",
 };
 
+/*
+ * The reply language — and the one thing that kept overriding it.
+ *
+ * A model matches the language of whatever it read most recently, and the most
+ * recent thing in a chat prompt is the person's own question. Someone with
+ * English selected who types "meri shaadi kab hogi" got a Hindi answer, every
+ * time, because nothing in the prompt said that their typing is not a request.
+ * Saying so explicitly is the whole fix.
+ */
 function languageInstruction(language: string): string {
   const key = (language || "en").toLowerCase();
-  if (key === "hinglish") {
-    return "VERY IMPORTANT — LANGUAGE: Write your ENTIRE reply in Hinglish (conversational Hindi written in Roman/English script).";
-  }
-  const name = LANGUAGE_NAMES[key] || language; // allow any language name passed through
-  return `VERY IMPORTANT — LANGUAGE: Write your ENTIRE reply in ${name} ONLY. Do not mix in any other language or script. Any example wording in the instructions above was only to show tone, not language.`;
+  const target = key === "hinglish"
+    ? "Hinglish (conversational Hindi written in Roman/English script)"
+    : (LANGUAGE_NAMES[key] || language); // allow any language name passed through
+  return `VERY IMPORTANT — LANGUAGE: Write your ENTIRE reply in ${target} ONLY. ` +
+    `Do not mix in another language or script. Example wording in these instructions is there to show TONE, never language. ` +
+    `THE LANGUAGE THEY TYPED IN IS IRRELEVANT — DO NOT MATCH IT: their question may arrive in any script, whatever language is selected here. ` +
+    `That is normal and is never a signal to switch. Reply in ${target} regardless of what they typed in.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1196,7 +1232,7 @@ function splitBubbles(raw: string): string[] {
 
 /** Full life report across the 5 standard categories, as structured JSON. */
 /*
- * At most ONE bold phrase per paragraph.
+ * At most ONE bold phrase per LINE.
  *
  * A report came back with every second word wrapped in asterisks — "Aapka
  * **career** abhi thoda **mixed** hai" — because the model was never told
@@ -1204,24 +1240,42 @@ function splitBubbles(raw: string): string[] {
  * on nothing: the page reads as shouting and the one line that actually
  * mattered no longer stands out.
  *
+ * Per LINE, not per field: a timeline field is a list of periods, and one
+ * highlight for the whole list left five bullets flat and unreadable — the
+ * opposite failure to the one above. Each line keeps its first bold phrase.
+ *
  * Enforced here rather than asked for in the prompt, because which model
  * answers is decided at runtime by the fallback chain, and a formatting rule
  * that has to hold for every one of them does not belong in a prompt.
  */
 function capBold(text: string): string {
-  const spans = text.match(/\*\*[^*]+\*\*/g);
-  if (!spans || spans.length <= 1) return text;
-  // Keep the first — it is usually the verdict — and unwrap the rest.
-  let first = true;
-  return text.replace(/\*\*([^*]+)\*\*/g, (_m, inner) => {
-    if (first) { first = false; return `**${inner}**`; }
-    return inner;
-  });
+  if (!text.includes("**")) return text;
+  return text
+    .split("\n")
+    .map((line) => {
+      let first = true;
+      return line.replace(/\*\*([^*]+)\*\*/g, (_m, inner) => {
+        if (first) { first = false; return `**${inner}**`; }
+        return inner;
+      });
+    })
+    .join("\n");
+}
+
+/*
+ * One bullet, one line.
+ *
+ * Models write "• first … • second … • third" on a single line about a third of
+ * the time, and the reader gets a wall of text where a timeline should be — the
+ * renderer makes a list out of line breaks, not out of the bullet character.
+ */
+function splitBullets(text: string): string {
+  return text.includes("•") ? text.replace(/\s+•\s+/g, "\n• ").trim() : text;
 }
 
 /** capBold over every string in a report object, however deeply nested. */
 export function tidyReport<T>(value: T): T {
-  if (typeof value === "string") return capBold(value) as unknown as T;
+  if (typeof value === "string") return capBold(splitBullets(value)) as unknown as T;
   if (Array.isArray(value)) return value.map(tidyReport) as unknown as T;
   if (value && typeof value === "object") {
     const out: any = {};
@@ -1252,10 +1306,22 @@ function transitHouseMap(transit: any): Record<string, number> {
 async function generateChecked(
   prompt: string, chart: any, transit: any, opts: Parameters<typeof llmGenerate>[1],
 ): Promise<string> {
+  const started = Date.now();
   const text = await llmGenerate(prompt, opts);
   const tr = transitHouseMap(transit);
   const errs = chartClaimErrors(text, chart, tr);
   if (!errs.count) return text;
+  /*
+   * The rewrite is skipped when there is no time left for it. The server is
+   * killed at sixty seconds; a first draft that already took most of that
+   * leaves a choice between a report with a wrong house number in it and no
+   * report at all, and the person paid for a report. The error is logged either
+   * way, so a model that keeps doing this is still visible.
+   */
+  if (Date.now() - started > Number(process.env.AI_CLAIM_RETRY_BUDGET_MS || 20_000)) {
+    console.warn(`[claims] ${errs.summary} error(s) — no time to regenerate, sending as written`);
+    return text;
+  }
   console.warn(`[claims] report: ${errs.summary} error(s) — regenerating once`);
   const retry = await llmGenerate(prompt + errs.note(), opts).catch(() => null);
   if (!retry) return text;
@@ -1377,28 +1443,89 @@ Return ONLY this JSON:
   });
 }
 
-export async function generateLifeReport(chart: any, language: string, transit?: any): Promise<any> {
-  // One COMPLETE context (all charts) — the report covers every area, so it reads
-  // D1 + D9 + D10 + D6 + D11 + dasha together (+ live transit for present/future).
-  const fullContext = { ...buildFullChartContext(chart), live_transit: transit ?? null };
+/**
+ * The seven areas a life report covers, and the order they are read in.
+ *
+ * Five became seven because "career" and "wealth" together still did not
+ * answer the two questions people actually arrive with — should I go abroad,
+ * and job or my own thing. Those are different readings (3rd/9th/12th and
+ * Rahu-Ketu for one, 10th/11th/3rd with Mercury and Saturn for the other),
+ * and answering them inside a career paragraph answered neither.
+ */
+export const REPORT_AREAS = ["health", "wealth", "career", "marriage", "relationships", "travel", "business"] as const;
 
-  const prompt = `${SYSTEM_PROMPT}
+/**
+ * The dated spine of the report: the periods they have LIVED, the one they are
+ * in, and the ones ahead — real Vimshottari windows, computed here.
+ *
+ * The model is never asked when anything happened. Left to describe "earlier
+ * life" from a mahadasha it wrote fifteen-year moods ("your twenties had ups
+ * and downs"), which is true of everyone and checkable by no one. Handed the
+ * antardashas with their own dates, the same model writes a stretch a person
+ * can hold against their own memory — and when the past checks out, the part
+ * about 2028 is worth reading.
+ *
+ * Childhood periods are left out (pastMilestones starts at 14): nobody tests a
+ * reading against what they felt at six.
+ */
+function reportTimeline(chart: any) {
+  const cur = chart?.dasha?.current ?? {};
+  return {
+    lived_periods: pastMilestones(chart, 5).map((p) => ({
+      period: p.period, from: p.from, to: p.to, age: `${p.age_from}-${p.age_to}`,
+      lord_touches: p.themes,
+    })),
+    current_period: cur.mahadasha
+      ? {
+          period: `${cur.mahadasha}-${cur.antardasha}`,
+          from: String(cur.antardasha_from ?? "").slice(0, 10),
+          to: String(cur.antardasha_to ?? "").slice(0, 10),
+          mahadasha_runs_until: String(cur.mahadasha_to ?? "").slice(0, 10),
+        }
+      : null,
+    next_periods: chart?.dasha?.next_7_years ?? [],
+  };
+}
+
+/** One half of a life report — the shared prompt, a subset of the areas. */
+async function lifeReportPart(
+  chart: any, language: string, transit: any, areas: readonly string[],
+): Promise<any> {
+  const fullContext = {
+    ...buildFullChartContext(chart),
+    live_transit: transit ?? null,
+    timeline: reportTimeline(chart),
+    birth_chart_facts: birthChartFactSheet(chart),
+  };
+  const list = areas.join(", ");
+
+  const prompt = `${REPORT_SYSTEM}
 
 ${languageInstruction(language)}
 
-You are writing a personal life reading for this person across five areas:
-health, wealth, career, marriage, relationships.
+You are writing a personal life reading for this person across these areas:
+${list}.
 
 You have their COMPLETE chart below — D1 rasi, D9 navamsa, D10 dasamsa, D6
-shashtamsa, D11 ekadasamsa and the dasha timeline. Cross-reference all of them:
-e.g. career from D1 10th house + D10, health from D1 6th house + D6, wealth from
-D1 2nd/11th + D11, marriage from D1 7th + D9. Confirm each point across the
-relevant charts for accuracy.
+shashtamsa, D11 ekadasamsa and the dasha timeline. Cross-reference them:
+career from D1 10th house + D10, health from D1 6th + D6, wealth from D1 2nd/11th
++ D11, marriage from D1 7th + D9, travel from D1 3rd/9th/12th (short trips, long
+journeys, living abroad) + Rahu/Ketu, business from D1 10th/11th + D10 + the 3rd
+house (own initiative) + Mercury/Saturn — for business, say plainly whether this
+chart leans towards a salaried job or their own venture, and in what kind of work.
+Confirm each point across the relevant charts.
 
 Write each field as if you are gently speaking to them — warm, human, flowing
 sentences, addressing them directly ("aap"). Each statement must rest on their
 actual chart (mention the house/planet/dasha naturally inside the sentence, not
 as a label). Do NOT invent anything.
+
+GROUND IT IN THEIR BIRTH NAKSHATRA, NOT ONLY THE SIGNS: their Janma Nakshatra
+with its pada is the most individual placement in the whole chart — two people
+share a moon sign constantly, the same nakshatra and pada almost never. Name it
+in "summary" and weave its real classical nature into the one or two places it
+genuinely applies. Never invent what a nakshatra means; use only the
+well-established associations.
 
 BE SPECIFIC, NEVER VAGUE: turn every general point into concrete examples — name
 the actual fields (e.g. content creation, law, teaching, finance), the body area
@@ -1406,15 +1533,35 @@ for health (e.g. spine, stomach/digestion, knees), the type of partner or place,
 and concrete time-windows from the dasha (years / age range). Avoid empty lines
 like "things will improve" without saying how, in what, and when.
 
-EMPHASIS: wrap the few MOST important words/phrases in each field — key fields,
-names, time-windows and the crucial conclusion — in **double asterisks** to bold
-them. Bold only a few crucial words per field, never whole sentences.
+EMPHASIS IS A REQUIREMENT, NOT A SUGGESTION: wrap the MOST important words in
+**double asterisks**. EVERY bullet in "past", "present" and "future" must carry
+at least one **bolded** phrase — a bullet with none has failed. Bold a few
+crucial words, never a whole sentence. This applies in every language, Hindi and
+Hinglish included.
 
-For each category produce an object with EXACTLY these string keys:
+"past", "present" and "future" ARE TIMELINE FIELDS, and their DATES ARE GIVEN TO
+YOU in "timeline" below — never invent, shift or round a period's dates. Each is
+ONE plain string (never a list), with one "• " bullet per line in this shape:
+"• **[Lord-Lord] (YYYY–YYYY)**: <what this period specifically means for THIS
+area of their life>."
+Do not invent events (no job titles, no illnesses, no named people) — describe
+the KIND of period it is, concretely enough to recognise.
+
+  "past" — walk timeline.lived_periods, oldest first, one bullet each (4-5
+    bullets), ONE OR TWO SENTENCES per bullet. This has to read like a timeline
+    they can check against their own life.
+  "present" — exactly ONE bullet: timeline.current_period and its dates only.
+    Do NOT give the mahadasha its own bullet or date range here; if it matters,
+    mention it inside the same sentence. Make this bullet 2-3 sentences — the
+    planet and house behind it, how it is actually showing up in this area right
+    now, and what it asks of them.
+  "future" — walk timeline.next_periods, nearest first, 3 bullets, one or two
+    sentences each. This is also where the current mahadasha's own end date
+    belongs, if it helps.
+
+For each area produce an object with EXACTLY these string keys:
   "summary"   (the overall pattern, said warmly),
-  "past"      (what the chart suggests about earlier life),
-  "present"   (the current phase, tied to the running dasha),
-  "future"    (the next 5-7 years, using the dasha timeline),
+  "past", "present", "future"  (the bulleted timeline fields above),
   "positive"  (genuine strengths and supportive periods),
   "caution"   (challenges, said kindly and constructively),
   "guidance"  (practical, doable suggestions),
@@ -1422,30 +1569,126 @@ For each category produce an object with EXACTLY these string keys:
                for wealth note it is not financial advice).
 
 Respond with a SINGLE valid JSON object whose top-level keys are exactly:
-health, wealth, career, marriage, relationships. Keep each field to a few natural
-sentences (not a single dry line, not a giant essay).
+${list}. Keep summary/positive/caution/guidance/disclaimer to two or three
+natural sentences each — only past/present/future are bulleted. Write every
+area you were asked for, completely, and stop: a reading that runs long gets
+cut off mid-sentence and is thrown away.
 
 This person's COMPLETE calculated chart data (interpret only this):
-${JSON.stringify(fullContext, null, 2)}`;
+${JSON.stringify(fullContext)}
+
+FINAL CHECK BEFORE YOU OUTPUT: does every bullet in every past/present/future
+field carry a **bolded** phrase and the real dates from "timeline"? Is every
+field concrete rather than generic filler? Fix anything that fails before
+answering.
+
+${languageInstruction(language)}`;
 
   // thinkingBudget 0 + a real output budget: Gemini 2.5 spends its output
-    // allowance on hidden reasoning otherwise, and the JSON arrives cut in half.
-    //
-    // 4096, not 8192: the budget is RESERVED against a provider's per-request
-    // ceiling, and reserving 8k pushed every report past Groq's 8k limit — so
-    // the two strongest privacy-safe models refused each one and reports fell
-    // through to the weakest. A full five-area report measures ~1,800 tokens,
-    // so 4096 is still more than double what one has ever needed.
-    // (original note)
   // allowance on hidden reasoning otherwise, and the JSON arrives cut in half
   // — which is exactly how a paid-for report turned into an error.
-  const text = await generateChecked(prompt, chart, transit, { json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: 4096 });
-
+  //
+  // The budget is RESERVED against a provider's per-request ceiling, so it has
+  // to fit UNDER Groq's 8,000 with the prompt: report rules ~2,000 + compact
+  // chart ~2,700 leaves about 3,300 for the reading. Too small is its own
+  // failure — a part cut off mid-JSON loses the areas after the cut — and an
+  // area of this shape (four past bullets, one present, three future, five
+  // short prose fields) measures ~800 tokens, so a part is kept to three.
+  const text = await generateChecked(prompt, chart, transit, {
+    temperature: 0.8, thinkingBudget: 0, maxTokens: 3300, purpose: "life_report",
+  });
   const j = parseJsonLoose(text);
-  if (!j) return { error: "Failed to parse AI report", raw: text };
-  const areas = ["health", "wealth", "career", "marriage", "relationships"];
-  const missing = areas.filter((k) => !j[k] || typeof j[k] !== "object");
-  return tidyReport(missing.length ? { ...j, partial: true, missing } : j);
+  if (!j) {
+    // Log the shape, never the reading itself: a report is someone's private
+    // life, and "it failed" without the first and last words of what came back
+    // is unfixable — a JSON cut off by the token budget and a model that
+    // answered in prose look identical from here otherwise.
+    console.warn(`[report] unparseable ${areas.length}-area half (${text.length} chars) starts: ${text.slice(0, 80)} … ends: ${text.slice(-80)}`);
+    throw new Error("Failed to parse AI report");
+  }
+  const picked = pickAreas(j, areas);
+  /*
+   * An area with no timeline is not an area. The dated past/present/future is
+   * the reason this report can be checked at all, and a section that arrives
+   * with only a summary reads — correctly — as the app having run out of
+   * things to say about that part of their life.
+   */
+  const thin = areas.filter((a) => !["summary", "past", "present", "future"].every((f) => typeof picked[a]?.[f] === "string" && picked[a][f].trim()));
+  if (thin.length) throw new Error(`Incomplete sections: ${thin.join(", ")}`);
+  return picked;
+}
+
+/*
+ * The areas out of whatever shape the model returned.
+ *
+ * Asked for {travel, business} a model will sometimes answer
+ * {"report": {"Travel": …}} — the reading is right there, and throwing it away
+ * over a capital letter or a wrapper key costs the person their whole report
+ * and a second minute of waiting. Anything genuinely missing still fails.
+ */
+function pickAreas(parsed: any, areas: readonly string[]): any {
+  const find = (obj: any, key: string): any => {
+    if (!obj || typeof obj !== "object") return undefined;
+    const hit = Object.keys(obj).find((k) => k.toLowerCase().trim() === key);
+    if (hit && obj[hit] && typeof obj[hit] === "object") return obj[hit];
+    // One level of wrapper ({"report": {...}}, {"areas": {...}}).
+    for (const v of Object.values(obj)) {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const inner = Object.keys(v as any).find((k) => k.toLowerCase().trim() === key);
+        if (inner && (v as any)[inner] && typeof (v as any)[inner] === "object") return (v as any)[inner];
+      }
+    }
+    return undefined;
+  };
+  const out: any = {};
+  const missing: string[] = [];
+  for (const a of areas) {
+    const found = find(parsed, a);
+    if (found) out[a] = found; else missing.push(a);
+  }
+  if (missing.length) throw new Error(`Report came back without: ${missing.join(", ")}`);
+  return out;
+}
+
+/**
+ * The full life report — seven areas, written in two calls at once.
+ *
+ * One call for all seven took over a minute, which on a serverless function
+ * that is killed at sixty seconds reached the person as "network error".
+ * Three concurrent parts finish in about the time of the slowest one.
+ *
+ * A part that fails fails the WHOLE report. Merging the parts that worked would
+ * store — and then serve from cache, forever — a report silently missing two or
+ * three areas, which is worse than the timeout it replaced. The retry button
+ * costs half a minute now; a quietly incomplete paid report costs trust.
+ */
+export async function generateLifeReport(chart: any, language: string, transit?: any): Promise<any> {
+  // Three parts, not one call and not seven: three areas is what fits in one
+  // reply under the token ceiling, and three requests at once still land on
+  // three different models rather than queueing behind one rate limit.
+  const parts = [REPORT_AREAS.slice(0, 3), REPORT_AREAS.slice(3, 5), REPORT_AREAS.slice(5)];
+  /*
+   * One retry per part, not per report. A part comes back thin or unparseable
+   * often enough that failing the whole report on the first stumble would make
+   * people pay, wait, and press the button again — and the second attempt
+   * almost always lands on a different model and succeeds. Only the part that
+   * failed is asked again, so the cost is one call, not seven areas.
+   */
+  const settled = await Promise.allSettled(
+    parts.map((areas) =>
+      lifeReportPart(chart, language, transit, areas).catch((e) => {
+        console.warn(`[report] ${areas.join("/")} failed (${e?.message}) — one more try`);
+        return lifeReportPart(chart, language, transit, areas);
+      }),
+    ),
+  );
+  const failed = settled.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  if (failed.length) {
+    const why = failed.map((r) => String(r.reason?.message ?? r.reason)).join("; ");
+    console.warn("[report] a part failed — failing the whole report:", why);
+    return { error: `Report could not be completed (${why}). Please try again.` };
+  }
+  return tidyReport(Object.assign({}, ...settled.map((r: any) => r.value)));
 }
 
 /** Focused premium report types — each a deep single-theme reading. */
@@ -2280,6 +2523,24 @@ export function parseJsonLoose(text: string | null | undefined): any | null {
     const cut = cand.lastIndexOf(",");
     if (cut <= 0) break;
     cand = cand.slice(0, cut);
+  }
+  /*
+   * Second pass: cut back whole VALUES, not commas.
+   *
+   * A reply that ran out of tokens usually stops inside a long sentence, and
+   * that sentence may contain commas, colons and quotes of its own — so cutting
+   * at the last comma lands in the middle of the prose and every repair fails.
+   * A life report died this way: seven complete areas in hand, thrown out
+   * because the eighth field was half-written. Stepping back over closing
+   * braces keeps every section that finished.
+   */
+  cand = raw.slice(raw.indexOf("{") < 0 ? 0 : raw.indexOf("{"));
+  for (let i = 0; i < 40; i++) {
+    const end = cand.lastIndexOf("}");
+    if (end <= 0) break;
+    cand = cand.slice(0, end + 1);
+    try { return JSON.parse(closeOpenJson(cand)); } catch { /* keep stepping back */ }
+    cand = cand.slice(0, end);
   }
   return null;
 }

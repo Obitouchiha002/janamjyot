@@ -347,11 +347,13 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
     hinglish: "Janm kundli — aapke janm ke samay har grah kahan tha.",
   },
   "Full Life Report": { hi: "पूरी जीवन रिपोर्ट", hinglish: "Poori jeevan report" },
-  "All areas — health, wealth, career, marriage": {
-    hi: "सभी क्षेत्र — सेहत, धन, करियर, विवाह",
-    hinglish: "Sabhi kshetra — sehat, dhan, career, vivah",
+  "Seven areas — health, wealth, career, marriage, travel, business": {
+    hi: "सात क्षेत्र — सेहत, धन, करियर, विवाह, यात्रा, व्यापार",
+    hinglish: "Saat kshetra — sehat, dhan, career, vivah, yatra, business",
   },
   "Career & Profession": { hi: "करियर और पेशा", hinglish: "Career aur pesha" },
+  "Travel & Foreign": { hi: "यात्रा और विदेश", hinglish: "Yatra aur videsh" },
+  "Business vs Job": { hi: "व्यापार बनाम नौकरी", hinglish: "Business ya naukri" },
   "Work nature, fields, growth timing": {
     hi: "काम का स्वभाव, क्षेत्र, तरक़्क़ी का समय",
     hinglish: "Kaam ka swabhav, kshetra, tarakki ka samay",

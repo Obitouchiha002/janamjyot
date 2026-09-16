@@ -15,7 +15,7 @@ interface RptCard {
 }
 
 const REPORTS: RptCard[] = [
-  { type: "full", title: "Full Life Report", desc: "All areas — health, wealth, career, marriage", icon: ScrollText, tint: "#E8B44A", full: true },
+  { type: "full", title: "Full Life Report", desc: "Seven areas — health, wealth, career, marriage, travel, business", icon: ScrollText, tint: "#E8B44A", full: true },
   { type: "career", title: "Career & Profession", desc: "Work nature, fields, growth timing", icon: Briefcase, tint: "#2563EB" },
   { type: "wealth", title: "Wealth & Finance", desc: "Income, savings, wealth periods", icon: Wallet, tint: "#059669" },
   { type: "marriage", title: "Marriage & Relationship", desc: "Partner, timing, married life", icon: Heart, tint: "#EC4899" },

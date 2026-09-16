@@ -3,7 +3,7 @@ import { PastTimeline } from "@/components/PastTimeline";
 import { ReportProgress } from "@/components/ReportProgress";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp } from "lucide-react";
+import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Plane, Store, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp } from "lucide-react";
 import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { isNative, saveToDownloads, shareFile } from "@/lib/native";
 import SpeakButton from "@/components/SpeakButton";
@@ -30,6 +30,10 @@ const SECTIONS = [
   { id: "career", icon: Briefcase, title: "Career & Profession", accent: "border-l-blue-400" },
   { id: "marriage", icon: Heart, title: "Marriage", accent: "border-l-pink-400" },
   { id: "relationships", icon: Users, title: "Relationships", accent: "border-l-violet-400" },
+  // Travel and business are their own readings, not footnotes to career: "should
+  // I go abroad" and "job ya apna kaam" are the two questions people arrive with.
+  { id: "travel", icon: Plane, title: "Travel & Foreign", accent: "border-l-sky-400" },
+  { id: "business", icon: Store, title: "Business vs Job", accent: "border-l-emerald-400" },
 ];
 
 // Renders **bold** segments as highlighted key terms; the rest stays plain.
