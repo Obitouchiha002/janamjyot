@@ -480,6 +480,33 @@ function buildProviders(): Provider[] {
       byName.cerebras.push(p);
     }
   }
+  /*
+   * Any other OpenAI-compatible endpoint, added without a code change.
+   *
+   * The free landscape moves: Cerebras' no-card tier became a card trial, a
+   * provider retires a model, someone opens a new free tier next month. Adding
+   * one means shipping a deploy, which is the wrong shape of problem — so up to
+   * three extras are read straight from the environment:
+   *   EXTRA1_BASE_URL, EXTRA1_API_KEY, EXTRA1_MODELS, EXTRA1_SAFE=true
+   * SAFE says the provider does not train on what we send it; without it the
+   * extra is treated like any other training-capable service and only sees a
+   * private prompt when nothing safe is left.
+   */
+  for (const n of [1, 2, 3]) {
+    const base = env(`EXTRA${n}_BASE_URL`);
+    const key = env(`EXTRA${n}_API_KEY`);
+    if (!base || !key) continue;
+    const models = (env(`EXTRA${n}_MODELS`) || "").split(",").map((m) => m.trim()).filter(Boolean);
+    if (!models.length) { console.warn(`[llm] EXTRA${n}_MODELS is empty — skipping`); continue; }
+    byName[`extra${n}`] = models.map((m) => {
+      const p = openAICompatProvider(key, base, m, `extra${n}:${m}`);
+      const ctx = Number(env(`EXTRA${n}_MAX_CONTEXT`) || 0);
+      if (ctx) p.maxContext = ctx;
+      return p;
+    });
+    PROVIDER_META[`extra${n}`] = { trains: env(`EXTRA${n}_SAFE`) !== "true", rate: { in: 0.3, out: 0.9 } };
+  }
+
   if (env("OPENROUTER_API_KEY")) {
     byName.openrouter.push(
       openAICompatProvider(
@@ -563,6 +590,7 @@ function buildProviders(): Provider[] {
  * questions is a product or a slow leak.
  */
 const PROVIDER_META: Record<string, { trains: boolean; rate: { in: number; out: number } }> = {
+  // extra1…extra3 are added at build time from the environment (see above).
   gemini:     { trains: env("GEMINI_PAID_TIER") !== "true", rate: { in: 0.30, out: 2.50 } },
   groq:       { trains: false,                              rate: { in: 0.20, out: 0.60 } },
   cerebras:   { trains: false,                              rate: { in: 0.35, out: 0.75 } },
@@ -849,7 +877,12 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
          * every chat, in front of the provider that was actually going to answer.
          */
         if (/\b404\b|no longer available|not found/i.test(msg)) s.coolUntil = Date.now() + 6 * 3600_000;
-        else if (/\b(401|403)\b|payment|permission|denied/i.test(msg)) s.coolUntil = Date.now() + 3600_000;
+        else if (/\b(401|402|403)\b|payment|permission|denied|insufficient|credit/i.test(msg)) {
+          // A billing wall does not clear on its own. Cerebras answers 402 when
+          // a key belongs to a personal account with no active credits, and it
+          // answered it for every request until this stopped asking.
+          s.coolUntil = Date.now() + 6 * 3600_000;
+        }
         else if (/\b503\b|high demand|overloaded|unavailable/i.test(msg)) s.coolUntil = Date.now() + 30_000;
         else if (/timeout after/i.test(msg)) s.coolUntil = Date.now() + 60_000;
       }
