@@ -727,14 +727,73 @@ function UserSheet({ id, onClose, onChanged }: { id: string; onClose: () => void
 
 /* ── API keys ────────────────────────────────────────────────────────────── */
 
-const PROVIDERS = ["gemini", "groq", "openrouter", "openai", "anthropic", "elevenlabs"];
+const PROVIDERS = ["gemini", "groq", "openrouter", "openai", "anthropic", "elevenlabs", "custom"];
+
+/*
+ * Platforms worth one tap.
+ *
+ * Every one of these speaks the OpenAI chat format, so a new provider is three
+ * strings — where to call, which models, and whether it trains on what we send
+ * it. Keeping the list here means adding a platform is a paste, not a deploy;
+ * the free tiers move often enough that it had to stop being a code change.
+ * `safe` is what the platform states about training, not a guess.
+ */
+const PRESETS: Record<string, { label: string; base: string; models: string; safe: boolean; hint: string }> = {
+  cerebras: {
+    label: "Cerebras", base: "https://api.cerebras.ai/v1",
+    models: "gpt-oss-120b,qwen-3.8-27b", safe: true,
+    hint: "cloud.cerebras.ai — use the key from your TEAM org, not Personal.",
+  },
+  github: {
+    label: "GitHub Models", base: "https://models.inference.ai.azure.com",
+    models: "gpt-4o-mini", safe: true,
+    hint: "github.com/settings/tokens — a fine-grained token with Models access.",
+  },
+  nvidia: {
+    label: "NVIDIA NIM", base: "https://integrate.api.nvidia.com/v1",
+    models: "meta/llama-3.3-70b-instruct", safe: false,
+    hint: "build.nvidia.com — free credits, 40 requests a minute.",
+  },
+  together: {
+    label: "Together", base: "https://api.together.xyz/v1",
+    models: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", safe: false,
+    hint: "api.together.ai — the models ending in -Free cost nothing.",
+  },
+  deepseek: {
+    label: "DeepSeek", base: "https://api.deepseek.com/v1",
+    models: "deepseek-chat", safe: false,
+    hint: "platform.deepseek.com — cheap rather than free.",
+  },
+  mistral: {
+    label: "Mistral", base: "https://api.mistral.ai/v1",
+    models: "mistral-small-latest", safe: false,
+    hint: "console.mistral.ai — the free tier trains on your data.",
+  },
+};
 
 function Keys() {
   const [keys, setKeys] = useState<any[] | null>(null);
   const [provider, setProvider] = useState("gemini");
   const [secret, setSecret] = useState("");
   const [label, setLabel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [models, setModels] = useState("");
+  const [safe, setSafe] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [tested, setTested] = useState<Record<string, any>>({});
+  const custom = provider === "custom";
+
+  /** One tap fills in everything except the key itself. */
+  const usePreset = (id: string) => {
+    const p = PRESETS[id];
+    if (!p) return;
+    haptic.select();
+    setProvider("custom");
+    setLabel(p.label);
+    setBaseUrl(p.base);
+    setModels(p.models);
+    setSafe(p.safe);
+  };
 
   const load = useCallback(() => {
     fetch("/api/admin/keys").then((r) => r.json()).then((d) => setKeys(Array.isArray(d) ? d : [])).catch(() => setKeys([]));
@@ -745,9 +804,24 @@ function Keys() {
     if (!secret.trim()) { haptic.warning(); return; }
     setBusy(true);
     haptic.medium();
-    await post("/api/admin/keys", { provider, secret: secret.trim(), label: label.trim() || undefined }).catch(() => {});
-    setSecret(""); setLabel(""); setBusy(false);
+    await post("/api/admin/keys", {
+      provider: custom ? (label.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-") || "custom") : provider,
+      secret: secret.trim(),
+      label: label.trim() || undefined,
+      base_url: custom ? baseUrl.trim() : undefined,
+      models: custom ? models.trim() : undefined,
+      safe: custom ? safe : undefined,
+    }).catch(() => {});
+    setSecret(""); setBusy(false);
     load();
+  };
+
+  /** Ask the platform itself, before a real question does. */
+  const test = async (k: any) => {
+    haptic.tap();
+    setTested((t) => ({ ...t, [k.id]: { busy: true } }));
+    const r = await post(`/api/admin/keys/${k.id}/test`, {}).catch(() => ({ ok: false, error: "Network error" }));
+    setTested((t) => ({ ...t, [k.id]: r }));
   };
 
   const toggle = async (k: any) => { haptic.tap(); await post(`/api/admin/keys/${k.id}/enabled`, { enabled: !k.enabled }); load(); };
@@ -765,7 +839,36 @@ function Keys() {
           ))}
         </div>
         <input className="mb-2 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" placeholder="Paste the API key" value={secret} onChange={(e) => setSecret(e.target.value)} />
-        <input className="mb-3 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" placeholder="Label (optional, e.g. 'Account 2')" value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input className="mb-2 w-full rounded-2xl border border-input bg-card px-4 py-3 text-[14px] outline-none focus:border-accent" placeholder={custom ? "Name it (e.g. Cerebras)" : "Label (optional, e.g. 'Account 2')"} value={label} onChange={(e) => setLabel(e.target.value)} />
+
+        {custom && (
+          <>
+            <input className="mb-2 w-full rounded-2xl border border-input bg-card px-4 py-3 font-mono text-[12.5px] outline-none focus:border-accent" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+            <input className="mb-2 w-full rounded-2xl border border-input bg-card px-4 py-3 font-mono text-[12.5px] outline-none focus:border-accent" placeholder="model-name, second-model" value={models} onChange={(e) => setModels(e.target.value)} />
+            <label className="mb-3 flex items-center gap-2 px-1 text-[12.5px] text-muted-foreground">
+              <input type="checkbox" checked={safe} onChange={(e) => setSafe(e.target.checked)} className="h-4 w-4 accent-[var(--color-accent)]" />
+              This platform does NOT train on what we send it
+            </label>
+            <p className="mb-3 px-1 text-[11px] leading-snug text-muted-foreground">
+              Unticked is the safe default: the app will only send it a personal chart when no
+              privacy-safe provider is left, exactly like the free Gemini tier.
+            </p>
+          </>
+        )}
+
+        {/* Known platforms — one tap fills the URL and models. */}
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {Object.entries(PRESETS).map(([id, p]) => (
+            <Pressable key={id} onClick={() => usePreset(id)} subtle className="rounded-full border border-border px-3 py-1.5 text-[11.5px] font-bold">
+              {p.label}
+            </Pressable>
+          ))}
+        </div>
+        {custom && label && PRESETS[Object.keys(PRESETS).find((k) => PRESETS[k].label === label) ?? ""] && (
+          <p className="mb-3 px-1 text-[11px] text-muted-foreground">
+            {PRESETS[Object.keys(PRESETS).find((k) => PRESETS[k].label === label)!].hint}
+          </p>
+        )}
         <Pressable onClick={add} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3 text-[14px] font-bold text-accent-foreground">
           <Plus className="h-[18px] w-[18px]" strokeWidth={2.6} /> {busy ? "Saving…" : "Add key"}
         </Pressable>
@@ -784,7 +887,22 @@ function Keys() {
                 {k.label && <span className="text-[11px] text-muted-foreground">{k.label}</span>}
               </span>
               <span className="block font-mono text-[12px] text-muted-foreground">{k.masked}</span>
+              {k.base_url && (
+                <span className="block truncate font-mono text-[10.5px] text-muted-foreground/80">
+                  {String(k.base_url).replace(/^https:\/\//, "")} · {k.models}{k.safe ? " · private" : ""}
+                </span>
+              )}
+              {tested[k.id] && (
+                <span className={`block text-[11.5px] font-semibold ${tested[k.id].busy ? "text-muted-foreground" : tested[k.id].ok ? "text-emerald-600" : "text-destructive"}`}>
+                  {tested[k.id].busy ? "Testing…" : tested[k.id].ok
+                    ? `Works — replied in ${tested[k.id].ms}ms`
+                    : `${tested[k.id].status ?? ""} ${String(tested[k.id].error ?? "").slice(0, 90)}`}
+                </span>
+              )}
             </span>
+            <Pressable onClick={() => test(k)} subtle className="shrink-0 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-bold">
+              Test
+            </Pressable>
             <Switch on={!!k.enabled} onChange={() => toggle(k)} label={`Toggle ${k.provider} key`} />
             <Pressable onClick={() => remove(k)} subtle aria-label="Delete" className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-destructive">
               <Trash2 className="h-[18px] w-[18px]" />

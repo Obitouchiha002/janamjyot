@@ -124,6 +124,8 @@ import {
   addApiKey,
   listApiKeys,
   getApiKeys,
+  getCustomProviders,
+  getApiKeyForTest,
   setApiKeyEnabled,
   deleteApiKey,
   PLANS,
@@ -206,7 +208,7 @@ import { buildMuhurat, scanMonth } from "./server/muhurat";
 import { detectYogas } from "./server/yogas";
 import { computeAshtakavarga } from "./server/ashtakavarga";
 import { computeTransits } from "./server/engine";
-import { getAiStatus, setKeyOverrides } from "./server/llm";
+import { getAiStatus, setKeyOverrides, setRuntimeProviders } from "./server/llm";
 import { isMailConfigured, sendContactEmail, sendPasswordResetEmail, sendLoginCodeEmail } from "./server/mailer";
 import crypto from "node:crypto";
 import helmet from "helmet";
@@ -1234,9 +1236,64 @@ async function refreshProviderKeys() {
     overrides[envName] = provider === "gemini" ? keys.join(",") : keys[0];
   }
   setKeyOverrides(overrides);
+  // Keys for platforms the code does not know by name — they carry their own
+  // base URL and model list, so they become providers as they are.
+  await setRuntimeProviders(await getCustomProviders().catch(() => []));
   const providers = Object.keys(overrides);
   if (providers.length) console.log(`[keys] loaded from DB for: ${providers.join(", ")}`);
 }
+
+/**
+ * POST /api/admin/keys/:id/test — does this key actually work?
+ *
+ * Added because a key was pasted, saved, deployed, and then answered 402 to
+ * every real request for an hour before anyone looked at a log. One tiny
+ * generation, straight at the platform, and the panel says yes or shows the
+ * platform's own words for why not.
+ */
+app.post("/api/admin/keys/:id/test", requireAdmin, async (req: any, res) => {
+  const row = await getApiKeyForTest(req.params.id).catch(() => null);
+  if (!row) return res.status(404).json({ error: "Key not found." });
+  const base = (row.baseUrl || PROVIDER_TEST_URL[row.provider] || "").replace(/\/$/, "");
+  const model = (row.models || PROVIDER_TEST_MODEL[row.provider] || "").split(",")[0].trim();
+  if (!base || !model) {
+    return res.json({ ok: false, error: "No base URL or model to test with — add them and try again." });
+  }
+  const started = Date.now();
+  try {
+    const r = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${row.secret}` },
+      body: JSON.stringify({ model, messages: [{ role: "user", content: "Reply with OK" }], max_tokens: 5 }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const body = await r.text();
+    if (!r.ok) {
+      // The platform's own message, trimmed — that is what tells an admin
+      // whether this is a wrong key, a spent quota or a billing wall.
+      return res.json({ ok: false, status: r.status, error: body.slice(0, 300), ms: Date.now() - started });
+    }
+    const j = JSON.parse(body);
+    const text = String(j?.choices?.[0]?.message?.content ?? "").slice(0, 60);
+    res.json({ ok: true, status: r.status, reply: text, ms: Date.now() - started });
+  } catch (e: any) {
+    res.json({ ok: false, error: String(e?.message ?? e).slice(0, 200), ms: Date.now() - started });
+  }
+});
+
+/** Where to test a known provider's key, when it carries no base URL of its own. */
+const PROVIDER_TEST_URL: Record<string, string> = {
+  groq: "https://api.groq.com/openai/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  openai: "https://api.openai.com/v1",
+  cerebras: "https://api.cerebras.ai/v1",
+};
+const PROVIDER_TEST_MODEL: Record<string, string> = {
+  groq: "openai/gpt-oss-20b",
+  openrouter: "meta-llama/llama-3.3-70b-instruct:free",
+  openai: "gpt-4o-mini",
+  cerebras: "gpt-oss-120b",
+};
 
 app.get("/api/admin/keys", requireAdmin, async (_req, res) => res.json(await listApiKeys()));
 
@@ -1245,11 +1302,25 @@ app.post("/api/admin/keys", requireAdmin, async (req: any, res) => {
   const secret = String(req.body?.secret ?? "").trim();
   if (!provider || !secret) return res.status(400).json({ error: "Provider and key are required." });
   try {
+    /*
+     * A platform the code has never heard of needs three more things: where to
+     * call it, which models to ask for, and whether it trains on what we send.
+     * With those, any OpenAI-compatible service is a provider — no deploy.
+     */
+    const baseUrl = String(req.body?.base_url ?? "").trim();
+    const models = String(req.body?.models ?? "").trim();
+    if (baseUrl && !/^https:\/\/[a-z0-9.-]+\//i.test(baseUrl + "/")) {
+      return res.status(400).json({ error: "The base URL must be an https:// address." });
+    }
+    if (baseUrl && !models) return res.status(400).json({ error: "Tell me which model(s) to ask for." });
     const id = await addApiKey({
       provider,
       secret,
       label: req.body?.label ? String(req.body.label) : undefined,
       priority: Number(req.body?.priority) || 100,
+      baseUrl: baseUrl || undefined,
+      models: models || undefined,
+      safe: !!req.body?.safe,
     });
     // Never log the secret itself — only that a key was added.
     await audit({ actorId: req.user.id, actorEmail: req.user.email, action: "key.add", target: provider, detail: { label: req.body?.label ?? null } });

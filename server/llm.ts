@@ -76,6 +76,35 @@ interface Provider {
  */
 let keyOverrides: Record<string, string> = {};
 
+/**
+ * Providers added from the admin panel — any platform that speaks the OpenAI
+ * chat format, which today is all of them.
+ *
+ * Kept apart from the env-configured chain because they arrive at runtime: an
+ * admin pastes a key at nine, and the next request has to use it. Setting them
+ * throws away the memoised chain for exactly that reason.
+ */
+export interface RuntimeProvider {
+  label: string;
+  baseUrl: string;
+  secret: string;
+  models: string[];
+  /** True when the platform states it does not train on what we send it. */
+  safe: boolean;
+}
+
+let runtimeProviders: RuntimeProvider[] = [];
+
+export function setRuntimeProviders(list: RuntimeProvider[]) {
+  const same = JSON.stringify(list.map((p) => [p.label, p.baseUrl, p.models, p.safe, p.secret.slice(-4)]))
+    === JSON.stringify(runtimeProviders.map((p) => [p.label, p.baseUrl, p.models, p.safe, p.secret.slice(-4)]));
+  runtimeProviders = list;
+  if (!same) {
+    cached = null;
+    console.log(`[llm] ${list.length} provider(s) from the admin panel: ${list.map((p) => p.label).join(", ") || "none"}`);
+  }
+}
+
 export function setKeyOverrides(map: Record<string, string>) {
   keyOverrides = map;
   // Providers are built once and memoized, so a new key only takes effect if we
@@ -480,6 +509,14 @@ function buildProviders(): Provider[] {
       byName.cerebras.push(p);
     }
   }
+  // Added from the admin panel. First among the extras, because an admin adding
+  // a key today is adding the one they want used today.
+  for (const rp of runtimeProviders) {
+    const name = `panel-${rp.label}`;
+    byName[name] = rp.models.map((m) => openAICompatProvider(rp.secret, rp.baseUrl, m, `${rp.label}:${m}`));
+    PROVIDER_META[name] = { trains: !rp.safe, rate: { in: 0.3, out: 0.9 } };
+  }
+
   /*
    * Any other OpenAI-compatible endpoint, added without a code change.
    *

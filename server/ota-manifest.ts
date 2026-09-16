@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609161143",
-  "url": "/ota/web-202609161143.zip",
-  "checksum": "b299bd87be10c332453746972b3f3f527614610455b3d741ab3769edfa6f1ac5",
+  "build": "202609161223",
+  "url": "/ota/web-202609161223.zip",
+  "checksum": "5ac421a99922e3c8e40fb2039092174fe9292b9496fd79de9c278808f5643664",
   "min_native": "1.17",
-  "notes": "Naya: Faisla — ab kya karun (baat karke faisla, ready message ke saath). Kundli screen naya look, aur har reading ki accuracy jaanchi gayi."
+  "notes": "Faisla — ab kya karun (baat karke faisla + ready message), kundli screen naya look, aur admin se kisi bhi platform ki AI key."
 };

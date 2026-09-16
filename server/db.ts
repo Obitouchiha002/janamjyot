@@ -605,6 +605,15 @@ CREATE TABLE IF NOT EXISTS api_keys (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_api_keys_provider ON api_keys(provider, enabled, priority);
+-- A key from ANY platform, added from the admin panel instead of a deploy.
+--
+-- The free AI landscape moves every few weeks: a tier closes, a model retires,
+-- a new provider opens. Every one of them speaks the OpenAI chat format, so
+-- what a new one actually needs is three strings — where to call, which models,
+-- and whether it trains on what we send it. Those live here, beside the key.
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS base_url TEXT;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS models   TEXT;
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS safe     BOOLEAN NOT NULL DEFAULT false;
 `;
 
 let initPromise: Promise<void> | null = null;
@@ -2529,11 +2538,17 @@ function decryptSecret(stored: string): string {
 /** Only ever show the last 4 characters of a key in the admin UI. */
 const maskKey = (s: string) => (s.length <= 4 ? "••••" : `••••${s.slice(-4)}`);
 
-export async function addApiKey(a: { provider: string; label?: string; secret: string; priority?: number }) {
+export async function addApiKey(a: {
+  provider: string; label?: string; secret: string; priority?: number;
+  /** For a platform the code does not know: where to call and what to ask for. */
+  baseUrl?: string; models?: string; safe?: boolean;
+}) {
   if (!USE_PG) throw new Error("API key storage needs DATABASE_URL");
   const { rows } = await pool!.query(
-    `INSERT INTO api_keys (provider, label, secret, priority) VALUES ($1,$2,$3,$4) RETURNING id`,
-    [a.provider, a.label ?? null, encryptSecret(a.secret), a.priority ?? 100]
+    `INSERT INTO api_keys (provider, label, secret, priority, base_url, models, safe)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [a.provider, a.label ?? null, encryptSecret(a.secret), a.priority ?? 100,
+     a.baseUrl?.trim() || null, a.models?.trim() || null, !!a.safe]
   );
   return rows[0].id;
 }
@@ -2542,7 +2557,8 @@ export async function addApiKey(a: { provider: string; label?: string; secret: s
 export async function listApiKeys() {
   if (!USE_PG) return [];
   const { rows } = await pool!.query(
-    `SELECT id, provider, label, secret, enabled, priority, last_used_at, fail_count, created_at
+    `SELECT id, provider, label, secret, enabled, priority, last_used_at, fail_count, created_at,
+            base_url, models, safe
        FROM api_keys ORDER BY provider, priority`
   );
   return rows.map((r) => {
@@ -2564,6 +2580,49 @@ export async function getApiKeys(provider: string): Promise<string[]> {
     try { out.push(decryptSecret(r.secret)); } catch { /* key predates the current AUTH_SECRET */ }
   }
   return out;
+}
+
+/**
+ * Every custom-platform key, ready to be turned into providers.
+ *
+ * Plaintext keys, so this is for the router only — never a response body.
+ */
+export async function getCustomProviders(): Promise<Array<{
+  id: string; label: string; baseUrl: string; secret: string; models: string[]; safe: boolean;
+}>> {
+  if (!USE_PG) return [];
+  const { rows } = await pool!.query(
+    `SELECT id, provider, label, secret, base_url, models, safe
+       FROM api_keys
+      WHERE enabled = true AND base_url IS NOT NULL AND models IS NOT NULL
+      ORDER BY priority, created_at`
+  );
+  const out: any[] = [];
+  for (const r of rows) {
+    try {
+      const models = String(r.models).split(",").map((m: string) => m.trim()).filter(Boolean);
+      if (!models.length) continue;
+      out.push({
+        id: r.id,
+        label: String(r.label || r.provider || "custom").trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-"),
+        baseUrl: String(r.base_url).trim(),
+        secret: decryptSecret(r.secret),
+        models,
+        safe: !!r.safe,
+      });
+    } catch { /* key predates the current AUTH_SECRET */ }
+  }
+  return out;
+}
+
+/** One key in full, for the admin "test this key" button. Never sent to a client. */
+export async function getApiKeyForTest(id: string): Promise<{ provider: string; secret: string; baseUrl: string | null; models: string | null } | null> {
+  if (!USE_PG) return null;
+  const { rows } = await pool!.query(`SELECT provider, secret, base_url, models FROM api_keys WHERE id = $1`, [id]);
+  if (!rows[0]) return null;
+  try {
+    return { provider: rows[0].provider, secret: decryptSecret(rows[0].secret), baseUrl: rows[0].base_url, models: rows[0].models };
+  } catch { return null; }
 }
 
 export async function setApiKeyEnabled(id: string, enabled: boolean) {
