@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PastTimeline } from "@/components/PastTimeline";
 import { ReportProgress } from "@/components/ReportProgress";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Plane, Store, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp } from "lucide-react";
+import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Plane, Store, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { isNative, saveToDownloads, shareFile } from "@/lib/native";
 import SpeakButton from "@/components/SpeakButton";
 import { getLang } from "@/lib/prefs";
+import { useT } from "@/lib/i18n";
+import { haptic } from "@/lib/native";
 
 const LANGS: { value: string; label: string }[] = [
   { value: "en", label: "English" },
@@ -122,6 +124,24 @@ export default function LifeReportPage() {
   const [error, setError] = useState<string | null>(null);
   // Ask the user which language BEFORE generating — no auto-generate.
   const [chosen, setChosen] = useState(false);
+  const t = useT();
+  /*
+   * Which area is open. Only the areas the report actually HAS are offered:
+   * an older report has five, a new one has seven, and a tab that opens an
+   * empty page is worse than a tab that is not there.
+   */
+  const [active, setActive] = useState<string>(SECTIONS[0].id);
+  const topRef = useRef<HTMLSpanElement>(null);
+  const present = useMemo(
+    () => SECTIONS.filter((s) => report?.[s.id] && !report[s.id].error),
+    [report],
+  );
+  useEffect(() => {
+    if (present.length && !present.some((s) => s.id === active)) setActive(present[0].id);
+  }, [present, active]);
+  const activeIdx = present.findIndex((s) => s.id === active);
+  const prevSection = activeIdx > 0 ? present[activeIdx - 1] : null;
+  const nextSection = activeIdx >= 0 && activeIdx < present.length - 1 ? present[activeIdx + 1] : null;
 
   const loadReport = (language: string, regenerate = false) => {
     setLoading(true);
@@ -644,23 +664,50 @@ export default function LifeReportPage() {
           <Button onClick={() => loadReport(lang, true)}>Try again</Button>
         </div>
       ) : (
-        <div className="space-y-8 max-w-4xl">
-          {SECTIONS.map((section, idx) => {
+        <div className="max-w-4xl">
+          {/* ── One area at a time ───────────────────────────────────────────
+              Seven areas stacked on a phone is a forty-screen scroll, and the
+              thing people actually do with a report — read the one part they
+              came for — costs them a hunt. So it reads like a notebook: tabs
+              across the top, one section on the page, and next/back at the end
+              for anyone who does want the whole thing. */}
+          <div className="-mx-4 mb-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex w-max gap-2">
+              {present.map((section) => {
+                const Icon = section.icon;
+                const on = section.id === active;
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => { haptic.tap(); setActive(section.id); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3.5 py-2 text-[13px] font-bold transition-colors ${
+                      on ? 'border-accent bg-accent text-accent-foreground' : 'border-border bg-card text-foreground/75'
+                    }`}
+                  >
+                    <Icon className="h-[15px] w-[15px]" />
+                    {t(section.title)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <span ref={topRef} />
+
+          {present.filter((s) => s.id === active).map((section) => {
             const data = report[section.id];
-            if (!data || data.error) return null;
             return (
               <section
                 key={section.id}
                 id={section.id}
-                className="scroll-mt-24 bg-card rounded-3xl border shadow-sm overflow-hidden va-rise va-card-hover"
-                style={{ animationDelay: `${0.18 + idx * 0.09}s` }}
+                className="scroll-mt-24 bg-card rounded-3xl border shadow-sm overflow-hidden va-rise"
               >
                 {/* header */}
-                <div className="flex items-center gap-3 px-6 py-4 border-b bg-gradient-to-r from-primary to-primary/85">
+                <div className="flex items-center gap-3 px-5 py-4 border-b bg-gradient-to-r from-primary to-primary/85">
                   <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
                     <section.icon className="w-5 h-5 text-accent"/>
                   </span>
-                  <h2 className="text-xl font-bold tracking-tight text-white">{section.title}</h2>
+                  <h2 className="text-[19px] font-bold tracking-tight text-white">{t(section.title)}</h2>
                   <SpeakButton
                     className="ml-auto text-white/70 hover:text-white hover:bg-white/10"
                     lang={getLang()}
@@ -668,68 +715,98 @@ export default function LifeReportPage() {
                   />
                 </div>
 
-                <div className="p-6 space-y-6">
+                <div className="space-y-5 p-5">
                   {/* lead / overall */}
-                  <div className="relative pl-4 border-l-4 border-accent">
-                    <h4 className="text-[11px] uppercase tracking-widest font-bold text-accent mb-1">Overall Pattern</h4>
-                    <p className="text-primary font-semibold text-lg leading-relaxed"><RichText text={data.summary || data.overall} /></p>
+                  <div className="relative border-l-4 border-accent pl-4">
+                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-widest text-accent">{t("Overall Pattern")}</h4>
+                    <p className="text-[16px] font-semibold leading-relaxed text-primary"><RichText text={data.summary || data.overall} /></p>
                   </div>
 
-                  {/* past / present */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="rounded-2xl bg-secondary/40 p-4 va-tile-hover">
-                      <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-primary mb-1.5">
-                        <History className="w-3.5 h-3.5 text-accent"/> Past
+                  {/* past / present — items-start so a one-bullet "present" is
+                      not stretched to the height of a five-bullet "past", which
+                      reads as a section with nothing in it. */}
+                  <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl bg-secondary/40 p-4">
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                        <History className="h-3.5 w-3.5 text-accent"/> {t("Past")}
                       </h4>
-                      <p className="text-foreground/85 text-sm leading-relaxed"><RichText text={data.past} /></p>
+                      <div className="text-foreground/85"><RichText text={data.past} /></div>
                     </div>
-                    <div className="rounded-2xl bg-secondary/40 p-4 va-tile-hover">
-                      <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-primary mb-1.5">
-                        <Compass className="w-3.5 h-3.5 text-accent"/> Current Phase
+                    <div className="rounded-2xl bg-secondary/40 p-4">
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                        <Compass className="h-3.5 w-3.5 text-accent"/> {t("Current Phase")}
                       </h4>
-                      <p className="text-foreground/85 text-sm leading-relaxed"><RichText text={data.present || data.current} /></p>
+                      <div className="text-foreground/85"><RichText text={data.present || data.current} /></div>
                     </div>
                   </div>
 
                   {/* future */}
-                  <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4 va-tile-hover">
-                    <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-accent mb-1.5">
-                      <TrendingUp className="w-3.5 h-3.5"/> Next 5-7 Years
+                  <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
+                    <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-accent">
+                      <TrendingUp className="h-3.5 w-3.5"/> {t("Next 5-7 Years")}
                     </h4>
-                    <p className="text-foreground/90 text-sm leading-relaxed"><RichText text={data.future || data.next} /></p>
+                    <div className="text-foreground/90"><RichText text={data.future || data.next} /></div>
                   </div>
 
-                  {/* positive / cautions — refined, professional tints */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-4 va-tile-hover">
-                      <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-emerald-700 mb-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5"/> Positive
+                  {/* positive / cautions */}
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-4">
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                        <CheckCircle2 className="h-3.5 w-3.5"/> {t("Positive")}
                       </h4>
-                      <p className="text-sm leading-relaxed text-emerald-950/80"><RichText text={data.positive || data.growth || data.strengths || data.compatibility} /></p>
+                      <div className="text-emerald-950/80"><RichText text={data.positive || data.growth || data.strengths || data.compatibility} /></div>
                     </div>
-                    <div className="rounded-2xl border border-rose-200/70 bg-rose-50/50 p-4 va-tile-hover">
-                      <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-rose-700 mb-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5"/> Cautions
+                    <div className="rounded-2xl border border-rose-200/70 bg-rose-50/50 p-4">
+                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-rose-700">
+                        <AlertTriangle className="h-3.5 w-3.5"/> {t("Cautions")}
                       </h4>
-                      <p className="text-sm leading-relaxed text-rose-950/80"><RichText text={data.caution || data.risk || data.challenges || data.delay} /></p>
+                      <div className="text-rose-950/80"><RichText text={data.caution || data.risk || data.challenges || data.delay} /></div>
                     </div>
                   </div>
 
                   {/* guidance */}
-                  <div className="rounded-2xl bg-primary/[0.04] border border-primary/10 p-4 va-tile-hover">
-                    <h4 className="flex items-center gap-1.5 text-[11px] uppercase tracking-widest font-bold text-primary mb-1.5">
-                      <Lightbulb className="w-3.5 h-3.5 text-accent"/> Practical Guidance
+                  <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-4">
+                    <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                      <Lightbulb className="h-3.5 w-3.5 text-accent"/> {t("Practical Guidance")}
                     </h4>
-                    <p className="text-primary font-medium text-sm leading-relaxed"><RichText text={data.guidance || data.practical_guidance} /></p>
+                    <div className="font-medium text-primary"><RichText text={data.guidance || data.practical_guidance} /></div>
                   </div>
 
                   {data.disclaimer && (
-                    <p className="text-xs text-muted-foreground italic pt-3 border-t border-dashed">{data.disclaimer}</p>
+                    <p className="border-t border-dashed pt-3 text-xs italic text-muted-foreground">{data.disclaimer}</p>
                   )}
                 </div>
               </section>
             );
           })}
+
+          {/* Back / next, for reading the whole thing in order. */}
+          <div className="mt-4 flex items-center gap-2.5">
+            {prevSection ? (
+              <button
+                onClick={() => { haptic.tap(); setActive(prevSection.id); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-border px-4 py-3 text-left"
+              >
+                <ChevronLeft className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  <span className="block text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">{t("Back")}</span>
+                  <span className="block truncate text-[13.5px] font-bold">{t(prevSection.title)}</span>
+                </span>
+              </button>
+            ) : <span className="flex-1" />}
+            {nextSection ? (
+              <button
+                onClick={() => { haptic.tap(); setActive(nextSection.id); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
+                className="flex min-w-0 flex-1 items-center justify-end gap-2 rounded-2xl border-2 border-accent bg-accent/10 px-4 py-3 text-right"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[10.5px] font-bold uppercase tracking-wider text-accent/80">{t("Next")}</span>
+                  <span className="block truncate text-[13.5px] font-bold text-accent">{t(nextSection.title)}</span>
+                </span>
+                <ChevronRight className="h-[18px] w-[18px] shrink-0 text-accent" />
+              </button>
+            ) : <span className="flex-1" />}
+          </div>
         </div>
       )}
     </div>

@@ -186,6 +186,7 @@ import {
   generateDailyGuidance,
   generateFocusedReport,
   REPORT_TYPES,
+  REPORT_AREAS,
   generateLifeTimeline,
   TIMELINE_RANGES,
   generateRemediesNote,
@@ -3704,13 +3705,31 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
 
     // Cache: reuse an existing report for this chart + language so repeat views
     // (or the same person again) are instant and don't re-call the AI.
+    /*
+     * A cached report is only worth serving if it is WHOLE.
+     *
+     * Before the parts were made fail-hard, a generation that lost half its
+     * areas was still stored — and then served from cache forever. Someone
+     * opened their paid report and found one section, Health, with no way to
+     * get the rest: regenerating asked them to pay again for a report they had
+     * already bought.
+     *
+     * So an incomplete cached report is repaired instead: generated again, and
+     * NOT charged, because the charge already happened the day it broke.
+     */
+    let repairing = false;
     if (!regenerate) {
       const cached = await getReport(chartId, lifeKey);
-      // Tidied on the way OUT as well as in. Reports written before the
-      // one-bold-per-paragraph rule existed are already in the database, and a
-      // person re-opening the report they paid for should see the fixed page,
-      // not the shouting one they saw last week.
-      if (cached) return res.json({ ...tidyReport(cached), cached: true });
+      if (cached) {
+        const missing = REPORT_AREAS.filter((a) => !(cached as any)[a]?.summary);
+        // Tidied on the way OUT as well as in. Reports written before the
+        // one-bold-per-paragraph rule existed are already in the database, and a
+        // person re-opening the report they paid for should see the fixed page,
+        // not the shouting one they saw last week.
+        if (!missing.length) return res.json({ ...tidyReport(cached), cached: true });
+        console.warn(`[generate-report] cached report is missing ${missing.join(", ")} — regenerating free of charge`);
+        repairing = true;
+      }
     }
 
     /*
@@ -3725,10 +3744,12 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
 
     // Only a report we actually have to GENERATE counts against the quota — a
     // cached one costs nothing, so re-reading your own report is always free.
-    const auth = await charge(req, res, "report", "life_report");
+    const auth = repairing ? { charge: null } : await charge(req, res, "report", "life_report");
     if (!auth) return;
     const me = identityOf(req as any);
-    recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { chartId, language } }).catch(() => {});
+    if (!repairing) {
+      recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { chartId, language } }).catch(() => {});
+    }
 
     // Live transit gives the report's present/future sections real timing.
     let transit: any = null;
