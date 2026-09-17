@@ -3765,6 +3765,20 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     const report = await generateLifeReport(chart, language, transit);
     if (report?.error) return res.status(502).json(report);
 
+    /*
+     * A partial report is shown but never stored and never charged.
+     *
+     * Storing it is what produced the bug this route now repairs — a cached
+     * half-report served as complete forever. Charging for it would be worse:
+     * they asked for seven areas and the free models ran out at four. They get
+     * what was written, told plainly what is missing, and the button that
+     * finishes it costs them nothing.
+     */
+    if (report?.partial) {
+      console.warn(`[generate-report] partial (${(report.missing ?? []).join(", ")} missing) — not stored, not charged`);
+      return res.json(report);
+    }
+
     await insertReport({ chartId, report, language: lifeKey });
     // Charged only now, with the report written.
     await settleCharge(req, auth.charge, "life_report", chartId, { category: "life" });

@@ -1275,11 +1275,16 @@ function capBold(text: string): string {
   return text
     .split("\n")
     .map((line) => {
-      let first = true;
-      return line.replace(/\*\*([^*]+)\*\*/g, (_m, inner) => {
-        if (first) { first = false; return `**${inner}**`; }
-        return inner;
-      });
+      /*
+       * Two per line, not one.
+       *
+       * A timeline bullet has two things worth seeing: which period it is, and
+       * what it meant. Keeping only the first left every bullet with a bold
+       * date and a grey sentence — the part people are actually scanning for
+       * lost its highlight. Three is where it turns back into shouting.
+       */
+      let kept = 0;
+      return line.replace(/\*\*([^*]+)\*\*/g, (_m, inner) => (kept++ < 2 ? `**${inner}**` : inner));
     })
     .join("\n");
 }
@@ -1683,11 +1688,12 @@ for health (e.g. spine, stomach/digestion, knees), the type of partner or place,
 and concrete time-windows from the dasha (years / age range). Avoid empty lines
 like "things will improve" without saying how, in what, and when.
 
-EMPHASIS IS A REQUIREMENT, NOT A SUGGESTION: wrap the MOST important words in
-**double asterisks**. EVERY bullet in "past", "present" and "future" must carry
-at least one **bolded** phrase — a bullet with none has failed. Bold a few
-crucial words, never a whole sentence. This applies in every language, Hindi and
-Hinglish included.
+EMPHASIS IS A REQUIREMENT, NOT A SUGGESTION: wrap the most important words in
+**double asterisks**. Every bullet in "past", "present" and "future" carries
+TWO: the period label itself, and the one phrase that says what it actually
+meant for them ("**chot ya bukhar jaisi choti dikkatein**", "**naukri badalne
+ka mauka**"). A bullet with no bold has failed; a bullet bolded end to end has
+also failed. This applies in every language, Hindi and Hinglish included.
 
 "past", "present" and "future" ARE TIMELINE FIELDS, and their DATES ARE GIVEN TO
 YOU in "timeline" below — never invent, shift or round a period's dates. Each is
@@ -1714,7 +1720,8 @@ the KIND of period it is, concretely enough to recognise.
     each. This is also where the current mahadasha's own end date belongs, if it
     helps.
 
-For each area produce an object with EXACTLY these string keys:
+For each area produce an object with EXACTLY these keys:
+  "rating"    (a PLAIN INTEGER 1-10, not a string — see below),
   "summary"   (the overall pattern, said warmly),
   "past", "present", "future"  (the bulleted timeline fields above),
   "positive"  (genuine strengths and supportive periods),
@@ -1722,6 +1729,13 @@ For each area produce an object with EXACTLY these string keys:
   "guidance"  (practical, doable suggestions),
   "disclaimer"(one short kind line; for health note it is not medical advice,
                for wealth note it is not financial advice).
+
+"rating" — 1 to 10, judged from what the chart actually shows for THIS area:
+the house and its lord, benefic or malefic influence, whether the running
+periods support it, and how serious the cautions are. 1-3 is genuinely
+difficult, 4-6 mixed, 7-8 good, 9-10 exceptional. Do NOT park everything at 6
+or 7 to be kind — a report where every area scores the same tells them nothing,
+and the number is the first thing they look at.
 
 Respond with a SINGLE valid JSON object whose top-level keys are exactly:
 ${list}. Keep summary/positive/caution/guidance/disclaimer to two or three
@@ -1846,12 +1860,32 @@ export async function generateLifeReport(chart: any, language: string, transit?:
     ),
   );
   const failed = settled.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+  const done = Object.assign({}, ...settled.filter((r) => r.status === "fulfilled").map((r: any) => r.value));
+  const have = REPORT_AREAS.filter((a) => (done as any)[a]?.summary);
+
   if (failed.length) {
     const why = failed.map((r) => String(r.reason?.message ?? r.reason)).join("; ");
-    console.warn("[report] a part failed — failing the whole report:", why);
+    /*
+     * Some of it beats none of it — as long as nobody can mistake it for the
+     * whole thing.
+     *
+     * Failing hard was right when the danger was CACHING half a report and
+     * serving it forever as complete. It is the wrong answer when four areas
+     * are written and the free models ran out mid-way: the person waited a
+     * minute and gets an error, and their next press starts from nothing. So
+     * the parts that finished come back marked `partial`, with the areas that
+     * are missing named. The caller must not store a partial one, and must not
+     * charge for it.
+     */
+    if (have.length) {
+      const missing = REPORT_AREAS.filter((a) => !have.includes(a));
+      console.warn(`[report] ${have.length}/${REPORT_AREAS.length} areas written; missing ${missing.join(", ")} (${why})`);
+      return { ...tidyReport(done), partial: true, missing };
+    }
+    console.warn("[report] every part failed:", why);
     return { error: `Report could not be completed (${why}). Please try again.` };
   }
-  return tidyReport(Object.assign({}, ...settled.map((r: any) => r.value)));
+  return tidyReport(done);
 }
 
 /** Focused premium report types — each a deep single-theme reading. */

@@ -757,21 +757,46 @@ export default function LifeReportPage() {
               came for — costs them a hunt. So it reads like a notebook: tabs
               across the top, one section on the page, and next/back at the end
               for anyone who does want the whole thing. */}
+          {/* Each area's own score, on its tab.
+              A number the reader can see before opening anything turns seven
+              tabs into a summary of the whole report: where they are strong,
+              where the work is. The bar carries it at a glance — the reading
+              underneath says why. */}
           <div className="-mx-4 mb-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex w-max gap-2">
+            <div className="flex w-max gap-2.5">
               {present.map((section) => {
                 const Icon = section.icon;
                 const on = section.id === active;
+                const score = Number(report[section.id]?.rating);
+                const has = Number.isFinite(score) && score >= 1 && score <= 10;
+                // Green is genuinely good, amber is mixed, rose is hard. A
+                // report where every tile is green says nothing.
+                const tone = !has ? 'text-muted-foreground' : score >= 7 ? 'text-emerald-600' : score >= 4 ? 'text-amber-600' : 'text-rose-600';
+                const bar = !has ? 'bg-muted-foreground/30' : score >= 7 ? 'bg-emerald-500' : score >= 4 ? 'bg-amber-500' : 'bg-rose-500';
                 return (
                   <button
                     key={section.id}
                     onClick={() => { haptic.tap(); setActive(section.id); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3.5 py-2 text-[13px] font-bold transition-colors ${
-                      on ? 'border-accent bg-accent text-accent-foreground' : 'border-border bg-card text-foreground/75'
+                    className={`w-[112px] shrink-0 rounded-2xl border-2 p-3 text-left transition-colors ${
+                      on ? 'border-primary bg-accent/10' : 'border-border bg-card'
                     }`}
                   >
-                    <Icon className="h-[15px] w-[15px]" />
-                    {t(section.title)}
+                    <Icon className={`h-[17px] w-[17px] ${on ? 'text-accent' : 'text-muted-foreground'}`} />
+                    <p className="mt-1.5 truncate text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t(section.title)}
+                    </p>
+                    {has ? (
+                      <>
+                        <p className={`text-[20px] font-bold leading-tight ${tone}`}>
+                          {score}<span className="text-[11px] font-semibold text-muted-foreground">/10</span>
+                        </p>
+                        <span className="mt-1 block h-[5px] w-full overflow-hidden rounded-full bg-muted">
+                          <span className={`block h-full rounded-full ${bar}`} style={{ width: `${score * 10}%` }} />
+                        </span>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-[12px] font-semibold text-muted-foreground">{t("Open")}</p>
+                    )}
                   </button>
                 );
               })}
@@ -779,6 +804,21 @@ export default function LifeReportPage() {
           </div>
 
           <span ref={topRef} />
+
+          {/* Written, but not all of it — say so, and offer the rest for free. */}
+          {report.partial && (
+            <div className="mb-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+              <p className="text-[14px] font-bold text-amber-900">
+                {t("Some areas are still missing")}
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-amber-900/80">
+                {t("The AI ran out of capacity part-way. What is written below is yours to read — finishing the rest costs you nothing.")}
+              </p>
+              <Button className="mt-3 w-full" onClick={() => loadReport(lang, true)} disabled={loading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> {t("Finish the report")}
+              </Button>
+            </div>
+          )}
 
           {present.filter((s) => s.id === active).map((section) => {
             const data = report[section.id];

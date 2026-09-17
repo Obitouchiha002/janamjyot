@@ -357,6 +357,13 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Career & Profession": { hi: "करियर और पेशा", hinglish: "Career aur pesha" },
   "Travel & Foreign": { hi: "यात्रा और विदेश", hinglish: "Yatra aur videsh" },
   "Overall Pattern": { hi: "कुल मिलाकर", hinglish: "Kul milakar" },
+  "Open": { hi: "खोलें", hinglish: "Kholein" },
+  "Some areas are still missing": { hi: "कुछ हिस्से अभी बाकी हैं", hinglish: "Kuch hisse abhi baaki hain" },
+  "The AI ran out of capacity part-way. What is written below is yours to read — finishing the rest costs you nothing.": {
+    hi: "बीच में AI की क्षमता ख़त्म हो गई। नीचे जो लिखा है वह आपका है — बाक़ी पूरा करने का कोई शुल्क नहीं।",
+    hinglish: "Beech mein AI ki capacity khatam ho gayi. Neeche jo likha hai wo aapka hai — baaki poora karne ka koi charge nahi.",
+  },
+  "Finish the report": { hi: "बाक़ी रिपोर्ट पूरी करें", hinglish: "Baaki report poori karein" },
   "Your full life report": { hi: "आपकी पूरी जीवन रिपोर्ट", hinglish: "Aapki poori jeevan report" },
   "Seven areas of your life, read from your own chart — with the periods you have already lived, so you can check it.": {
     hi: "आपके जीवन के सात क्षेत्र, आपकी अपनी कुंडली से — और वे दौर भी जो आप जी चुके हैं, ताकि आप मिलाकर देख सकें।",
