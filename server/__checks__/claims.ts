@@ -17,6 +17,8 @@ const chart = {
     { planet: "Jupiter", house: 4 }, { planet: "Mars", house: 10 },
     { planet: "Moon", house: 2 }, { planet: "Venus", house: 9 },
   ],
+  // Jupiter rules the 7th here — so "Jupiter ka 7th house" is a lordship.
+  d1_chart: { houses: [1,2,3,4,5,6,7,8,9,10,11,12].map((h) => ({ house: h, sign_lord: h === 7 ? "Jupiter" : "Mercury" })) },
 };
 const transit = { Jupiter: 1 }; // Jupiter is passing through the 1st right now
 
@@ -27,6 +29,7 @@ const cases: Array<[string, string, number]> = [
   ["false, Hindi planet name",             "Shani 11th house mein baitha hai.",                     1],
   ["D10 placement, labelled",              "D10 mein Sun 6th house mein hai.",                      0],
   ["navamsa placement, labelled",          "Navamsa mein Saturn 7th house mein hai.",               0],
+  ["D10 named once, two claims after it",  "D10 mein Mars aur Jupiter 10th house mein hain, lekin Sun 11th house mein hone se career mixed hai.", 0],
   ["transit, labelled",                    "Jupiter abhi gochar mein 1st house se guzar raha hai.", 0],
   ["transit, unlabelled but true now",     "Jupiter 1st house growth laata hai.",                   0],
   ["lordship, not placement",              "Mars, 7th house ka lord, career ko energy deta hai.",   0],
@@ -34,7 +37,10 @@ const cases: Array<[string, string, number]> = [
   ["nearest planet, not first",            "Mercury-Rahu period mein Jupiter 4th house mein hai.",  0],
   ["nearest planet is the false one",      "Mercury-Rahu period mein Mars 2nd house mein hai.",     1],
   ["two claims, one false",                "Sun 9th house mein hai; Saturn 3rd house mein hai.",    1],
+  ["house first, planet after — both true", "2nd house mein Moon aur 9th house mein Sun hone se…",   0],
+  ["house first, planet after — false",     "2nd house mein Moon aur 9th house mein Saturn hone se…", 1],
   ["an aspect is not a placement",         "Jupiter ki drishti 10th house par hai.",                0],
+  ["planet paired with a house it rules",  "Jupiter ka 7th house rishton ko majboot karta hai.",    0],
   ["lordship stated after the house",      "Jupiter 10th house ka swami hone se career strong hai.", 0],
   ["English lordship after the house",     "Jupiter governs the 10th house for you.",               0],
   ["English aspect, also fine",            "Jupiter aspects the 10th house from there.",            0],
@@ -58,6 +64,7 @@ const dashaCases: Array<[string, string, number]> = [
   ["future period, not a claim about now", "2031 se Sun mahadasha shuru hogi.",                       0],
   ["false running antardasha",             "Currently Rahu antardasha running hai.",                  1],
   ["past period, then a clause about now", "Pichhle saal Rahu antardasha thi, abhi samay behtar hai.", 0],
+  ["a future period beside the word abhi",  "Venus-Mercury (2027-2029) ki antardasha ke liye abhi se taiyari rakhein.", 0],
 ];
 for (const [label, text, want] of dashaCases) {
   const got = wrongDashaClaims(text, dchart).length;

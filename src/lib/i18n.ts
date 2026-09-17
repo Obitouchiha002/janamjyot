@@ -357,6 +357,18 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Career & Profession": { hi: "करियर और पेशा", hinglish: "Career aur pesha" },
   "Travel & Foreign": { hi: "यात्रा और विदेश", hinglish: "Yatra aur videsh" },
   "Overall Pattern": { hi: "कुल मिलाकर", hinglish: "Kul milakar" },
+  "Your full life report": { hi: "आपकी पूरी जीवन रिपोर्ट", hinglish: "Aapki poori jeevan report" },
+  "Seven areas of your life, read from your own chart — with the periods you have already lived, so you can check it.": {
+    hi: "आपके जीवन के सात क्षेत्र, आपकी अपनी कुंडली से — और वे दौर भी जो आप जी चुके हैं, ताकि आप मिलाकर देख सकें।",
+    hinglish: "Aapke jeevan ke saat hisse, aapki apni kundli se — aur wo daur bhi jo aap jee chuke hain, taaki mila kar dekh sakein.",
+  },
+  "New report": { hi: "नई रिपोर्ट", hinglish: "Nayi report" },
+  "Previous reports": { hi: "पिछली रिपोर्ट", hinglish: "Pichhli reports" },
+  "None yet — the reports you make are kept here.": {
+    hi: "अभी कोई नहीं — आप जो रिपोर्ट बनाएँगे वे यहीं रहेंगी।",
+    hinglish: "Abhi koi nahi — aap jo report banayenge wo yahin rahengi.",
+  },
+  "areas": { hi: "क्षेत्र", hinglish: "hisse" },
   "Past": { hi: "बीता समय", hinglish: "Beeta samay" },
   "Current Phase": { hi: "अभी का दौर", hinglish: "Abhi ka daur" },
   "Next 5-7 Years": { hi: "अगले 5-7 साल", hinglish: "Agle 5-7 saal" },

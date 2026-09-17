@@ -3,10 +3,11 @@ import { PastTimeline } from "@/components/PastTimeline";
 import { ReportProgress } from "@/components/ReportProgress";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Plane, Store, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Sparkles, Activity, Coins, Briefcase, Heart, Users, Plane, Store, Download, RefreshCw, Languages, CheckCircle2, AlertTriangle, Lightbulb, History, Compass, TrendingUp, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { isNative, saveToDownloads, shareFile } from "@/lib/native";
 import SpeakButton from "@/components/SpeakButton";
+import AnswerText from "@/components/AnswerText";
 import { getLang } from "@/lib/prefs";
 import { useT } from "@/lib/i18n";
 import { haptic } from "@/lib/native";
@@ -39,17 +40,15 @@ const SECTIONS = [
 ];
 
 // Renders **bold** segments as highlighted key terms; the rest stays plain.
-function RichText({ text }: { text?: string }) {
-  if (!text) return null;
-  return (
-    <>
-      {String(text).split(/(\*\*[^*]+?\*\*)/g).map((p, i) => {
-        const m = /^\*\*([\s\S]+?)\*\*$/.exec(p);
-        return m ? <strong key={i} className="va-key">{m[1]}</strong> : <span key={i}>{p}</span>;
-      })}
-    </>
-  );
-}
+/*
+ * Removed: a local RichText that rendered **bold** and nothing else.
+ *
+ * The report's timeline fields are one bullet per LINE, and this dropped every
+ * line break — so "• Ketu-Saturn (2019-2020): … • Venus-Venus (2021-2024): …"
+ * arrived as a single grey paragraph with bullet characters stranded inside
+ * sentences. AnswerText (the same renderer the chat uses) makes real list items
+ * with real spacing, so the page below is now readable in one pass.
+ */
 
 // Animated Vimshottari Dasha timeline — a real graph of the life periods.
 function DashaTimeline({ dasha }: { dasha: any }) {
@@ -139,6 +138,37 @@ export default function LifeReportPage() {
   useEffect(() => {
     if (present.length && !present.some((s) => s.id === active)) setActive(present[0].id);
   }, [present, active]);
+  /*
+   * Reports they already have. Loaded on arrival because it decides what the
+   * first screen IS — a list to open, or an empty state that says make one.
+   */
+  const [history, setHistory] = useState<Array<{ id: string; language: string; created_at: string; areas: number }> | null>(null);
+  const loadHistory = () => {
+    if (!chartId) return;
+    fetch(`/api/reports/${chartId}/history`)
+      .then((r) => r.json())
+      .then((d) => setHistory(Array.isArray(d.reports) ? d.reports : []))
+      .catch(() => setHistory([]));
+  };
+  useEffect(loadHistory, [chartId]);
+
+  /** Open a saved report — no model call, no credit, no wait. */
+  const openSaved = (id: string) => {
+    haptic.tap();
+    setLoading(true); setError(null); setChosen(true);
+    fetch(`/api/reports/${chartId}/history/${id}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.error) setError(d.error); else setReport(d); })
+      .catch(() => setError("Network error."))
+      .finally(() => setLoading(false));
+  };
+
+  const removeSaved = async (id: string) => {
+    haptic.warning();
+    setHistory((h) => (h ?? []).filter((x) => x.id !== id));
+    await fetch(`/api/reports/${chartId}/history/${id}`, { method: "DELETE" }).catch(() => {});
+  };
+
   const activeIdx = present.findIndex((s) => s.id === active);
   const prevSection = activeIdx > 0 ? present[activeIdx - 1] : null;
   const nextSection = activeIdx >= 0 && activeIdx < present.length - 1 ? present[activeIdx + 1] : null;
@@ -551,7 +581,9 @@ export default function LifeReportPage() {
             {chart?.birth_details?.name ? `${chart.birth_details.name} — ` : ""}AI reading from the calculated chart.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* The toolbar acts on a report — before one is open it is three
+            controls for something that does not exist yet. */}
+        <div className={`flex items-center gap-2 ${report ? "" : "hidden"}`}>
           <Languages className="w-4 h-4 text-muted-foreground" />
           <select
             value={lang}
@@ -571,8 +603,11 @@ export default function LifeReportPage() {
         </div>
       </div>
 
-      {/* Header / chart summary card */}
-      {chart?.summary && (
+      {/* Everything below belongs WITH a report, not in front of one.
+          Before there is a reading, a screen full of charts, a dasha bar and a
+          past-timeline card is a wall between the person and the one thing they
+          came to do. It appears the moment a report is open. */}
+      {report && chart?.summary && (
         <div className="rounded-3xl bg-gradient-to-br from-primary to-indigo-900 text-white p-6 shadow-lg">
           <div className="flex flex-col md:flex-row gap-6">
             <div className="flex-1">
@@ -599,7 +634,7 @@ export default function LifeReportPage() {
       )}
 
       {/* Charts */}
-      {chart?.planets && (
+      {report && chart?.planets && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-card rounded-2xl border shadow-sm p-4 va-rise va-card-hover" style={{ animationDelay: "0.05s" }}>
             <h3 className="font-bold text-primary mb-3 text-center">D1 — Lagna Chart</h3>
@@ -615,7 +650,7 @@ export default function LifeReportPage() {
       )}
 
       {/* Dasha timeline graph */}
-      {chart?.dasha && <DashaTimeline dasha={chart.dasha} />}
+      {report && chart?.dasha && <DashaTimeline dasha={chart.dasha} />}
 
       {/*
         The past comes BEFORE the forecast — and before the paywall for the full
@@ -624,37 +659,88 @@ export default function LifeReportPage() {
         also the honest order to sell in: see whether this thing knows you,
         then decide whether to buy the rest.
       */}
-      {chartId && chart && <PastTimeline chartId={chartId} lang={lang} />}
+      {report && chartId && chart && <PastTimeline chartId={chartId} lang={lang} />}
 
       {/* Report body */}
       {!chosen && !report ? (
-        /* Language gate — pick a language, THEN generate. */
-        <div className="max-w-lg mx-auto rounded-3xl border bg-card p-7 text-center shadow-sm va-rise">
-          <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-accent/15 text-accent">
-            <Languages className="h-7 w-7" />
-          </div>
-          <h2 className="text-xl font-bold text-primary">Which language for your report?</h2>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            We'll write your full life report in the language you choose.
-          </p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2.5">
-            {LANGS.map(l => (
-              <button
-                key={l.value}
-                onClick={() => setLang(l.value)}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-                  lang === l.value
-                    ? "border-accent bg-accent text-accent-foreground shadow"
-                    : "border-input bg-white text-foreground hover:border-accent/50"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
-          <Button size="lg" className="mt-6 w-full" onClick={() => generate(lang)}>
-            <Sparkles className="w-4 h-4 mr-2" /> Generate My Report
-          </Button>
+        /* ── The landing: two things to do, nothing else ───────────────────
+           It used to open on charts, a dasha bar and a past-timeline card,
+           with the actual choice buried under all of it. A person arriving
+           here wants one of exactly two things: make a new report, or open one
+           they already have. So that is the whole screen. */
+        <div className="mx-auto max-w-lg space-y-3">
+          {history === null && <div className="skeleton h-[104px]" />}
+
+          {history !== null && (
+            <>
+              <div className="rounded-3xl border bg-card p-6 text-center shadow-sm va-rise">
+                <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-accent/15 text-accent">
+                  <Sparkles className="h-7 w-7" />
+                </div>
+                <h2 className="text-[19px] font-bold text-primary">{t("Your full life report")}</h2>
+                <p className="mx-auto mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground">
+                  {t("Seven areas of your life, read from your own chart — with the periods you have already lived, so you can check it.")}
+                </p>
+
+                {/* Language belongs to the NEW report, so it sits with it. */}
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {LANGS.map(l => (
+                    <button
+                      key={l.value}
+                      onClick={() => { haptic.tap(); setLang(l.value); }}
+                      className={`rounded-full border-2 px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${
+                        lang === l.value ? "border-accent bg-accent text-accent-foreground" : "border-border bg-card text-foreground/75"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+
+                <Button size="lg" className="mt-4 w-full" onClick={() => generate(lang)}>
+                  <Sparkles className="mr-2 h-4 w-4" /> {t("New report")}
+                </Button>
+              </div>
+
+              {/* Reports they already have — opening one is free and instant. */}
+              <div className="rounded-3xl border bg-card p-4 shadow-sm">
+                <div className="flex items-center gap-2 px-1 pb-2">
+                  <History className="h-4 w-4 text-accent" />
+                  <h3 className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {t("Previous reports")}
+                  </h3>
+                </div>
+
+                {!history.length && (
+                  <p className="px-1 py-3 text-[13px] text-muted-foreground">
+                    {t("None yet — the reports you make are kept here.")}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  {history.map((h) => (
+                    <div key={h.id} className="flex items-center gap-2 rounded-2xl border-2 border-border px-3.5 py-3">
+                      <button onClick={() => openSaved(h.id)} className="min-w-0 flex-1 text-left">
+                        <span className="block text-[14px] font-bold">
+                          {new Date(h.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                        <span className="block text-[12px] text-muted-foreground">
+                          {(LANGS.find((l) => l.value === h.language)?.label) || h.language} · {h.areas} {t("areas")}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => removeSaved(h.id)}
+                        aria-label={t("Delete")}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-destructive"
+                      >
+                        <Trash2 className="h-[17px] w-[17px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ) : loading ? (
         <ReportProgress />
@@ -715,65 +801,65 @@ export default function LifeReportPage() {
                   />
                 </div>
 
-                <div className="space-y-5 p-5">
+                <div className="space-y-6 p-5 sm:p-6">
                   {/* lead / overall */}
                   <div className="relative border-l-4 border-accent pl-4">
-                    <h4 className="mb-1 text-[11px] font-bold uppercase tracking-widest text-accent">{t("Overall Pattern")}</h4>
-                    <p className="text-[16px] font-semibold leading-relaxed text-primary"><RichText text={data.summary || data.overall} /></p>
+                    <h4 className="mb-2 text-[11px] font-bold uppercase tracking-widest text-accent">{t("Overall Pattern")}</h4>
+                    <p className="text-[16px] font-semibold leading-relaxed text-primary"><AnswerText text={data.summary || data.overall} /></p>
                   </div>
 
                   {/* past / present — items-start so a one-bullet "present" is
                       not stretched to the height of a five-bullet "past", which
                       reads as a section with nothing in it. */}
-                  <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl bg-secondary/40 p-4">
-                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <div className="rounded-2xl bg-secondary/40 p-5">
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
                         <History className="h-3.5 w-3.5 text-accent"/> {t("Past")}
                       </h4>
-                      <div className="text-foreground/85"><RichText text={data.past} /></div>
+                      <div className="text-foreground/85"><AnswerText text={data.past} /></div>
                     </div>
-                    <div className="rounded-2xl bg-secondary/40 p-4">
-                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                    <div className="rounded-2xl bg-secondary/40 p-5">
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
                         <Compass className="h-3.5 w-3.5 text-accent"/> {t("Current Phase")}
                       </h4>
-                      <div className="text-foreground/85"><RichText text={data.present || data.current} /></div>
+                      <div className="text-foreground/85"><AnswerText text={data.present || data.current} /></div>
                     </div>
                   </div>
 
                   {/* future */}
-                  <div className="rounded-2xl border border-accent/30 bg-accent/5 p-4">
-                    <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-accent">
+                  <div className="rounded-2xl border border-accent/30 bg-accent/5 p-5">
+                    <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-accent">
                       <TrendingUp className="h-3.5 w-3.5"/> {t("Next 5-7 Years")}
                     </h4>
-                    <div className="text-foreground/90"><RichText text={data.future || data.next} /></div>
+                    <div className="text-foreground/90"><AnswerText text={data.future || data.next} /></div>
                   </div>
 
                   {/* positive / cautions */}
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-4">
-                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                  <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-5">
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-700">
                         <CheckCircle2 className="h-3.5 w-3.5"/> {t("Positive")}
                       </h4>
-                      <div className="text-emerald-950/80"><RichText text={data.positive || data.growth || data.strengths || data.compatibility} /></div>
+                      <div className="text-emerald-950/80"><AnswerText text={data.positive || data.growth || data.strengths || data.compatibility} /></div>
                     </div>
-                    <div className="rounded-2xl border border-rose-200/70 bg-rose-50/50 p-4">
-                      <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-rose-700">
+                    <div className="rounded-2xl border border-rose-200/70 bg-rose-50/50 p-5">
+                      <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-rose-700">
                         <AlertTriangle className="h-3.5 w-3.5"/> {t("Cautions")}
                       </h4>
-                      <div className="text-rose-950/80"><RichText text={data.caution || data.risk || data.challenges || data.delay} /></div>
+                      <div className="text-rose-950/80"><AnswerText text={data.caution || data.risk || data.challenges || data.delay} /></div>
                     </div>
                   </div>
 
                   {/* guidance */}
-                  <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-4">
-                    <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
+                  <div className="rounded-2xl border border-primary/10 bg-primary/[0.04] p-5">
+                    <h4 className="mb-2.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-primary">
                       <Lightbulb className="h-3.5 w-3.5 text-accent"/> {t("Practical Guidance")}
                     </h4>
-                    <div className="font-medium text-primary"><RichText text={data.guidance || data.practical_guidance} /></div>
+                    <div className="font-medium text-primary"><AnswerText text={data.guidance || data.practical_guidance} /></div>
                   </div>
 
                   {data.disclaimer && (
-                    <p className="border-t border-dashed pt-3 text-xs italic text-muted-foreground">{data.disclaimer}</p>
+                    <p className="border-t border-dashed pt-4 text-[12px] italic leading-relaxed text-muted-foreground">{data.disclaimer}</p>
                   )}
                 </div>
               </section>

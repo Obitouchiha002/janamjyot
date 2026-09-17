@@ -283,13 +283,22 @@ export function birthChartFactSheet(chart: any): string {
    * answers. Grouped by planet so it reads as the sentence people are told:
    * "Saturn rules the 8th and 9th".
    */
-  const rules = new Map<string, number[]>();
-  for (const h of chart?.d1_chart?.houses ?? []) {
-    if (!h?.sign_lord || !h?.house) continue;
-    rules.set(h.sign_lord, [...(rules.get(h.sign_lord) ?? []), Number(h.house)]);
-  }
-  const lordLine = rules.size
-    ? `House lords: ${[...rules.entries()].map(([pl, hs]) => `${pl} rules ${hs.sort((a, b) => a - b).map(ord).join(" & ")}`).join(", ")}`
+  /*
+   * Listed house by house, not planet by planet.
+   *
+   * "Mercury rules 1 & 4" reads fine and is still the wrong shape: asked which
+   * planet rules the 1st, a model scans for "1st" and finds the nearest planet
+   * name — which is whatever SITS there. A report called Jupiter "your 1st
+   * lord" three times in a row for a chart whose 1st lord is Mercury, because
+   * Jupiter is the planet sitting in the 1st. One entry per house, in order,
+   * removes the question.
+   */
+  const lordOf = (chart?.d1_chart?.houses ?? [])
+    .filter((h: any) => h?.house && h?.sign_lord)
+    .sort((a: any, b: any) => Number(a.house) - Number(b.house))
+    .map((h: any) => `${ord(Number(h.house))} ${h.sign_lord}`);
+  const lordLine = lordOf.length
+    ? `House lords (a planet SITTING in a house does not rule it): ${lordOf.join(", ")}`
     : "";
   return [`Lagna (1st house): ${lagna}`, ...lines, lordLine].filter(Boolean).join("; ");
 }
@@ -1383,15 +1392,16 @@ async function generateChecked(
    * The second pass costs a call only on the drafts that are still wrong.
    */
   /*
-   * One correction, not two.
+   * A long reading gets two attempts at its own mistakes; a chat answer, one.
    *
-   * The second pass almost never found anything the first had missed, and it
-   * pushed a seven-area report to seventy-nine seconds — past the sixty the
-   * function is killed at, which turns a slightly-wrong report into no report.
-   * Sending the first draft to a strong model (opts.strong) does the same job
-   * earlier and for free.
+   * Two rounds once pushed a seven-area report to seventy-nine seconds — past
+   * the sixty the function is killed at — but that was before the chart packet
+   * was trimmed, and a report now finishes a first draft in twenty to thirty.
+   * The stop below still ends it while there is time to return something, and
+   * the errors that survive a first correction are the stubborn ones: a wrong
+   * house LORD, repeated three times in one reading.
    */
-  const rounds = 1;
+  const rounds = (opts?.maxTokens ?? 0) > 2000 ? 2 : 1;
   let best = text;
   let bestCount = errs.count;
   let note = errs.note();
@@ -1413,10 +1423,15 @@ async function generateChecked(
     const again = chartClaimErrors(retry, chart, tr);
     if (again.count < bestCount) { best = retry; bestCount = again.count; note = again.note(); }
     if (!bestCount) break;
-    // Stop while there is still room to return something: the function is
-    // killed at sixty seconds, and a second correction that lands at sixty-four
-    // is a report nobody receives.
-    if (Date.now() - started > 34_000) break;
+    /*
+     * Stop while there is still room to return something.
+     *
+     * The function is killed at sixty seconds. A correction call can take up to
+     * thirty, so anything past twenty-four seconds spent means the next round
+     * might land after the person has already been shown an error — and a
+     * report with one wrong house number beats no report at all.
+     */
+    if (Date.now() - started > 24_000) break;
   }
   console.warn(`[claims] after correction: ${bestCount} left`);
   return best;
@@ -1564,10 +1579,48 @@ export const REPORT_AREAS = ["health", "wealth", "career", "marriage", "relation
  */
 function reportTimeline(chart: any) {
   const cur = chart?.dasha?.current ?? {};
+  const houses: any[] = chart?.d1_chart?.houses ?? [];
+  const planets: any[] = chart?.planet_positions ?? [];
+
+  /*
+   * What a period's lord actually DOES in this chart.
+   *
+   * Handed only "Venus-Sun (2024-2025)" a model writes what a Sun period means
+   * in general — "low energy, digestive stamina" — which is true of the planet
+   * and not of this person. Handed "its lord rules their 3rd and 10th and sits
+   * in the 12th", the same period becomes their work and their expenses, in
+   * those years. The difference between a reading and a horoscope column is
+   * almost entirely here.
+   */
+  /*
+   * What a period's lord actually DOES in this chart, as one short line.
+   *
+   * Handed only "Venus-Sun (2024-2025)" a model writes what a Sun period means
+   * in general — "low energy, digestive stamina" — which is true of the planet
+   * and not of this person. Handed "its lord rules their 3rd and 10th and sits
+   * in the 12th", the same period becomes their work and their expenses, in
+   * those years.
+   *
+   * A sentence rather than nested objects on purpose: this is repeated for
+   * every period in the timeline, and the JSON version of it cost more tokens
+   * than the entire D9 chart.
+   */
+  const lordLine = (lord: string) => {
+    const rules = houses.filter((h) => h.sign_lord === lord).map((h) => Number(h.house)).sort((a, b) => a - b);
+    const p = planets.find((x) => x.planet === lord);
+    const sits = p?.house ? `sits in ${p.house}${p.retrograde ? "R" : ""}` : "";
+    return [lord, rules.length ? `rules ${rules.join("&")}` : "", sits].filter(Boolean).join(" ");
+  };
+  const lords = (label: string) => {
+    const [maha, antar] = String(label).split("-");
+    return [lordLine(maha), antar && antar !== maha ? lordLine(antar) : ""].filter(Boolean).join("; ");
+  };
+
   return {
-    lived_periods: pastMilestones(chart, 5).map((p) => ({
+    lived_periods: pastMilestones(chart, 4).map((p) => ({
       period: p.period, from: p.from, to: p.to, age: `${p.age_from}-${p.age_to}`,
-      lord_touches: p.themes,
+      touches: p.themes.join(", "),
+      lords: lords(p.period),
     })),
     current_period: cur.mahadasha
       ? {
@@ -1575,9 +1628,12 @@ function reportTimeline(chart: any) {
           from: String(cur.antardasha_from ?? "").slice(0, 10),
           to: String(cur.antardasha_to ?? "").slice(0, 10),
           mahadasha_runs_until: String(cur.mahadasha_to ?? "").slice(0, 10),
+          lords: lords(`${cur.mahadasha}-${cur.antardasha}`),
         }
       : null,
-    next_periods: chart?.dasha?.next_7_years ?? [],
+    next_periods: (chart?.dasha?.next_7_years ?? []).slice(0, 5).map((n: any) => ({
+      period: n.period, from: n.from, to: n.to, lords: lords(String(n.period ?? "")),
+    })),
   };
 }
 
@@ -1642,8 +1698,13 @@ Do not invent events (no job titles, no illnesses, no named people) — describe
 the KIND of period it is, concretely enough to recognise.
 
   "past" — walk timeline.lived_periods, oldest first, one bullet each (3-4
-    bullets), ONE sentence per bullet. This has to read like a timeline they
-    can check against their own life.
+    bullets), ONE sentence per bullet. Each bullet must say something only THIS
+    chart could produce: use that period's own "lords" line (which houses its
+    lords rule and sit in) to name the part of their life it touched, not what
+    the planet means in general. "Venus-Sun (2024-2025): low energy and digestion"
+    is a textbook line about the Sun; "Venus-Sun (2024-2025): the year work and
+    reputation asked more of you than your body had to give, because its lord
+    rules your 3rd and sits in your 12th" is their year.
   "present" — exactly ONE bullet: timeline.current_period and its dates only.
     Do NOT give the mahadasha its own bullet or date range here; if it matters,
     mention it inside the same sentence. Make this bullet 2-3 sentences — the
@@ -1674,7 +1735,9 @@ ${JSON.stringify(fullContext)}
 THE ONLY TRUE BIRTH-CHART PLACEMENTS — every plain "Nth house" you write must
 match this line exactly. A number from a D9/D10/D6/D11 chart or from a transit
 is NOT a birth-chart house, and if you mean one of those, say so in the same
-sentence:
+sentence. SITTING IN A HOUSE IS NOT RULING IT: the "House lords" part of this
+line says who rules what, and a planet placed in the 1st is not "the 1st lord"
+unless that line says so:
 ${fullContext.birth_chart_facts}
 
 FINAL CHECK BEFORE YOU OUTPUT: does every bullet in every past/present/future
@@ -1695,7 +1758,7 @@ ${languageInstruction(language)}`;
   // area of this shape (four past bullets, one present, three future, five
   // short prose fields) measures ~800 tokens, so a part is kept to three.
   const text = await generateChecked(prompt, chart, transit, {
-    temperature: 0.8, thinkingBudget: 0, maxTokens: 3300, purpose: "life_report", strong: true,
+    temperature: 0.8, thinkingBudget: 0, maxTokens: 2800, purpose: "life_report", strong: true,
   });
   const j = parseJsonLoose(text);
   if (!j) {

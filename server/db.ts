@@ -3051,6 +3051,67 @@ export async function getLatestReport(chartId: string): Promise<any | null> {
 }
 
 /** Most recent cached report for a chart in a specific language (for caching). */
+/**
+ * Every life report ever generated for this chart, newest first.
+ *
+ * Reports were already stored as a new row per generation rather than an
+ * overwrite — the history was there the whole time, with nothing to read it.
+ * Headers only: a list does not need seven areas of prose, and sending them
+ * would make opening the list slower than opening a report.
+ */
+export async function listReportHistory(chartId: string, prefix = "life:"): Promise<Array<{
+  id: string; language: string; created_at: string; areas: number;
+}>> {
+  const shape = (id: string, language: string, created: any, json: any) => ({
+    id,
+    // Stored as the cache key ("life:hinglish:2027-01-27") — the person only
+    // needs the language out of it.
+    language: String(language).split(":")[1] || String(language),
+    created_at: created instanceof Date ? created.toISOString() : String(created),
+    areas: json && typeof json === "object"
+      ? Object.values(json).filter((v: any) => v && typeof v === "object" && v.summary).length
+      : 0,
+  });
+  if (USE_PG) {
+    const { rows } = await pool!.query(
+      `SELECT id, language, created_at, report_json FROM ai_reports
+        WHERE chart_id = $1 AND language LIKE $2 ORDER BY created_at DESC LIMIT 40`,
+      [chartId, `${prefix}%`],
+    );
+    return rows.map((r) => shape(r.id, r.language, r.created_at, r.report_json));
+  }
+  return fileData.ai_reports
+    .filter((r: any) => r.chart_id === chartId && String(r.language).startsWith(prefix))
+    .slice()
+    .reverse()
+    .map((r: any) => shape(r.id, r.language, r.created_at, r.report_json));
+}
+
+/** One stored report, by id — the chart id is part of the lookup, not a check after it. */
+export async function getReportById(chartId: string, id: string): Promise<any | null> {
+  if (USE_PG) {
+    const { rows } = await pool!.query(
+      `SELECT report_json FROM ai_reports WHERE id = $1 AND chart_id = $2`,
+      [id, chartId],
+    );
+    return rows[0]?.report_json ?? null;
+  }
+  const r = fileData.ai_reports.find((x: any) => x.id === id && x.chart_id === chartId);
+  return r ? r.report_json : null;
+}
+
+/** Delete one stored report. True when a row of theirs was removed. */
+export async function deleteReportById(chartId: string, id: string): Promise<boolean> {
+  if (USE_PG) {
+    const r = await pool!.query(`DELETE FROM ai_reports WHERE id = $1 AND chart_id = $2`, [id, chartId]);
+    return (r.rowCount ?? 0) > 0;
+  }
+  const i = fileData.ai_reports.findIndex((x: any) => x.id === id && x.chart_id === chartId);
+  if (i < 0) return false;
+  fileData.ai_reports.splice(i, 1);
+  return true;
+}
+
 export async function getReport(chartId: string, language: string): Promise<any | null> {
   if (USE_PG) {
     const { rows } = await pool!.query(

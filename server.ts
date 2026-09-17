@@ -72,6 +72,9 @@ import {
   allPayments,
   paymentTotals,
   insertReport,
+  listReportHistory,
+  getReportById,
+  deleteReportById,
   getReport,
   insertChatMessage,
   getChatHistory,
@@ -3772,6 +3775,36 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     res.status(quota ? 429 : 500).json({ error: friendlyError(err?.message) });
   }
 }
+/* ── Report history ───────────────────────────────────────────────────────
+   Every generation was already stored as its own row; these read it. Opening
+   an old report costs nothing and calls no model — which is the point: a
+   person should be able to look at what their report said last month without
+   paying to find out. */
+
+app.get("/api/reports/:chartId/history", async (req: any, res) => {
+  const chart = await getNormalizedChart(req.params.chartId).catch(() => null);
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  res.json({ reports: await listReportHistory(req.params.chartId).catch(() => []) });
+});
+
+app.get("/api/reports/:chartId/history/:id", async (req: any, res) => {
+  const chart = await getNormalizedChart(req.params.chartId).catch(() => null);
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  const report = await getReportById(req.params.chartId, req.params.id).catch(() => null);
+  if (!report) return res.status(404).json({ error: "That report is no longer here." });
+  res.json({ ...tidyReport(report), cached: true });
+});
+
+app.delete("/api/reports/:chartId/history/:id", async (req: any, res) => {
+  const chart = await getNormalizedChart(req.params.chartId).catch(() => null);
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  const ok = await deleteReportById(req.params.chartId, req.params.id).catch(() => false);
+  res.json({ ok });
+});
+
 /**
  * GET /api/chart/:chartId/past — the checkable half of a reading.
  *

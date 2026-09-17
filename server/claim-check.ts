@@ -30,6 +30,13 @@ export interface WrongPlacement {
   excerpt: string;
 }
 
+/** Does this planet rule that house in the birth chart? */
+function rulesHouse(chart: any, planet: string, house: number): boolean {
+  return (chart?.d1_chart?.houses ?? []).some(
+    (h: any) => Number(h?.house) === house && String(h?.sign_lord) === planet,
+  );
+}
+
 function canonical(raw: string): string {
   const k = raw.toLowerCase();
   return ALIASES[k] ?? raw[0].toUpperCase() + raw.slice(1).toLowerCase();
@@ -57,8 +64,16 @@ export function wrongPlacements(
     // hone se" — the qualifier that turns a placement into a lordship often
     // follows the house rather than preceding it.
     const around = text.slice(Math.max(0, at - 70), at + m[0].length + 45).toLowerCase();
-    if (/transit|gochar|guzar|moving through/.test(around)) continue;
-    if (/\bd(9|10|6|11|60)\b|navamsa|navamsha|dasamsa|dashamsa|varga/.test(around)) continue;
+    /*
+     * Which chart is being talked about is decided by the whole SENTENCE, not
+     * by the seventy characters before the number. "D10 mein Mars aur Jupiter
+     * 10th house mein hain, lekin Sun 11th house mein hone se…" is one
+     * sentence about the D10, and a fixed lookback loses that label before it
+     * reaches the Sun — so a correct line was sent back to be rewritten.
+     */
+    const sentence = ((text.slice(0, at).split(/[.!?।\n]/).pop() ?? "") + around).toLowerCase();
+    if (/transit|gochar|guzar|moving through/.test(sentence)) continue;
+    if (/\bd(9|10|6|11|60)\b|navamsa|navamsha|dasamsa|dashamsa|shashtamsa|ekadasamsa|varga/.test(sentence)) continue;
     if (/lord|swami|svami|adhipati|malik|owner|owns|govern|rules|ruling|\brule\b|karak|स्वामी|मालिक|ruler/.test(around)) continue;
     /*
      * An aspect is not a placement. "Jupiter ki drishti 10th house par" is
@@ -68,14 +83,36 @@ export function wrongPlacements(
     if (/drishti|drusti|dristi|drsti|dekh|nazar|aspect|aspects|aspecting|प्रभाव डाल|दृष्टि/.test(around)) continue;
     if (/from (the )?moon|chandra se|moon se/.test(around)) continue;
 
-    // The planet named nearest before the house, within the same clause.
-    const clause = text.slice(Math.max(0, at - 45), at).split(/[.;,।!?\n]/).pop() ?? "";
-    const names = [...clause.matchAll(PLANET_RE)];
-    if (!names.length) continue;
-    const planet = canonical(names[names.length - 1][1]);
+    /*
+     * Which planet the house belongs to — and Hinglish puts it on either side.
+     * "Rahu 8th house mein" names it first; "8th house mein Rahu" names it
+     * after, and reading only backwards from there picks up the planet of the
+     * PREVIOUS clause: "2nd house mein Ketu aur 8th house mein Rahu" was read
+     * as Ketu in the 8th, which is false, and the sentence was right.
+     */
+    const after = text.slice(at + m[0].length, at + m[0].length + 24);
+    const trailing = after.match(/^\s*(?:mein|me|mai|में|hai|is|:)?\s*([A-Za-z]+)/)?.[1];
+    let planet: string | null = trailing && IS_PLANET.test(trailing) ? canonical(trailing) : null;
+    if (!planet) {
+      // The planet named nearest before the house, within the same clause.
+      const clause = text.slice(Math.max(0, at - 45), at).split(/[.;,।!?\n]/).pop() ?? "";
+      const names = [...clause.matchAll(PLANET_RE)];
+      if (!names.length) continue;
+      planet = canonical(names[names.length - 1][1]);
+    }
     const actual = truth[planet];
     if (!actual || actual === said) continue;
     if (transitHouses[planet] === said) continue;
+    /*
+     * A planet paired with a house it RULES is a lordship, not a placement.
+     *
+     * Hinglish does not mark the difference: "Jupiter ka 10th house" is how
+     * people say "Jupiter's house, the 10th" — and for a Gemini lagna Jupiter
+     * does rule the 10th. Read as a placement it looks false, and a correct
+     * reading was sent back to be rewritten three times over. When the planet
+     * owns that house, the sentence is true in the reading that matters.
+     */
+    if (rulesHouse(chart, planet, said)) continue;
     out.push({
       planet, said, actual,
       excerpt: text.slice(Math.max(0, at - 40), at + m[0].length).replace(/\s+/g, " ").trim(),
@@ -116,7 +153,17 @@ export function wrongDashaClaims(text: string, chart: any): WrongDasha[] {
       // A comma ends the claim going forward: "Rahu antardasha thi, abhi …" is
       // a past period followed by a different sentence about now.
       const after = text.slice(at, at + 60).split(/[,.;!?\n]/)[0] ?? "";
-      if (!NOW_RE.test(before + after)) continue;
+      const clause = before + after;
+      if (!NOW_RE.test(clause)) continue;
+      /*
+       * A period dated in the future is not a claim about now, whatever words
+       * sit beside it. "Venus-Mercury (2027-2029) mein aapko abhi se taiyari
+       * karni hogi" was being read as "the running antardasha is Mercury's",
+       * and the reading was sent back to be corrected for saying something it
+       * never said.
+       */
+      const years = [...clause.matchAll(/\b(20\d\d)\b/g)].map((y) => Number(y[1]));
+      if (years.length && Math.min(...years) > new Date().getFullYear()) continue;
       const lead = before.match(/([A-Za-z]+)\s*[-–/]\s*([A-Za-z]+)\s*(?:ki|ka|ke|ke\s+)?\s*$/);
       let raw: string | undefined;
       if (lead && IS_PLANET.test(lead[1]) && IS_PLANET.test(lead[2])) {

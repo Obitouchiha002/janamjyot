@@ -88,7 +88,7 @@ interface Result { surface: string; ok: boolean; errors: string[]; ms: number; n
         // Split on clause joins too ("Priya ka Venus 11th aur Arjun ka Venus
         // 10th"): one sentence can carry a true claim about each person, and
         // read whole it is false about both.
-        for (const clause of text.split(/(?<=[.!?।])\s+|;\s*|\s+aur\s+|\s+and\s+/)) {
+        for (const clause of text.split(/(?<=[.!?।])\s+|[;,]\s*|\s+aur\s+|\s+and\s+/)) {
           const e = chartClaimErrors(clause, chart, tr);
           if (!e.count) continue;
           if (alsoTrueFor && !chartClaimErrors(clause, alsoTrueFor, {}).count) continue;
