@@ -858,6 +858,86 @@ export function promptNeeds(question: string, history?: { role: string; text: st
  * a grounded, non-vague answer.
  */
 
+/*
+ * How long an answer should be — decided per message, not fixed.
+ *
+ * The chat capped every reply at "up to eight short lines", and someone asking
+ * "meri poori personality detail mein batao" got the same eight lines as
+ * someone asking "aaj ka din kaisa hai". The sibling app classifies each
+ * message first and answers a detailed question in full — that, more than
+ * anything, is why its chat felt like a conversation and this one felt cut off.
+ */
+const DEPTH_CONTROLLER = `RESPONSE DEPTH — classify THIS message silently before writing anything:
+  • QUICK — a small factual or yes/no question, or small talk ("okay", "thanks",
+    "haan"). A sentence or two. Do not pad it.
+  • NORMAL — an ordinary question, no extra detail asked for (most questions).
+    A short, direct 1-3 sentence answer; the grounding goes in the reason.
+  • DETAILED — they ask for it: "detail mein bataiye", "vistaar se", "poora/pura
+    batao", "sab kuch batao", "puri jaankari do", "explain fully", "tell me
+    everything", "har cheez batao" — or the question is inherently broad ("meri
+    poori kundli / personality / life explain karo").
+  • DEEP_DIVE — several connected questions at once ("rishta kaisa hoga, kitne
+    bachche honge, kaise honge, sab detail mein"), or a complete reading of a
+    whole area of life.
+
+FOR DETAILED AND DEEP_DIVE:
+  • PART 1 is NOT a short takeaway. It must completely answer what they asked,
+    in plain language — someone who reads only PART 1 gets the whole reading.
+  • DEEP_DIVE: silently break the message into every distinct sub-question and
+    answer each one the chart has evidence for. Never answer the first two and
+    stop. Never invent a count ("2 ya 3 bachche") the chart does not support —
+    say what it can and cannot tell.
+  • A direct answer in the first paragraph is the START, not the whole reply:
+    the strongest indicators and what they mean, the good side, the difficult
+    side if there is one, how it shows up in practice, timing when relevant,
+    and how sure you are.
+  • Before you finish, ask yourself: could they reply "maine detail maangi thi,
+    ye to summary hai"? If yes, keep going. Depth comes from THEIR chart, never
+    from generic filler.
+Pick honestly — do not default to NORMAL out of habit.`;
+
+/*
+ * Answer the question that was asked, not the topic next to it.
+ *
+ * Two failures the sibling app had to fix and this one shared: "abhi kya chal
+ * raha hai" answered with 2028, and "girlfriend milegi?" answered with the
+ * marriage-timing window because both are "relationship-shaped".
+ */
+const INTENT_RULES = `ANSWER EXACTLY WHAT WAS ASKED — work out silently first: what exactly did
+they ask, what kind of question is it (now, past, future, personality,
+attraction, friendship, marriage, career, money, family, timing, or WHY
+something happened), and which chart indicators answer THAT — not a nearby topic.
+  • CURRENT MEANS CURRENT: "abhi", "currently", "is waqt", "aajkal" — answer
+    from what is running NOW (the current period and live transit). Do not drift
+    to 2028 or a wedding date unless they asked about the future.
+  • Related is not the same: "shaadi kab hogi", "girlfriend/boyfriend milegi",
+    "abhi kaun pasand aa raha hai" and "doston ke saath kya chal raha hai" are
+    FOUR different questions. Never reuse the marriage window for the others.
+      – attraction/romance → 5th house & lord, Venus, Moon, Rahu/Ketu, current period
+      – marriage → 7th house & lord, Venus/Jupiter, D9, period activation
+      – friends/social circle → 3rd & 11th and their lords, Mercury, Moon
+      – career → 10th & lord, 6th & 11th, D10, current period
+    Use only what matters in THIS chart — do not list them all.
+  • Could this exact answer be sent to almost anyone unchanged? Rewrite it.`;
+
+/*
+ * A follow-up is not a new question.
+ *
+ * Asked the same thing twice, the chat restated its last answer in fewer words
+ * — when the person was asking again BECAUSE the last answer did not land.
+ */
+const FOLLOW_UP_RULES = `THIS IS A FOLLOW-UP in an ongoing conversation — continue it, do not start over:
+  • Is this basically the SAME question you already answered, reworded? Then
+    the last answer did not satisfy them. Do NOT restate it shorter — go deeper:
+    factors you did not mention before, a sharper timing breakdown, or concrete
+    guidance. A repeated question earns a FULLER answer.
+  • Are they CORRECTING you ("future nahi, abhi ka batao", "maine ye nahi
+    poocha")? That is an override. Re-answer with the corrected framing —
+    genuinely change the analysis, do not rephrase the old one.
+  • Otherwise keep it natural and do not repeat what you already told them
+    (their periods, placements, timing) — refer back briefly only if useful.
+    If this follow-up itself asks for full detail, the depth rules win.`;
+
 export async function answerUniversal(args: {
   chart: any;
   question: string;
@@ -967,9 +1047,12 @@ export async function answerUniversal(args: {
    */
   // Earlier turns are kept to their gist: the model needs to know what was
   // said, not to re-read eight full answers, which cost more than the chart.
-  const convo = (args.history ?? [])
-    .slice(-8)
-    .map((m) => `${m.role === "user" ? "User" : "You"}: ${gist(m.text)}`)
+  // The LAST answer keeps more of itself — "go deeper when they ask the same
+  // thing again" only works if the model can see what it already said.
+  const hist = (args.history ?? []).slice(-8);
+  const lastYou = hist.map((m) => m.role).lastIndexOf("assistant");
+  const convo = hist
+    .map((m, i) => `${m.role === "user" ? "User" : "You"}: ${gist(m.text, i === lastYou ? 900 : 280)}`)
     .join("\n");
 
   const prompt = `${SYSTEM_PROMPT}
@@ -995,6 +1078,10 @@ their own dasha with real years, or the life area their chart actually
 activates. Still no jargon: "the stretch you are in until 2027" is right,
 "Shukra mahadasha" is not. If the answer could be pasted into a stranger's chat
 unchanged, it is wrong.\n` : ""}
+${DEPTH_CONTROLLER}
+
+${INTENT_RULES}
+${(args.history ?? []).length ? FOLLOW_UP_RULES : ""}
 Answer in THREE parts, separated by lines that are EXACTLY "<<REASON>>" and "<<NEXT>>":
 
 PART 1 — the answer (before the marker):
@@ -1039,21 +1126,36 @@ PART 1 — the answer (before the marker):
     of years asks for more rest, what kind of strain their chart leans toward
     (thakan, stress, neend, pet, joints), and one thing to do about it.
   • FINISH the answer. Never stop mid-thought, and never leave out the part
-    they actually asked for. Length follows the question: a small factual one
-    gets 2-3 lines; "kab", "kya karun", "should I", or anything about a real
-    decision gets what it needs — up to 8 short lines, with the timing and one
-    concrete next step. If it's a yes/no, lead with the yes/no, then why, then
-    when. Match their tone; a paragraph about their home life earns a gentler
-    start, four words get a short reply. Short lines, never a wall of text.
+    they actually asked for. LENGTH FOLLOWS THE DEPTH CONTROLLER ABOVE: QUICK
+    and NORMAL are short (1-3 sentences, a few more for a real decision, with the
+    timing and one concrete next step). DETAILED and DEEP_DIVE are the complete
+    reading, in as many short paragraphs as it takes — PART 1 must answer in
+    full on its own, without the reader ever opening the reason. If it's a
+    yes/no, lead with the yes/no, then why, then when. Match their tone; four
+    words get a short reply. Short paragraphs with a blank line between them,
+    never a wall of text.
   • For a feature/how-to question, answer from the app guide plainly.
-  • Bold the single most important phrase with **double asterisks**. No other
-    markdown, no bullets in this part.
+  • MAKE IT SCANNABLE: wrap the genuinely key words — a time-window, a named
+    field or quality, the one conclusion that matters — in **double asterisks**.
+    Sparingly: a few per answer, never a whole sentence. When you are naming two
+    or more parallel things (possible fields, several time-windows, several
+    traits), put each on its own line as "• " instead of one run-on sentence.
+    Bullets are for genuine lists, not a substitute for prose. No "#", tables or
+    section labels.
 
 PART 2 — the reason (after the "<<REASON>>" marker):
-  • 1-3 short lines naming the REAL basis: the placements, dasha lord, or transit
-    (e.g. "Chandrama aaj aapki rashi se 8ve bhaav mein; Shani ki dhristi 7ve se").
-    Technical terms are fine HERE. Ground every claim in the chart data above —
-    never invent a placement. For a pure app/how-to question, write "—".
+  • The REAL basis — placements, lords, dasha, transit — named naturally inside
+    sentences (e.g. "Chandrama aaj aapki rashi se 8ve bhaav mein; Shani ki
+    drishti 7ve par"). Technical terms belong HERE, not in PART 1. Ground every
+    claim in the chart data above — never invent a placement.
+  • For QUICK/NORMAL this carries the full grounding. For DETAILED/DEEP_DIVE the
+    interpretation already went into PART 1, so this is the compact citation
+    layer: which house, lord, planet, period or divisional chart backs each
+    conclusion — not a restatement.
+  • Short paragraphs with a blank line between them, never one block: for a
+    substantial question, what was (past), what is running now, what comes next.
+    No "Past:" labels — start each naturally.
+  • For a pure app/how-to question, write "—".
 
 PART 3 — what to ask next (after the "<<NEXT>>" marker):
   • OPTIONAL, and usually you should leave it EMPTY. Offering something after
@@ -1622,7 +1724,7 @@ function reportTimeline(chart: any) {
   };
 
   return {
-    lived_periods: pastMilestones(chart, 4).map((p) => ({
+    lived_periods: pastMilestones(chart, 6).map((p) => ({
       period: p.period, from: p.from, to: p.to, age: `${p.age_from}-${p.age_to}`,
       touches: p.themes.join(", "),
       lords: lords(p.period),
@@ -1703,22 +1805,32 @@ area of their life>."
 Do not invent events (no job titles, no illnesses, no named people) — describe
 the KIND of period it is, concretely enough to recognise.
 
-  "past" — walk timeline.lived_periods, oldest first, one bullet each (3-4
-    bullets), ONE sentence per bullet. Each bullet must say something only THIS
-    chart could produce: use that period's own "lords" line (which houses its
-    lords rule and sit in) to name the part of their life it touched, not what
-    the planet means in general. "Venus-Sun (2024-2025): low energy and digestion"
+  "past" — walk timeline.lived_periods, oldest first, one bullet each (4-6
+    bullets), one or two sentences per bullet. This must read like a CHECKABLE
+    timeline of their real life, not a mood-board: each bullet says something
+    only THIS chart could produce — use that period's own "lords" line (which
+    houses its lords rule and sit in) to name the part of their life it touched,
+    not what the planet means in general. "Venus-Sun (2024-2025): low energy and digestion"
     is a textbook line about the Sun; "Venus-Sun (2024-2025): the year work and
     reputation asked more of you than your body had to give, because its lord
     rules your 3rd and sits in your 12th" is their year.
   "present" — exactly ONE bullet: timeline.current_period and its dates only.
     Do NOT give the mahadasha its own bullet or date range here; if it matters,
-    mention it inside the same sentence. Make this bullet 2-3 sentences — the
-    planet and house behind it, how it is actually showing up in this area right
-    now, and what it asks of them.
-  "future" — walk timeline.next_periods, nearest first, 3 bullets, ONE sentence
-    each. This is also where the current mahadasha's own end date belongs, if it
-    helps.
+    mention it inside the same sentence.
+    ONE BULLET DOES NOT MEAN THIN — it carries the whole weight of "what is
+    happening right now", so give it 2-4 full sentences: the specific planet and
+    house behind it (what that lord rules and where it sits for THEM), the
+    concrete way it is showing up in this area now (the actual field, body area,
+    relationship pattern or money pattern — not "things are developing"), and
+    what this period asks of them. A reader must recognise their own current
+    situation in it. A "present" thinner than the "past" beside it reads as a
+    report that ran out of things to say.
+  "future" — walk timeline.next_periods, nearest first, 3-5 bullets. EACH needs
+    the same density as a past bullet: the planet and house driving that window
+    and the concrete way it would show up in this area (the kind of opportunity,
+    shift or challenge — not "this period will bring changes"). They are planning
+    around this; a vague line with a date on it is a failure. This is also where
+    the current mahadasha's own end date belongs, if it helps.
 
 For each area produce an object with EXACTLY these keys:
   "rating"    (a PLAIN INTEGER 1-10, not a string — see below),
@@ -1738,10 +1850,14 @@ or 7 to be kind — a report where every area scores the same tells them nothing
 and the number is the first thing they look at.
 
 Respond with a SINGLE valid JSON object whose top-level keys are exactly:
-${list}. Keep summary/positive/caution/guidance/disclaimer to two or three
-natural sentences each — only past/present/future are bulleted. Write every
-area you were asked for, completely, and stop: a reading that runs long gets
-cut off mid-sentence and is thrown away.
+${list}. Keep summary/positive/caution/guidance/disclaimer to a few natural
+sentences each — only past/present/future are bulleted. Write every area you
+were asked for, completely.
+${areas.includes("travel") ? `For "travel": cover both short, frequent travel AND any genuine sign of
+long journeys or settling abroad — and be honest when the chart shows little
+travel emphasis rather than forcing a travel story that is not there.\n` : ""}${areas.includes("business") ? `For "business": be direct about whether this chart leans towards a salaried
+job or their own business — and if business, the TYPE of field it supports
+(the specific field, not "any business").\n` : ""}
 
 This person's COMPLETE calculated chart data (interpret only this):
 ${JSON.stringify(fullContext)}
@@ -1772,7 +1888,7 @@ ${languageInstruction(language)}`;
   // area of this shape (four past bullets, one present, three future, five
   // short prose fields) measures ~800 tokens, so a part is kept to three.
   const text = await generateChecked(prompt, chart, transit, {
-    temperature: 0.8, thinkingBudget: 0, maxTokens: 2800, purpose: "life_report", strong: true,
+    temperature: 0.8, thinkingBudget: 0, maxTokens: 4000, purpose: "life_report", strong: true,
   });
   const j = parseJsonLoose(text);
   if (!j) {
@@ -2953,6 +3069,145 @@ astrology guides, it does not decide — mutual understanding matters most.
 Plain text only, no markdown except "• " bullets and "**" for bold.`;
 
   return await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0 });
+}
+
+/**
+ * The small chat beside the life report — a friend, not an astrologer.
+ *
+ * The main chat is tuned for full readings; next to a report someone is
+ * already reading, that machinery answered "is saal job badlun?" with three
+ * paragraphs about antardashas. The sibling app gave this widget its own short
+ * voice — one or two lines, no vocabulary — and grounded it in the REPORT ON
+ * SCREEN, so the chat and the page never disagree about the same chart.
+ */
+export async function answerAboutReport(args: {
+  chart: any;
+  report: any;
+  question: string;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+  language: string;
+  userName?: string;
+}): Promise<{ answer: string; section: string | null }> {
+  // Only the parts a friend would glance at — the full report is thousands of
+  // tokens, and the widget answers in two sentences.
+  const brief: Record<string, any> = {};
+  for (const a of REPORT_AREAS) {
+    const r = args.report?.[a];
+    if (r?.summary) brief[a] = { rating: r.rating, summary: r.summary, present: r.present, future: r.future, guidance: r.guidance };
+  }
+  const convo = (args.history ?? []).slice(-6)
+    .map((m) => `${m.role === "user" ? "Them" : "You"}: ${gist(m.text, 240)}`).join("\n");
+
+  const prompt = `${PERSONA}
+
+${languageInstruction(args.language)}
+
+${args.userName ? `You are talking with ${args.userName}, ` : "You are talking with someone "}who is reading their own life
+report right now. This is the report on their screen — use it as your source,
+so what you say never disagrees with what they are reading:
+${JSON.stringify(brief)}
+
+Their birth-chart facts, for anything the report does not cover:
+${birthChartFactSheet(args.chart)}
+${convo ? `\nThe conversation so far:\n${convo}\n` : ""}
+They ask: "${args.question}"
+
+Reply EXACTLY like a WhatsApp message from a close friend — not an astrologer,
+not a report, not a teacher:
+  • ONE or TWO short sentences. No headings, no lists.
+  • No astrology words at all — no dasha, planet, house or sign — unless they
+    used that word themselves. Say WHAT will happen and WHAT to do, never HOW the
+    chart says so: not "Saturn antardasha delay dikhata hai" but "agle kuch
+    mahine thoda sabr rakhna hoga".
+  • Answer first, no "aapke chart ke hisaab se" wind-up.
+  • Only what they asked. If it fits, end with one short practical tip — real
+    advice, not astrology.
+  • Still grounded in their report and chart — you are just not SAYING the
+    mechanism out loud.
+
+${languageInstruction(args.language)}`;
+
+  const text = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0, maxTokens: 400, purpose: "report_chat" });
+  // Which section the question is about, so the page can open it — the chat
+  // steering the report is what makes it feel like part of it.
+  const cat = detectCategory(args.question);
+  const SECTION: Record<string, string> = {
+    health: "health", wealth: "wealth", career: "career", marriage: "marriage",
+    relationship: "relationships", foreign: "travel", business: "business",
+  };
+  return { answer: String(text || "").trim(), section: SECTION[cat] ?? null };
+}
+
+/**
+ * The couple's reading — all five layers, not only the 36-point score.
+ *
+ * The old summary was handed the Ashtakoot result and nothing else, so it could
+ * only ever talk about kootas: a 28/36 couple whose OWN charts barely promise
+ * marriage, or whose good periods never overlap, got a glowing paragraph. The
+ * deep-match screen already computes every layer that decides a marriage in
+ * practice — both 7th houses in D1 and D9, Venus and Jupiter, each person's own
+ * marriage promise, and whether their timing lines up — and the sibling app's
+ * reading uses all of them. This one now does too.
+ */
+export async function generateFullMatchSummary(args: {
+  base: any; boy: any; girl: any; timing: any; doshas: any[]; language: string;
+}): Promise<string> {
+  const boyName = String(args.boy?.name ?? "").trim().split(/\s+/)[0] || "Groom";
+  const girlName = String(args.girl?.name ?? "").trim().split(/\s+/)[0] || "Bride";
+  const prompt = `${PERSONA}
+
+${languageInstruction(args.language)}
+
+You are reading a MARRIAGE MATCH between two people — not one person's chart.
+You have FIVE layers of computed data; use all that matter, not only the score:
+  1. Ashtakoot Guna Milan — the base every matchmaker starts with, and NOT the
+     whole picture. Which kootas scored well or badly matters more than the
+     total: a 24/36 built on a strong Nadi and Bhakoot is a different marriage
+     from a 24/36 built on weak ones.
+  2. The 7th house in D1 AND in the navamsa (D9) for EACH person — D9 often
+     shows what the birth chart does not about how a marriage lasts.
+  3. Venus and Jupiter — the marriage significators — in each chart.
+  4. Each person's OWN marriage promise, and whether their marriage-supportive
+     periods overlap in time ("timing"). A high score does not outweigh a weak
+     individual promise or timing that does not line up — say so plainly.
+  5. Each person's whole birth chart (houses and planets) for anything beyond
+     compatibility — children (5th), money (2nd, 11th), home (4th), in-laws (9th).
+Doshas are already computed with their cancellations — interpret, never
+re-derive.
+
+${JSON.stringify(couplePacket(args.base, args.boy, args.girl, args.timing, args.doshas))}
+
+Write their reading — several solid paragraphs, not a headline — in this order,
+each part under a short heading line of its own (2-4 words, no colon):
+  1. The verdict — ${args.base?.total}/${args.base?.max}, and WHICH kootas drove it,
+     with their scores and what each one governs in daily life.
+  2. ${boyName}'s chart for marriage, then ${girlName}'s — the 7th house (D1 and
+     D9), Venus and Jupiter, and their own marriage promise: WHY it is strong or
+     weak, not just "compatible".
+  3. Real concerns, plainly — low kootas, any active uncancelled dosha, a weak
+     individual promise, timing that does not line up. Do not force positivity
+     the data does not support; if it is mixed, say mixed.
+  4. Timing — when their periods favour marriage and when they do not, with the
+     real date ranges from the data.
+  5. What to do — practical and tied to what THEIR charts show, never generic
+     "communicate well" advice.
+
+${PROSE_FORMAT}
+
+ALWAYS NAME WHOSE CHART a placement is in ("${girlName} ka Venus 11th mein") — a
+bare "Venus 11th house mein" in a reading about two people is true of one of
+them and false about the other.
+Never predict a divorce, a death or an illness, and never tell them not to
+marry — a genuinely weak picture is "this needs real care and an astrologer's
+personal look", said kindly.
+
+${languageInstruction(args.language)}`;
+
+  const text = await llmGenerate(prompt, { temperature: 0.8, thinkingBudget: 0, maxTokens: 3000, purpose: "match_summary", strong: true });
+  let out = String(text || "").trim();
+  // Roman-script Hindi with a Devanagari full stop in it reads as a glitch.
+  if (args.language === "hinglish") out = out.replace(/\s*।/g, ".");
+  return tidyReport(out);
 }
 
 /**

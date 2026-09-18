@@ -8,6 +8,7 @@ import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { isNative, saveToDownloads, shareFile } from "@/lib/native";
 import SpeakButton from "@/components/SpeakButton";
 import AnswerText from "@/components/AnswerText";
+import ReportChat from "@/components/ReportChat";
 import { getLang } from "@/lib/prefs";
 import { useT } from "@/lib/i18n";
 import { haptic } from "@/lib/native";
@@ -153,8 +154,10 @@ export default function LifeReportPage() {
   useEffect(loadHistory, [chartId]);
 
   /** Open a saved report — no model call, no credit, no wait. */
+  const [openId, setOpenId] = useState<string | undefined>(undefined);
   const openSaved = (id: string) => {
     haptic.tap();
+    setOpenId(id);
     setLoading(true); setError(null); setChosen(true);
     fetch(`/api/reports/${chartId}/history/${id}`)
       .then((r) => r.json())
@@ -905,6 +908,18 @@ export default function LifeReportPage() {
               </section>
             );
           })}
+
+          {/* The small chat beside the report — and it opens the section a
+              question is about. Not offered on a partial report: it reads the
+              stored one, which a partial report never is. */}
+          {chartId && !report.partial && (
+            <ReportChat
+              chartId={chartId}
+              reportId={openId}
+              lang={lang}
+              onSection={(id) => { if (present.some((p) => p.id === id)) { setActive(id); topRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); } }}
+            />
+          )}
 
           {/* Back / next, for reading the whole thing in order. */}
           <div className="mt-4 flex items-center gap-2.5">

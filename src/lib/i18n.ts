@@ -358,6 +358,12 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Travel & Foreign": { hi: "यात्रा और विदेश", hinglish: "Yatra aur videsh" },
   "Overall Pattern": { hi: "कुल मिलाकर", hinglish: "Kul milakar" },
   "Open": { hi: "खोलें", hinglish: "Kholein" },
+  "Ask about this report": { hi: "इस रिपोर्ट के बारे में पूछें", hinglish: "Report ke baare mein poochhein" },
+  "Short answers, straight from your report.": { hi: "छोटे जवाब, सीधे आपकी रिपोर्ट से।", hinglish: "Chhote jawab, seedhe aapki report se." },
+  "Ask anything about your report…": { hi: "रिपोर्ट के बारे में कुछ भी पूछें…", hinglish: "Report ke baare mein kuch bhi poochhein…" },
+  "Is saal job badlun?": { hi: "क्या इस साल नौकरी बदलूँ?", hinglish: "Is saal job badlun?" },
+  "Paise ke liye kaunsa saal achha hai?": { hi: "पैसों के लिए कौन-सा साल अच्छा है?", hinglish: "Paise ke liye kaunsa saal achha hai?" },
+  "Sehat ka sabse zyada dhyan kab rakhun?": { hi: "सेहत का सबसे ज़्यादा ध्यान कब रखूँ?", hinglish: "Sehat ka sabse zyada dhyan kab rakhun?" },
   "Some areas are still missing": { hi: "कुछ हिस्से अभी बाकी हैं", hinglish: "Kuch hisse abhi baaki hain" },
   "The AI ran out of capacity part-way. What is written below is yours to read — finishing the rest costs you nothing.": {
     hi: "बीच में AI की क्षमता ख़त्म हो गई। नीचे जो लिखा है वह आपका है — बाक़ी पूरा करने का कोई शुल्क नहीं।",

@@ -718,8 +718,21 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
    * warning below is what says it does not yet.
    */
   const strict = env("AI_PRIVACY_STRICT") === "true";
+  /*
+   * AI_PRIVACY_FIRST=false — route like the sibling app: the order in
+   * AI_PROVIDER_ORDER is used as written, so Gemini can answer first even
+   * for a personal chart.
+   *
+   * This is a product decision, not a technical one, and it has a cost: on the
+   * FREE Gemini tier Google may use what it is sent to improve its models, and
+   * what is sent here is someone's chart and what they told us about their
+   * life. With billing enabled, set GEMINI_PAID_TIER=true instead — that keeps
+   * the privacy routing AND puts Gemini first, which is the version with no
+   * trade-off. Default: privacy first.
+   */
+  const privacyFirst = env("AI_PRIVACY_FIRST") !== "false";
   let usable = list;
-  if (isPrivate) {
+  if (isPrivate && privacyFirst) {
     if (safe.length) usable = strict ? safe : [...safe, ...list.filter((p) => p.trainsOnContent)];
     else if (strict) {
       throw new Error(

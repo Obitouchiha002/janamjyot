@@ -173,6 +173,8 @@ import {
   generatePastTimeline,
   tidyReport,
   generateMatchSummary,
+  generateFullMatchSummary,
+  answerAboutReport,
   generateMatchVerdict,
   generateMarriageOutlook,
   generateDecision,
@@ -2782,7 +2784,8 @@ app.post("/api/match/deep", async (req, res) => {
     let final_verdict: any = null;
     if (req.body?.ai !== false && featureOn("match")) {
       const [sum, ver] = await Promise.allSettled([
-        generateMatchSummary(base, language),
+        // All five layers, not the 36-point score alone — see generateFullMatchSummary.
+        generateFullMatchSummary({ base, boy, girl, timing, doshas, language }),
         generateMatchVerdict({ base, boy, girl, timing, doshas, remedies, language }),
       ]);
       if (sum.status === "fulfilled") summary = sum.value;
@@ -3789,6 +3792,52 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
     res.status(quota ? 429 : 500).json({ error: friendlyError(err?.message) });
   }
 }
+/**
+ * POST /api/report-chat — the small chat beside a life report.
+ *
+ * Charged like any chat question: it is one, just shorter. The report is read
+ * from the server, never taken from the request, so a client cannot hand the
+ * model a report that says something the real one does not.
+ */
+app.post("/api/report-chat", async (req: any, res) => {
+  if (!featureOn("chat")) return res.status(503).json({ error: "AI chat is temporarily disabled by the admin." });
+  const chartId = String(req.body?.chartId ?? "");
+  const question = String(req.body?.question ?? "").trim();
+  if (!chartId || !question) return res.status(400).json({ error: "chartId and question are required" });
+  if (question.length > 400) return res.status(400).json({ error: "That question is too long." });
+  const chart = await getNormalizedChart(chartId).catch(() => null);
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  const language = normalizeLanguage(req.body?.language, chart.birth_details?.language || "en");
+  // The report they are reading — by id when the page knows it, otherwise
+  // their latest complete one.
+  const reportId = String(req.body?.reportId ?? "")
+    || (await listReportHistory(chartId).catch(() => []))[0]?.id
+    || "";
+  const report = reportId ? await getReportById(chartId, reportId).catch(() => null) : null;
+  if (!report) return res.status(404).json({ error: "Open or generate your report first." });
+
+  const auth = await charge(req, res, "ask", "chat");
+  if (!auth) return;
+  try {
+    const history = Array.isArray(req.body?.history)
+      ? req.body.history.slice(-6).map((m: any) => ({ role: m?.role === "assistant" ? "assistant" : "user", text: String(m?.text ?? "").slice(0, 600) }))
+      : [];
+    const out = await answerAboutReport({
+      chart, report, question, history, language,
+      userName: String(chart.birth_details?.name || "").trim().split(/\s+/)[0] || undefined,
+    });
+    if (!out.answer) return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });
+    const me = identityOf(req as any);
+    await recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "ask", meta: { chartId, surface: "report_chat" } }).catch(() => {});
+    await settleCharge(req, auth.charge, "chat", chartId, { category: "report" });
+    res.json(out);
+  } catch (err: any) {
+    console.error("[report-chat] error:", err?.message);
+    res.status(500).json({ error: friendlyError(err?.message) });
+  }
+});
+
 /* ── Report history ───────────────────────────────────────────────────────
    Every generation was already stored as its own row; these read it. Opening
    an old report costs nothing and calls no model — which is the point: a
