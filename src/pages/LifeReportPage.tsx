@@ -187,7 +187,7 @@ export default function LifeReportPage() {
       .then(async res => {
         const d = await res.json();
         if (!res.ok || d.error) setError(d.error?.message || d.error || "Could not generate the report.");
-        else setReport(d);
+        else { setReport(d); loadHistory(); }
       })
       .catch(() => setError("Network error while generating the report."))
       .finally(() => setLoading(false));
@@ -210,7 +210,15 @@ export default function LifeReportPage() {
   }, [chartId]);
 
   // Generate (first time) or switch language (regenerate) — both mark "chosen".
-  const generate = (l: string) => { setLang(l); setChosen(true); loadReport(l); };
+  /*
+   * "New report" means NEW.
+   *
+   * It called the same loader as everything else, which asks the server for a
+   * cached report first — so pressing New report on a chart that already had
+   * one opened the old one again, and there was no way to get a fresh reading
+   * at all. Opening an old one is what the "Previous reports" list is for.
+   */
+  const generate = (l: string) => { setLang(l); setChosen(true); setOpenId(undefined); loadReport(l, true); };
   const onLangChange = (l: string) => { setLang(l); setChosen(true); loadReport(l); };
 
   const downloadPdf = async () => {
