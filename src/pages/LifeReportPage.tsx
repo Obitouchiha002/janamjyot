@@ -193,6 +193,113 @@ export default function LifeReportPage() {
       .finally(() => setLoading(false));
   };
 
+  /*
+   * A new report, one area at a time.
+   *
+   * Seven areas in one request had to finish inside sixty seconds, and on a
+   * tired free model they did not: the whole report failed and the next press
+   * started from nothing. Now each area is its own small request, two run at a
+   * time, each one appears on the page the moment it is written, and only an
+   * area that failed is asked again. The server keeps what finished, and the
+   * report is saved — and charged — once all seven exist.
+   */
+  const [writing, setWriting] = useState<{ done: number; total: number; failed: string[] } | null>(null);
+  const draftRef = useRef<string | null>(null);
+
+  const writeAreas = async (draftId: string, areas: string[], language: string) => {
+    const failed: string[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < areas.length) {
+        const area = areas[next++];
+        let ok = false;
+        // Two tries each: a second attempt usually lands on another model.
+        for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+          try {
+            const r = await fetch("/api/report/area", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ chartId, draftId, area }),
+            });
+            const d = await r.json();
+            if (r.ok && d.data?.summary) {
+              ok = true;
+              setReport((prev: any) => ({ ...(prev ?? {}), [area]: d.data }));
+              setWriting((w) => (w ? { ...w, done: w.done + 1 } : w));
+            }
+          } catch { /* try again */ }
+        }
+        if (!ok) failed.push(area);
+      }
+    };
+    await Promise.all([worker(), worker()]);
+    return failed;
+  };
+
+  const finish = async (draftId: string) => {
+    const r = await fetch("/api/report/finish", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chartId, draftId }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok) {
+      setReport(d.report);
+      setOpenId(d.id);
+      draftRef.current = null;
+      loadHistory();
+      return true;
+    }
+    if (d.error) setError(d.error);
+    return false;
+  };
+
+  const newReport = async (language: string) => {
+    setError(null); setReport(null); setOpenId(undefined);
+    setLoading(true);
+    try {
+      const r = await fetch("/api/report/start", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chartId, language }),
+      });
+      const d = await r.json();
+      if (!r.ok || d.error) { setError(d.error || "Could not start the report."); return; }
+      draftRef.current = d.draftId;
+      setLoading(false);
+      setWriting({ done: 0, total: d.areas.length, failed: [] });
+      let failed = await writeAreas(d.draftId, d.areas, language);
+      /*
+       * One patient pass before asking them to do anything.
+       *
+       * On the free tier an area usually fails because a model's per-minute
+       * budget ran dry, and it refills within the minute. Waiting fifteen
+       * seconds and trying only the missing areas again finishes most reports
+       * without the person ever seeing a button.
+       */
+      if (failed.length) {
+        await new Promise((r) => setTimeout(r, 15_000));
+        failed = await writeAreas(d.draftId, failed, language);
+      }
+      if (failed.length) { setWriting({ done: d.areas.length - failed.length, total: d.areas.length, failed }); return; }
+      await finish(d.draftId);
+      setWriting(null);
+    } catch {
+      setError("Network error while writing the report.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Only the areas that did not make it — nothing already written is redone. */
+  const retryMissing = async () => {
+    const draftId = draftRef.current;
+    if (!draftId || !writing?.failed.length) return;
+    haptic.tap();
+    const todo = writing.failed;
+    setWriting({ ...writing, failed: [] });
+    const failed = await writeAreas(draftId, todo, lang);
+    if (failed.length) { setWriting((w) => (w ? { ...w, failed } : w)); return; }
+    if (await finish(draftId)) setWriting(null);
+  };
+
   // Load the chart once. We do NOT auto-generate the report — the user first
   // picks the report language, then taps Generate.
   useEffect(() => {
@@ -218,7 +325,7 @@ export default function LifeReportPage() {
    * one opened the old one again, and there was no way to get a fresh reading
    * at all. Opening an old one is what the "Previous reports" list is for.
    */
-  const generate = (l: string) => { setLang(l); setChosen(true); setOpenId(undefined); loadReport(l, true); };
+  const generate = (l: string) => { setLang(l); setChosen(true); setOpenId(undefined); void newReport(l); };
   const onLangChange = (l: string) => { setLang(l); setChosen(true); loadReport(l); };
 
   const downloadPdf = async () => {
@@ -753,7 +860,7 @@ export default function LifeReportPage() {
             </>
           )}
         </div>
-      ) : loading ? (
+      ) : (loading || writing) && !report ? (
         <ReportProgress />
       ) : error || !report ? (
         <div className="text-center py-16 space-y-4">
@@ -815,6 +922,32 @@ export default function LifeReportPage() {
           </div>
 
           <span ref={topRef} />
+
+          {/* Being written: how far along, and — if some areas would not come —
+              a button that writes only those. */}
+          {writing && (
+            <div className="mb-4 rounded-2xl border-2 border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[14px] font-bold">
+                  {writing.failed.length ? t("Almost done") : t("Writing your report")} · {writing.done}/{writing.total}
+                </p>
+                {!writing.failed.length && <RefreshCw className="h-4 w-4 animate-spin text-accent" />}
+              </div>
+              <span className="mt-2 block h-[6px] w-full overflow-hidden rounded-full bg-muted">
+                <span className="block h-full rounded-full bg-accent transition-all" style={{ width: `${(writing.done / writing.total) * 100}%` }} />
+              </span>
+              {!!writing.failed.length && (
+                <>
+                  <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                    {t("A few areas could not be written just now. Everything above is saved — this only writes what is missing.")}
+                  </p>
+                  <Button className="mt-3 w-full" onClick={retryMissing}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> {t("Write the missing areas")}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Written, but not all of it — say so, and offer the rest for free. */}
           {report.partial && (
@@ -920,7 +1053,7 @@ export default function LifeReportPage() {
           {/* The small chat beside the report — and it opens the section a
               question is about. Not offered on a partial report: it reads the
               stored one, which a partial report never is. */}
-          {chartId && !report.partial && (
+          {chartId && !report.partial && !writing && (
             <ReportChat
               chartId={chartId}
               reportId={openId}

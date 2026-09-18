@@ -5,7 +5,7 @@ import { Pressable } from '@/components/mobile/Pressable';
 import { useAuth } from '@/auth';
 import { shareText, haptic } from '@/lib/native';
 import { openFeedback } from '@/lib/feedback';
-import { getLang } from '@/lib/prefs';
+import { getUiLang } from '@/lib/prefs';
 
 /*
  * More is the account and the app — nothing else.
@@ -16,7 +16,7 @@ import { getLang } from '@/lib/prefs';
  * shown only to the admin, at the very bottom.
  */
 type Tri = { en: string; hi: string; hinglish: string };
-const pick = (x: Tri) => { const g = getLang(); return (x as any)[g] ?? x.en; };
+const pick = (x: Tri) => { const g = getUiLang(); return (x as any)[g] ?? x.en; };
 
 interface Row {
   title: Tri;

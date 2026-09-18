@@ -358,6 +358,13 @@ const STRINGS: Record<string, { hi: string; hinglish: string }> = {
   "Travel & Foreign": { hi: "यात्रा और विदेश", hinglish: "Yatra aur videsh" },
   "Overall Pattern": { hi: "कुल मिलाकर", hinglish: "Kul milakar" },
   "Open": { hi: "खोलें", hinglish: "Kholein" },
+  "Writing your report": { hi: "आपकी रिपोर्ट लिखी जा रही है", hinglish: "Report likhi ja rahi hai" },
+  "Almost done": { hi: "लगभग पूरी", hinglish: "Lagbhag poori" },
+  "A few areas could not be written just now. Everything above is saved — this only writes what is missing.": {
+    hi: "कुछ हिस्से अभी नहीं लिखे जा सके। ऊपर का सब सुरक्षित है — यह सिर्फ़ बाक़ी हिस्से लिखेगा।",
+    hinglish: "Kuch hisse abhi nahi likhe ja sake. Upar ka sab safe hai — ye sirf baaki hisse likhega.",
+  },
+  "Write the missing areas": { hi: "बाक़ी हिस्से लिखें", hinglish: "Baaki hisse likhein" },
   "Ask about this report": { hi: "इस रिपोर्ट के बारे में पूछें", hinglish: "Report ke baare mein poochhein" },
   "Short answers, straight from your report.": { hi: "छोटे जवाब, सीधे आपकी रिपोर्ट से।", hinglish: "Chhote jawab, seedhe aapki report se." },
   "Ask anything about your report…": { hi: "रिपोर्ट के बारे में कुछ भी पूछें…", hinglish: "Report ke baare mein kuch bhi poochhein…" },
@@ -708,7 +715,16 @@ export function currentLang(): Lang {
  * what makes it safe to wrap a screen before every line of it is translated.
  */
 export function translate(text: string, lang: Lang = currentLang()): string {
-  if (lang === "en") return text;
+  /*
+   * Hinglish is the language of the READING, not of the interface.
+   *
+   * The whole app had been translated into Hinglish — "Kul milakar", "Beeta
+   * samay", "Kaam ki salah" on every heading — and it read as a gimmick rather
+   * than an app. Hindi is a full choice and translates everything; Hinglish
+   * keeps the interface in English and lets the astrologer speak Hinglish,
+   * which is how the people choosing it actually use their phones.
+   */
+  if (lang === "en" || lang === "hinglish") return text;
   return STRINGS[text]?.[lang] ?? text;
 }
 

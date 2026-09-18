@@ -21,7 +21,7 @@ import { HeartHandshake, Sparkles, ChevronRight, X, FileDown } from "lucide-reac
 import { NorthIndianChart } from "@/components/NorthIndianChart";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
-import { getLang } from "@/lib/prefs";
+import { getLang, getUiLang } from "@/lib/prefs";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -62,7 +62,9 @@ const SIMPLE: Record<string, { label: Tri; to: (c: string, q: string) => string 
 };
 
 export default function ChatAction({ action, chartId, question }: { action: string; chartId: string; question?: string }) {
-  const lang = getLang() as Lang;
+  // Labels follow the interface (English for Hinglish); anything sent to the
+  // server still carries the reading language.
+  const lang = getUiLang() as Lang;
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
 
@@ -248,7 +250,7 @@ function MatchCard({ chartId, lang, onClose }: { chartId: string; lang: Lang; on
           place_of_birth: picked.label, latitude: picked.latitude,
           longitude: picked.longitude, timezone: picked.timezone,
         },
-        language: lang,
+        language: getLang(),
       }),
     })
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))

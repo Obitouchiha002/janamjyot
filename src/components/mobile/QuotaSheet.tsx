@@ -21,7 +21,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight, Sparkles, X } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 import { useAuth } from "@/auth";
 import { openCheckout, packWhy, PACK_NAME, type Lang } from "@/lib/checkout";
 import type { QuotaPayload } from "@/lib/quota";
@@ -65,7 +65,7 @@ interface Offer {
 const SPRING = { type: "spring" as const, stiffness: 420, damping: 40, mass: 0.9 };
 
 function QuotaSheet({ data, onClose }: { data: QuotaPayload; onClose: () => void }) {
-  const lang = getLang() as Lang;
+  const lang = getUiLang() as Lang;
   const email = useAuth()?.user?.email as string | undefined;
   const buyable = BUYABLE.has(data.action);
   const price = data.needs_credits ?? 0;

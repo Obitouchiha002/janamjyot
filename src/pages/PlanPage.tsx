@@ -22,7 +22,7 @@ import { Pressable } from "@/components/mobile/Pressable";
 import ReferCard from "@/components/ReferCard";
 import { useAuth } from "@/auth";
 import { openCheckout, packWhy } from "@/lib/checkout";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -160,7 +160,7 @@ function Heading({ icon: Icon, tint, children }: { icon: any; tint: string; chil
 
 export default function PlanPage() {
   const { user } = useAuth();
-  const lang = getLang() as Lang;
+  const lang = getUiLang() as Lang;
   const [credits, setCredits] = useState<Credits | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [payments, setPayments] = useState<Payment[] | null>(null);

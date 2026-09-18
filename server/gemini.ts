@@ -1748,12 +1748,39 @@ function reportTimeline(chart: any) {
 async function lifeReportPart(
   chart: any, language: string, transit: any, areas: readonly string[],
 ): Promise<any> {
+  /*
+   * Only the charts these areas are read from.
+   *
+   * A report part carried every divisional chart whatever it was about, and
+   * asked for ONE area the prompt still came to ~8,000 tokens — over Groq's
+   * per-request ceiling, so every area skipped the free models that had
+   * capacity and landed on the weakest one left, which dropped fields. Health
+   * needs the D6, not the D10; marriage needs the D9, not the D11. The same
+   * table the chat uses decides it.
+   */
+  const AREA_CFG: Record<string, string> = {
+    health: "health", wealth: "wealth", career: "career", marriage: "marriage",
+    relationships: "relationship", travel: "foreign", business: "business",
+  };
+  const cfgs = areas.map((a) => PACKET_CONFIG[(AREA_CFG[a] ?? "general") as Category]).filter(Boolean);
+  const scoped: PacketConfig | undefined = areas.length >= 3 ? undefined : {
+    houses: [...new Set(cfgs.flatMap((c) => c.houses))],
+    planets: [...new Set(cfgs.flatMap((c) => c.planets))],
+    includeD9: cfgs.some((c) => c.includeD9),
+    includeNext7: true,
+    divisionals: [...new Set(cfgs.flatMap((c) => c.divisionals))] as PacketConfig["divisionals"],
+  };
+  // birth_chart_facts is restated in plain text at the end of the prompt, where
+  // it is actually read — carrying it inside the JSON too was the same 150
+  // tokens twice, in a prompt that has to fit a free model's ceiling.
+  const { birth_chart_facts: _facts, ...ctx } = buildFullChartContext(chart, scoped) as any;
   const fullContext = {
-    ...buildFullChartContext(chart),
+    ...ctx,
     live_transit: transit ?? null,
     timeline: reportTimeline(chart),
     birth_chart_facts: birthChartFactSheet(chart),
   };
+  const contextForPrompt = { ...fullContext, birth_chart_facts: undefined };
   const list = areas.join(", ");
 
   const prompt = `${REPORT_SYSTEM}
@@ -1860,7 +1887,7 @@ job or their own business — and if business, the TYPE of field it supports
 (the specific field, not "any business").\n` : ""}
 
 This person's COMPLETE calculated chart data (interpret only this):
-${JSON.stringify(fullContext)}
+${JSON.stringify(contextForPrompt)}
 
 THE ONLY TRUE BIRTH-CHART PLACEMENTS — every plain "Nth house" you write must
 match this line exactly. A number from a D9/D10/D6/D11 chart or from a transit
@@ -1888,7 +1915,7 @@ ${languageInstruction(language)}`;
   // area of this shape (four past bullets, one present, three future, five
   // short prose fields) measures ~800 tokens, so a part is kept to three.
   const text = await generateChecked(prompt, chart, transit, {
-    temperature: 0.8, thinkingBudget: 0, maxTokens: 4000, purpose: "life_report", strong: true,
+    temperature: 0.8, thinkingBudget: 0, maxTokens: Math.min(4000, 1000 + 800 * areas.length), purpose: "life_report", strong: true,
   });
   const j = parseJsonLoose(text);
   if (!j) {
@@ -1909,6 +1936,20 @@ ${languageInstruction(language)}`;
   const thin = areas.filter((a) => !["summary", "past", "present", "future"].every((f) => typeof picked[a]?.[f] === "string" && picked[a][f].trim()));
   if (thin.length) throw new Error(`Incomplete sections: ${thin.join(", ")}`);
   return picked;
+}
+
+/**
+ * One area of the life report, on its own.
+ *
+ * The report is now written area by area from the app — each one a small,
+ * quick request that fits comfortably inside the function's time limit and a
+ * free model's per-request ceiling — instead of seven areas raced against
+ * sixty seconds. Same prompt, same checks; just one area asked for.
+ */
+export async function generateReportArea(chart: any, language: string, transit: any, area: string): Promise<any> {
+  if (!(REPORT_AREAS as readonly string[]).includes(area)) throw new Error("Unknown area");
+  const out = await lifeReportPart(chart, language, transit, [area]);
+  return tidyReport(out[area]);
 }
 
 /*

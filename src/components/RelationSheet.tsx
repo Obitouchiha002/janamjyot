@@ -13,7 +13,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Check, Plus, X } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import { haptic } from "@/lib/native";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 import type { Lang } from "@/lib/checkout";
 
 export interface Relation { chartId: string; relation: string; name: string }
@@ -72,7 +72,7 @@ export default function RelationSheet({
   onLinked: (r: Relation) => void;
   onUnlinked: () => void;
 }) {
-  const g = getLang();
+  const g = getUiLang();
   const lang = (g === "hi" || g === "hinglish" ? g : "en") as Lang;
   const navigate = useNavigate();
   const [people, setPeople] = useState<Array<{ id: string; name: string }> | null>(null);

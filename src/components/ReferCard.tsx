@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 import { Gift, Copy, Check, Share2 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import { shareText, haptic } from "@/lib/native";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -62,7 +62,7 @@ interface Ref {
 }
 
 export default function ReferCard({ canApply, onChanged }: { canApply: boolean; onChanged?: () => void }) {
-  const lang = getLang() as Lang;
+  const lang = getUiLang() as Lang;
   const [r, setR] = useState<Ref | null>(null);
   const [copied, setCopied] = useState(false);
   const [code, setCode] = useState("");

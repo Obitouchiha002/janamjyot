@@ -357,6 +357,22 @@ CREATE TABLE IF NOT EXISTS decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_decisions_owner ON decisions(owner_id, created_at DESC);
 
+-- A life report while it is being written, one area at a time.
+--
+-- Seven areas in one request had to finish inside the function's sixty
+-- seconds, and on a tired free model it did not — the whole report failed and
+-- the next press started again from nothing. Each area is now its own small
+-- request, and what finished is kept here, so a retry writes only what is
+-- missing. Moved into ai_reports (and charged) only once all seven exist.
+CREATE TABLE IF NOT EXISTS report_drafts (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chart_id   UUID NOT NULL,
+  lang_key   TEXT NOT NULL,
+  areas      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_report_drafts_chart ON report_drafts(chart_id, created_at DESC);
+
 -- Passwordless e-mail sign-in codes. Kept in their OWN table (not on app_users)
 -- because a first-time user has no account row yet when the code is sent.
 -- Only the HASH of the code is stored.
@@ -3085,6 +3101,56 @@ export async function listReportHistory(chartId: string, prefix = "life:"): Prom
     .slice()
     .reverse()
     .map((r: any) => shape(r.id, r.language, r.created_at, r.report_json));
+}
+
+/* ── Report drafts ─────────────────────────────────────────────────────── */
+
+export async function createReportDraft(chartId: string, langKey: string): Promise<string> {
+  if (!USE_PG) {
+    const id = randomUUID();
+    (fileData as any).report_drafts = (fileData as any).report_drafts ?? [];
+    (fileData as any).report_drafts.push({ id, chart_id: chartId, lang_key: langKey, areas: {}, created_at: nowIso() });
+    return id;
+  }
+  // Drafts are a working surface, not a record: anything a day old is gone.
+  await pool!.query(`DELETE FROM report_drafts WHERE created_at < now() - interval '1 day'`).catch(() => {});
+  const { rows } = await pool!.query(
+    `INSERT INTO report_drafts (chart_id, lang_key) VALUES ($1,$2) RETURNING id`,
+    [chartId, langKey],
+  );
+  return rows[0].id;
+}
+
+export async function getReportDraft(chartId: string, id: string): Promise<{ lang_key: string; areas: Record<string, any> } | null> {
+  if (!USE_PG) {
+    const d = ((fileData as any).report_drafts ?? []).find((x: any) => x.id === id && x.chart_id === chartId);
+    return d ? { lang_key: d.lang_key, areas: d.areas } : null;
+  }
+  const { rows } = await pool!.query(`SELECT lang_key, areas FROM report_drafts WHERE id = $1 AND chart_id = $2`, [id, chartId]);
+  return rows[0] ?? null;
+}
+
+/** Add one written area to a draft — merged in the database, so two at once cannot overwrite each other. */
+export async function saveDraftArea(chartId: string, id: string, area: string, data: any): Promise<void> {
+  if (!USE_PG) {
+    const d = ((fileData as any).report_drafts ?? []).find((x: any) => x.id === id && x.chart_id === chartId);
+    if (d) d.areas[area] = data;
+    return;
+  }
+  await pool!.query(
+    `UPDATE report_drafts SET areas = areas || jsonb_build_object($3::text, $4::jsonb) WHERE id = $1 AND chart_id = $2`,
+    [id, chartId, area, JSON.stringify(data)],
+  );
+}
+
+export async function deleteReportDraft(chartId: string, id: string): Promise<void> {
+  if (!USE_PG) {
+    const list = (fileData as any).report_drafts ?? [];
+    const i = list.findIndex((x: any) => x.id === id && x.chart_id === chartId);
+    if (i >= 0) list.splice(i, 1);
+    return;
+  }
+  await pool!.query(`DELETE FROM report_drafts WHERE id = $1 AND chart_id = $2`, [id, chartId]);
 }
 
 /** One stored report, by id — the chart id is part of the lookup, not a check after it. */

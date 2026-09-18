@@ -15,7 +15,7 @@
 import { useEffect, useState } from "react";
 import { Coins, Sparkles } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -53,7 +53,7 @@ interface State {
 }
 
 export default function AskMeter() {
-  const lang = getLang() as Lang;
+  const lang = getUiLang() as Lang;
   const [s, setS] = useState<State | null>(null);
 
   useEffect(() => {

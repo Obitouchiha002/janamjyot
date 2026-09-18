@@ -1,6 +1,6 @@
 import { Clock4, Sparkles, HeartHandshake, CalendarDays, ChevronRight } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
-import { getLang } from "@/lib/prefs";
+import { getUiLang } from "@/lib/prefs";
 
 /*
  * Tools: the four things that are not about one kundli.
@@ -27,7 +27,7 @@ const TOOLS: Array<{ title: Tri; desc: Tri; icon: any; to: string; tint: string 
 ];
 
 export default function AdvancedToolsPage() {
-  const g = getLang();
+  const g = getUiLang();
   const L = (g === "hi" || g === "hinglish" ? g : "en") as keyof Tri;
   return (
     <div className="space-y-6 pt-2">

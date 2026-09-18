@@ -10,7 +10,7 @@ import {
   Home, Users, MessageCircle, Wand2, LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
-import { getLang } from '@/lib/prefs';
+import { getUiLang } from '@/lib/prefs';
 
 export interface TabDef {
   to: string;
@@ -155,7 +155,7 @@ const TITLE_I18N: Record<string, { hi: string; hinglish: string }> = {
   'Sign In': { hi: 'साइन इन', hinglish: 'Sign in' },
 };
 export function localTitle(title: string): string {
-  const l = getLang();
+  const l = getUiLang();
   if (l !== 'hi' && l !== 'hinglish') return title;
   return TITLE_I18N[title]?.[l] ?? title;
 }
@@ -169,7 +169,7 @@ const TAB_I18N: Record<string, { hi: string; hinglish: string }> = {
   '/more': { hi: 'और', hinglish: 'More' },
 };
 export function tabLabel(to: string, fallback: string): string {
-  const l = getLang();
+  const l = getUiLang();
   if (l !== 'hi' && l !== 'hinglish') return fallback;
   return TAB_I18N[to]?.[l] ?? fallback;
 }

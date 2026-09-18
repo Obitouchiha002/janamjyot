@@ -73,6 +73,10 @@ import {
   paymentTotals,
   insertReport,
   listReportHistory,
+  createReportDraft,
+  getReportDraft,
+  saveDraftArea,
+  deleteReportDraft,
   getReportById,
   deleteReportById,
   getReport,
@@ -175,6 +179,7 @@ import {
   generateMatchSummary,
   generateFullMatchSummary,
   answerAboutReport,
+  generateReportArea,
   generateMatchVerdict,
   generateMarriageOutlook,
   generateDecision,
@@ -3836,6 +3841,73 @@ app.post("/api/report-chat", async (req: any, res) => {
     console.error("[report-chat] error:", err?.message);
     res.status(500).json({ error: friendlyError(err?.message) });
   }
+});
+
+/* ── The life report, one area at a time ──────────────────────────────────
+   start → area × 7 (the app runs two at a time, retries only what failed) →
+   finish. Checked for payment at the start so nobody waits for seven areas
+   they cannot have; CHARGED only at the finish, once all seven exist. */
+
+app.post("/api/report/start", async (req: any, res) => {
+  if (!featureOn("reports")) return res.status(503).json({ error: "Reports are temporarily disabled." });
+  const chartId = String(req.body?.chartId ?? "");
+  const chart = chartId ? await getNormalizedChart(chartId).catch(() => null) : null;
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  // Can they have one at all? Asked now, settled at the finish.
+  const auth = await charge(req, res, "report", "life_report");
+  if (!auth) return;
+  const language = normalizeLanguage(req.body?.language, chart.birth_details?.language || "en");
+  const lifeKey = `life:${language}:${chart.dasha?.current?.antardasha_to || "na"}`;
+  const draftId = await createReportDraft(chartId, lifeKey);
+  res.json({ draftId, areas: REPORT_AREAS, language });
+});
+
+app.post("/api/report/area", async (req: any, res) => {
+  const chartId = String(req.body?.chartId ?? "");
+  const draftId = String(req.body?.draftId ?? "");
+  const area = String(req.body?.area ?? "");
+  const chart = chartId ? await getNormalizedChart(chartId).catch(() => null) : null;
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  const draft = await getReportDraft(chartId, draftId).catch(() => null);
+  if (!draft) return res.status(404).json({ error: "This report session has expired. Start a new report." });
+  // Already written (a double tap, a retry that crossed with a slow success) —
+  // hand back what is there instead of paying for it twice.
+  if (draft.areas?.[area]?.summary) return res.json({ area, data: draft.areas[area] });
+  try {
+    const language = String(draft.lang_key).split(":")[1] || "en";
+    let transit: any = null;
+    try { transit = compactTransitForAI(buildTransit(chart, AYANAMSA, new Date().toISOString())); } catch { /* optional */ }
+    const data = await generateReportArea(chart, language, transit, area);
+    await saveDraftArea(chartId, draftId, area, data);
+    res.json({ area, data });
+  } catch (err: any) {
+    console.warn(`[report-area] ${area} failed:`, err?.message);
+    res.status(502).json({ error: "This part could not be written just now.", area });
+  }
+});
+
+app.post("/api/report/finish", async (req: any, res) => {
+  const chartId = String(req.body?.chartId ?? "");
+  const draftId = String(req.body?.draftId ?? "");
+  const chart = chartId ? await getNormalizedChart(chartId).catch(() => null) : null;
+  if (!chart) return res.status(404).json({ error: "Chart not found" });
+  if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
+  const draft = await getReportDraft(chartId, draftId).catch(() => null);
+  if (!draft) return res.status(404).json({ error: "This report session has expired." });
+  const missing = REPORT_AREAS.filter((a) => !draft.areas?.[a]?.summary);
+  if (missing.length) return res.json({ ok: false, missing });
+
+  const auth = await charge(req, res, "report", "life_report");
+  if (!auth) return;
+  const report = tidyReport(Object.fromEntries(REPORT_AREAS.map((a) => [a, draft.areas[a]])));
+  const id = await insertReport({ chartId, report, language: draft.lang_key });
+  await deleteReportDraft(chartId, draftId).catch(() => {});
+  const me = identityOf(req as any);
+  recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { chartId, language: draft.lang_key } }).catch(() => {});
+  await settleCharge(req, auth.charge, "life_report", chartId, { category: "life" });
+  res.json({ ok: true, id, report });
 });
 
 /* ── Report history ───────────────────────────────────────────────────────

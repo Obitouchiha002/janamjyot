@@ -4,7 +4,7 @@ import { Pressable } from '@/components/mobile/Pressable';
 import { haptic } from '@/lib/native';
 import { invalidateProfiles } from '@/pages/HomePage';
 import { useAuth } from '@/auth';
-import { getLang } from '@/lib/prefs';
+import { getUiLang } from '@/lib/prefs';
 import { pickPrimary, setPrimary } from '@/lib/primary';
 
 type Tri = { en: string; hi: string; hinglish: string };
@@ -43,7 +43,7 @@ function fmtDate(s?: string): string {
 
 export default function ProfilesPage() {
   const { user } = useAuth();
-  const g = getLang();
+  const g = getUiLang();
   const L = (g === 'hi' || g === 'hinglish' ? g : 'en') as keyof Tri;
   const [profiles, setProfiles] = useState<any[] | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
