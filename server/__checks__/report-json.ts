@@ -10,7 +10,7 @@
  *   person a paid report and another minute of waiting. The parser has to keep
  *   what finished.
  */
-import { parseJsonLoose } from "../gemini";
+import { parseJsonLoose, asReportText } from "../gemini";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -43,6 +43,15 @@ check("JSON after a sentence parses", !!parseJsonLoose("Here is the report:\n" +
 check("garbage is still null", parseJsonLoose("sorry, I cannot do that") === null);
 check("empty is null", parseJsonLoose("") === null);
 
+// A reading sent as lists and objects (gemini-2.5-flash) is still the reading.
+check("list of bullets → bullet lines",
+  asReportText(["**Mars-Saturn** (2024-2027): kaam dheema", "• **Rahu** (2030): badlaav"], true) === "• **Mars-Saturn** (2024-2027): kaam dheema\n• **Rahu** (2030): badlaav");
+check("object → one bullet",
+  asReportText({ period: "Mars-Saturn (till Mar 2027)", text: "mehnat zyada" }, true) === "• Mars-Saturn (till Mar 2027) — mehnat zyada");
+check("prose list → one paragraph", asReportText(["Pehla.", "Doosra."], false) === "Pehla. Doosra.");
+check("a string is left alone", asReportText("• a\n• b", true) === "• a\n• b");
+check("empty list stays empty (still counts as missing)", asReportText([], true) === "");
+
 if (failures) { console.error(`\n${failures} failure(s).`); process.exit(1); }
-console.log("PASS — complete, fenced, prefixed and truncated reports all parse; a cut-off reply keeps every area that finished.");
+console.log("PASS — complete, fenced, prefixed and truncated reports all parse; a cut-off reply keeps every area that finished; list- and object-shaped fields become bullets.");
 process.exit(0);

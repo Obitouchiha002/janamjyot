@@ -1927,6 +1927,11 @@ ${languageInstruction(language)}`;
     throw new Error("Failed to parse AI report");
   }
   const picked = pickAreas(j, areas);
+  for (const a of areas) {
+    for (const f of ["summary", "past", "present", "future", "positive", "caution", "guidance", "disclaimer"]) {
+      if (picked[a]?.[f] != null) picked[a][f] = asReportText(picked[a][f], ["past", "present", "future"].includes(f));
+    }
+  }
   /*
    * An area with no timeline is not an area. The dated past/present/future is
    * the reason this report can be checked at all, and a section that arrives
@@ -1948,8 +1953,43 @@ ${languageInstruction(language)}`;
  */
 export async function generateReportArea(chart: any, language: string, transit: any, area: string): Promise<any> {
   if (!(REPORT_AREAS as readonly string[]).includes(area)) throw new Error("Unknown area");
-  const out = await lifeReportPart(chart, language, transit, [area]);
+  const t0 = Date.now();
+  let out: any;
+  try {
+    out = await lifeReportPart(chart, language, transit, [area]);
+  } catch (err: any) {
+    /*
+     * Once more, while there is time. A model that stopped after the summary,
+     * or wrote something unparseable, usually does not do it twice in a row —
+     * and the router has already moved past whichever provider just failed.
+     * Not after a slow first try: two of those do not fit in the function.
+     */
+    if (!/Incomplete sections|Failed to parse|came back without/i.test(String(err?.message)) || Date.now() - t0 > 22_000) throw err;
+    console.warn(`[report-area] ${area}: ${err.message} — trying once more`);
+    out = await lifeReportPart(chart, language, transit, [area]);
+  }
   return tidyReport(out[area]);
+}
+
+/*
+ * A report field in whatever shape it arrived, as the text the page shows.
+ *
+ * The prompt asks for strings. gemini-2.5-flash, now first in line, sends the
+ * bulleted fields as lists — past: [..3 bullets..], present: {period, text} —
+ * with every word of the reading in them, and the report threw all of it away
+ * as "Incomplete sections". A list is bullets; an object is one bullet.
+ */
+export function asReportText(v: any, bulleted: boolean): any {
+  const flat = (x: any): string =>
+    typeof x === "string" ? x.trim()
+    : typeof x === "number" ? String(x)
+    : Array.isArray(x) ? x.map(flat).filter(Boolean).join(" ")
+    : x && typeof x === "object" ? Object.values(x).map(flat).filter(Boolean).join(" — ")
+    : "";
+  if (typeof v === "string") return v;
+  const items = Array.isArray(v) ? v.map(flat).filter(Boolean) : [flat(v)].filter(Boolean);
+  if (!items.length) return "";
+  return bulleted ? items.map((t) => (t.startsWith("•") ? t : `• ${t}`)).join("\n") : items.join(" ");
 }
 
 /*

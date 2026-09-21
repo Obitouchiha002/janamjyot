@@ -809,16 +809,21 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
   const retried = new Set<Provider>();
   let lastErr: any;
   let attempt = 0;
+  /*
+   * The privacy class only orders the queue when privacy routing is on. With
+   * AI_PRIVACY_FIRST=false this sort used to put it back anyway: every report
+   * went to Groq first, whose per-minute token limit one report area fills,
+   * while the Gemini order the owner chose waited behind it.
+   */
+  const cls = (p: Provider) => (isPrivate && privacyFirst && p.trainsOnContent ? 1 : 0);
   if (opts.strong) {
     // Weak models to the back, privacy class preserved.
-    const cls = (p: Provider) => (p.trainsOnContent ? 1 : 0);
     queue.sort((a, b) => cls(a) - cls(b) || Number(WEAK.test(a.name)) - Number(WEAK.test(b.name)) || rank.get(a)! - rank.get(b)!);
     queue.forEach((p, i) => rank.set(p, i));
   }
   if (opts.light) {
     // Light models first — within each privacy class, so this never moves a
     // private prompt ahead onto a provider that trains on it.
-    const cls = (p: Provider) => (p.trainsOnContent ? 1 : 0);
     queue.sort((a, b) => cls(a) - cls(b) || Number(!WEAK.test(a.name)) - Number(!WEAK.test(b.name)) || rank.get(a)! - rank.get(b)!);
     queue.forEach((p, i) => rank.set(p, i));
   }
