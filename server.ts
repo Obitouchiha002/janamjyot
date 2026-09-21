@@ -4755,6 +4755,7 @@ app.post("/api/chat/universal", async (req, res) => {
       chart, question, language, category: vaDetectCategory(question), transit,
       history: vaHistory, place, correction,
     });
+    const vaStarted = Date.now();
     let va = await askVA();
 
     // JanamJyot's own check on top: a false birth-chart placement, running
@@ -4764,10 +4765,22 @@ app.post("/api/chat/universal", async (req, res) => {
       if (tp.planet && tp.transit_house_from_lagna) trHouses[tp.planet] = Number(tp.transit_house_from_lagna);
     }
     const claimErrs = chartClaimErrors(`${va.answer}\n${va.reason}`, chart, trHouses);
-    if (claimErrs.count) {
+    /*
+     * Only while there is time for it. The function is killed at 60s: a first
+     * answer that took 35s plus a correction that takes 30 was a 504 and no
+     * answer at all, where the uncorrected one was on hand. The retry gets
+     * what is left before ~48s, and loses to the answer we already have.
+     */
+    const spent = Date.now() - vaStarted;
+    if (claimErrs.count && spent < 25_000) {
       console.warn(`[chat-u] ${claimErrs.summary} error(s) — regenerating once`);
-      const retry = await askVA(claimErrs.note()).catch(() => null);
+      const retry = await Promise.race([
+        askVA(claimErrs.note()).catch(() => null),
+        new Promise<null>((r) => setTimeout(() => r(null), 48_000 - spent)),
+      ]);
       if (retry?.answer && chartClaimErrors(`${retry.answer}\n${retry.reason}`, chart, trHouses).count < claimErrs.count) va = retry;
+    } else if (claimErrs.count) {
+      console.warn(`[chat-u] ${claimErrs.summary} error(s) — no time to regenerate (${(spent / 1000).toFixed(0)}s spent)`);
     }
 
     const answer = va.answer;

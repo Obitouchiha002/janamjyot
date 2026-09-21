@@ -233,9 +233,17 @@ const CALL_TIMEOUT_MS = Number(env("AI_CALL_TIMEOUT_MS") || 25_000);
  */
 const CALL_TIMEOUT_LONG_MS = Number(env("AI_CALL_TIMEOUT_LONG_MS") || 30_000);
 
+/** "gemini-3.6-flash (key2)" → "gemini-3.6-flash": one model, whichever key serves it. */
+export const modelOf = (name: string) => name.replace(/\s*\(key\d+\)$/, "");
+/** "gemini-3.6-flash (key2)" → "gemini", "groq:openai/gpt-oss-120b" → "groq". */
+export const familyOf = (name: string) => (/^gemini/i.test(name) ? "gemini" : name.split(":")[0]);
+
 // ---- provider builders ----------------------------------------------------
 function geminiProvider(apiKey: string, model: string, tag: string): Provider {
-  const client = new GoogleGenAI({ apiKey });
+  // No retries inside the SDK. It re-sent every 503 with backoff, so one
+  // overloaded model held a chat 11–17s before failing; the router below moves
+  // to a model that is up instead, which is the retry worth having.
+  const client = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 1 } } });
   return {
     name: tag,
     async generate(prompt, opts) {
@@ -428,16 +436,22 @@ function buildProviders(): Provider[] {
    * 404 and gemini-2.5-flash's free quota was spent, so every chat that reached
    * Gemini burned five requests before a flash-lite answered generically. The
    * newer flash models had their own untouched free quota the whole time.
-   * Checked Sept 2026: gemini-3.6-flash answers a full chart prompt in ~4s in
-   * good Hinglish; 3.5-flash is right but ~15s. A stale name in the env now
-   * costs one 404 every six hours instead of a failed hop on every message.
-   * GEMINI_MODELS_ONLY=true restores "use exactly the env list".
+   * A stale name in the env costs one 404 every six hours instead of a failed
+   * hop on every message. GEMINI_MODELS_ONLY=true restores "use exactly the
+   * env list".
+   *
+   * Speed leads. Re-checked 21 Sept 2026 on a 16k-character chat prompt:
+   * gemini-2.5-flash 6.6s; 3.6-flash 10–25s and 503 "Service Unavailable" under
+   * load; 3.5-flash past 40s; 3.5-flash-lite now 400 for every request. The 3.x
+   * models were sending live chats past Vercel's 60s limit, so they follow
+   * 2.5-flash rather than lead it — a spent 2.5 quota is a fast 429, a busy
+   * 3.x is a slow 503.
    */
   const envModels = (env("GEMINI_MODELS") || env("GEMINI_MODEL") || "")
     .split(",").map((m) => m.trim()).filter(Boolean);
   const geminiModels = env("GEMINI_MODELS_ONLY") === "true" && envModels.length
     ? envModels
-    : [...new Set(["gemini-3.6-flash", "gemini-3.5-flash", ...envModels, "gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"])];
+    : [...new Set(["gemini-2.5-flash", "gemini-3.6-flash", "gemini-3.5-flash", ...envModels, "gemini-flash-latest"])];
 
   const byName: Record<string, Provider[]> = { ollama: [], gemini: [], groq: [], cerebras: [], openrouter: [], openai: [], anthropic: [] };
 
@@ -903,7 +917,9 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
       const msg = String(e?.message ?? "");
       recordCall(p, prompt, "", Date.now() - started, attempt, false, opts.purpose);
       s.failures++;
-      if (/429|quota|rate.?limit|exhaust/i.test(msg)) {
+      // "Too Many Requests" is how the Gemini SDK words a 429 once its own
+      // retries are off — no number in it.
+      if (/429|quota|rate.?limit|exhaust|too many requests/i.test(msg)) {
         s.quotaHits++;
         s.lastStatus = "quota";
         const after = Number(e?.retryAfterMs) || 0;
@@ -937,6 +953,34 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
         }
         else if (/\b503\b|high demand|overloaded|unavailable/i.test(msg)) s.coolUntil = Date.now() + 30_000;
         else if (/timeout after/i.test(msg)) s.coolUntil = Date.now() + 60_000;
+        /*
+         * Busy and slow belong to the MODEL, not the key. Google overloads
+         * gemini-3.6-flash for everyone, so after key1 answered 503 the chat
+         * asked key2 and key3 the same thing and spent 45s learning it three
+         * times — Groq, which was up, never got asked before the deadline.
+         */
+        if (/\b503\b|high demand|overloaded|unavailable|timeout after/i.test(msg)) {
+          const model = modelOf(p.name);
+          for (const q of list) {
+            if (q === p || modelOf(q.name) !== model) continue;
+            stat(q.name).coolUntil = s.coolUntil;
+            if (queue.includes(q)) queue.splice(queue.indexOf(q), 1);
+          }
+        }
+      }
+      /*
+       * A failure that took a long time says the whole provider is struggling
+       * right now: its other models go behind every other provider for the
+       * rest of this reply. A fast failure (a 404, a 429) costs little and
+       * keeps its place.
+       */
+      if (Date.now() - started > 8_000) {
+        const fam = familyOf(p.name);
+        const same = queue.filter((q) => familyOf(q.name) === fam);
+        if (same.length && same.length < queue.length) {
+          for (const q of same) queue.splice(queue.indexOf(q), 1);
+          queue.push(...same);
+        }
       }
       s.lastError = msg.slice(0, 180);
       lastErr = e;

@@ -1166,6 +1166,20 @@ function scrubInternalNames(t: string): string {
 
 function parseAnswerReasonFollowups(text: string | null): { answer: string; reason: string; followups: string[] } {
   const raw = scrubInternalNames(text || "");
+  /*
+   * The LAST answer block with something in it, not the first marker. A model
+   * that writes its plan before the reply (gemini-2.5-flash, 21 Sept 2026:
+   * " silent thought … respond with @@ANSWER@@, @@REASON@@ …") names the
+   * markers before it uses them, and the first "@@ANSWER@@" in its notes parsed
+   * as a reply of ",".
+   */
+  for (let i = raw.lastIndexOf("@@ANSWER@@"); i !== -1; i = i > 0 ? raw.lastIndexOf("@@ANSWER@@", i - 1) : -1) {
+    const r = raw.indexOf("@@REASON@@", i);
+    if (r !== -1 && raw.slice(i + "@@ANSWER@@".length, r).replace(/[\s,.;:*`'"()\-]/g, "").length > 20) {
+      const { text: reason, followups } = splitFollowups(raw.slice(r + "@@REASON@@".length));
+      return { answer: raw.slice(i + "@@ANSWER@@".length, r).trim(), reason, followups };
+    }
+  }
   const aIdx = raw.indexOf("@@ANSWER@@");
   const rIdx = raw.indexOf("@@REASON@@");
   if (aIdx !== -1 && rIdx !== -1 && rIdx > aIdx) {
