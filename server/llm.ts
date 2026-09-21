@@ -49,6 +49,8 @@ export interface GenOpts {
    * keeps is worse than a slower answer.
    */
   strong?: boolean;
+  /** Cap on a single provider call, in ms (the ported VedicAstra chat sets it). */
+  timeoutMs?: number;
   /** Set by llmGenerate: aborts a call that has run past its time. */
   signal?: AbortSignal;
 }
@@ -870,7 +872,7 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
       break;
     }
     const ac = new AbortController();
-    const limit = Math.min(left, (opts.maxTokens ?? 0) > 2000 ? CALL_TIMEOUT_LONG_MS : CALL_TIMEOUT_MS);
+    const limit = Math.min(left, opts.timeoutMs ?? ((opts.maxTokens ?? 0) > 2000 ? CALL_TIMEOUT_LONG_MS : CALL_TIMEOUT_MS));
     const timer = setTimeout(() => ac.abort(), limit);
     try {
       /*

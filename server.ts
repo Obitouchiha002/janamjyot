@@ -1,5 +1,7 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
 import { distressLevel, severeReply, lowNote } from "./server/distress";
+import { answerQuestion as vaAnswerQuestion, detectCategory as vaDetectCategory } from "./server/va/gemini";
+import { chartClaimErrors } from "./server/claim-check";
 import { isGreetingOnly, greetingReply } from "./server/greeting";
 import { whatToAsk, clarifyReply } from "./server/clarify";
 import { aiCostStats } from "./server/ai-log";
@@ -4492,6 +4494,46 @@ const PAST_RE = /\b(pichh?le|pichh?li|beete|beeta|guzre|past|last|previous|ab ta
 // rather than to the model's imagination.
 const APP_RE = /\b(app|feature|button|screen|kaise (use|kaam)|kaam kaise|how (do|to)|use kaise|option|setting|notif|kya kar sakte|kya kya kar|kya karte ho|what can you|who are you|tum kaun|aap kaun|kya kar sakta|kya bata sakte|help me with|madad)/i;
 
+/**
+ * The in-chat task a message asks for, read from its words.
+ *
+ * Conservative on purpose: an action card that appears when nobody asked for
+ * it is worse than one that does not. Only an explicit request counts.
+ */
+function actionFromMessage(q: string): string {
+  const t = String(q || "").toLowerCase();
+  if (/\b(d9|navamsa|navamsh|navansh)\b.*\b(dikha|dikhao|chart|kundli|show)/.test(t) || /\b(dikha|dikhao|show)\b.*\b(d9|navamsa)\b/.test(t)) return "d9";
+  if (/\b(kundli|kundali|janam ?kundli|d1|lagna chart|birth chart)\b.*\b(dikha|dikhao|show|batao chart)\b|\b(show|dikha|dikhao)\b.*\b(kundli|d1|birth chart)\b/.test(t)) return "d1";
+  if (/\b(match|milan|milao|mila do|gun milan|guna milan)\b/.test(t)) return "match";
+  if (/\bpdf\b/.test(t)) return "pdf";
+  if (/\b(life report|poori report|puri report|full report)\b/.test(t)) return "life_report";
+  if (/\b(ya nahi|ya na|karun ya|karoon ya|should i|faisla|decide)\b/.test(t)) return "decide";
+  return "";
+}
+
+/**
+ * Facts a message states about the person's own life — the answers to the
+ * app's clarify questions above all, which are asked once and must be
+ * remembered, or the same question comes back every visit.
+ */
+function factsFromMessage(q: string): Record<string, string | number> {
+  const t = String(q || "").toLowerCase().trim();
+  const out: Record<string, string | number> = {};
+  if (/\b(unmarried|single|kunwara|kunwari|shaadi nahi hui|shadi nahi hui)\b|अविवाहित/.test(t)) out.marital_status = "single";
+  else if (/\b(divorced|talaak|talak)\b|तलाक/.test(t)) out.marital_status = "divorced";
+  else if (/\b(widowed|widow|vidhwa|vidhur)\b|विधवा|विधुर/.test(t)) out.marital_status = "widowed";
+  else if (/\b(main married|mai married|i am married|i'm married|married hoon|married hu|shaadi ho gayi|shadi ho gayi|shaadi hui|shadi hui)\b|विवाहित हूँ/.test(t)) out.marital_status = "married";
+  const year = t.match(/\b(shaadi|shadi|married|marriage)\b[^.]{0,30}\b(19|20)(\d\d)\b/);
+  if (year) out.marriage_year = Number(year[2] + year[3]);
+  if (/\b(abhi nahi|no children|koi bachcha nahi|koi bacha nahi)\b|अभी नहीं/.test(t)) out.children = 0;
+  else if (/\b(haan, ek|ek bachcha|ek bacha|one child)\b/.test(t)) out.children = 1;
+  if (/\b(kaam kar raha|kaam kar rahi|i'm working|i am working|job karta|job karti|naukri karta|naukri karti)\b|काम कर रहा/.test(t)) out.employment = "employed";
+  else if (/\b(job dhoondh|job dhund|looking for a job|naukri dhoondh)\b|नौकरी ढूँढ/.test(t)) out.employment = "job_seeking";
+  else if (/\b(padhai kar raha|padhai kar rahi|i'm studying|i am studying|student hoon|student hu)\b|पढ़ाई कर रहा/.test(t)) out.employment = "student";
+  else if (/\b(apna kaam|own business|mera business|run my own)\b|मेरा अपना काम/.test(t)) out.employment = "self_employed";
+  return out;
+}
+
 /*
  * Does this message tell us something about their life worth keeping in the
  * chat notes? Generous on purpose — a missed note is a fact asked for twice —
@@ -4686,11 +4728,56 @@ app.post("/api/chat/universal", async (req, res) => {
       pastContext = recentPastPeriods(chart, Math.min(20, Math.max(1, n)));
     }
 
-    const { answer, reason, next, action, facts } = await answerUniversal({
-      chart, question, language, category, transit, dayContext, pastContext,
-      appGuide: APP_RE.test(question) ? APP_GUIDE : undefined,
-      history, userName, memory, isFirst, suggested, facts: lifeFacts, relation,
+    /*
+     * The answer comes from VedicAstra's chat system, ported whole (server/va).
+     *
+     * Its replies were measurably better and, more to the point, steadier: a
+     * "kab hoga" question is answered from a window CALCULATED by its timing
+     * engine (same question, same dates, every time), today and this week from
+     * computed day context, and every yoga, dignity and strength from chart
+     * facts computed by code — so the model is never the one deciding a date or
+     * a yoga. What JanamJyot keeps around it: the distress and clarify steps
+     * above, its own accuracy checker below, credits, history and memory.
+     */
+    const bd = chart.birth_details || {};
+    const vaHistory = raw.slice(-8).map((m: any) => {
+      const [said, why] = String(m.message || "").split("\n<<REASON>>\n");
+      return {
+        role: m.role === "user" ? "user" : "assistant",
+        message: said,
+        responseJson: { reason: why || m.response_json?.reason || "" },
+      };
     });
+    const place = Number.isFinite(bd.latitude) && Number.isFinite(bd.longitude)
+      ? { latitude: bd.latitude, longitude: bd.longitude, timezone: bd.timezone || "Asia/Kolkata", label: bd.place_of_birth }
+      : undefined;
+    const askVA = (correction?: string) => vaAnswerQuestion({
+      chart, question, language, category: vaDetectCategory(question), transit,
+      history: vaHistory, place, correction,
+    });
+    let va = await askVA();
+
+    // JanamJyot's own check on top: a false birth-chart placement, running
+    // dasha, house lord or period date sends the answer back once, corrected.
+    const trHouses: Record<string, number> = {};
+    for (const tp of transit?.transiting_planets ?? []) {
+      if (tp.planet && tp.transit_house_from_lagna) trHouses[tp.planet] = Number(tp.transit_house_from_lagna);
+    }
+    const claimErrs = chartClaimErrors(`${va.answer}\n${va.reason}`, chart, trHouses);
+    if (claimErrs.count) {
+      console.warn(`[chat-u] ${claimErrs.summary} error(s) — regenerating once`);
+      const retry = await askVA(claimErrs.note()).catch(() => null);
+      if (retry?.answer && chartClaimErrors(`${retry.answer}\n${retry.reason}`, chart, trHouses).count < claimErrs.count) va = retry;
+    }
+
+    const answer = va.answer;
+    const reason = va.reason;
+    const next = va.followups;
+    // The app's in-chat actions and the facts a reply confirms were written by
+    // the old prompt; VedicAstra's has neither, so they are read from the
+    // message itself — the same words the old prompt was gated on.
+    const action = actionFromMessage(question);
+    const facts = factsFromMessage(question);
 
     // A low-distress message still gets its real answer — it is their chart and
     // they asked about it — with one line saying help exists.

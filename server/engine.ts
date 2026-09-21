@@ -328,6 +328,23 @@ export function sunRiseSet(fromInstant: Date, latitude: number, longitude: numbe
  * lagna and natal moon (done in transit.ts). Same accurate engine as the natal
  * chart, just evaluated at "now".
  */
+/**
+ * Where the three slow movers are on a date — Jupiter, Saturn and the (mean)
+ * node. The chat's timing and transit-calendar code (ported from VedicAstra)
+ * scans these day by day to find sign changes, so it needs them without the
+ * cost of a full planetary computation.
+ */
+export function slowPlanetLongitudes(date: Date, ayanamsa: number): { Jupiter: number; Saturn: number; Rahu: number } {
+  const t = A.MakeTime(date);
+  const ayan = ayanamsaDeg(t, ayanamsa);
+  const wrap = (x: number) => ((x % 360) + 360) % 360;
+  return {
+    Jupiter: siderealOf(A.Body.Jupiter, t, ayan),
+    Saturn: siderealOf(A.Body.Saturn, t, ayan),
+    Rahu: wrap(meanNodeTropical(t) - ayan),
+  };
+}
+
 export function computeTransits(
   datetimeIso: string,
   ayanamsa: number

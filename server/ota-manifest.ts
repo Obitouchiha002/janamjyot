@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609170649",
-  "url": "/ota/web-202609170649.zip",
-  "checksum": "54a0d673e2a72146e757e9a8481e9ea6c5f838ccdab473aad94243df33147f86",
+  "build": "202609211059",
+  "url": "/ota/web-202609211059.zip",
+  "checksum": "9e73f832d597b3534b7ff23dde7bf3db781101c895c618c8b40f7c5ff731fbdb",
   "min_native": "1.17",
-  "notes": "Life report ab page-wise padhein — ek baar mein ek hissa, upar tabs. Adhoori purani report apne aap poori ban jayegi, bina charge ke."
+  "notes": ""
 };
