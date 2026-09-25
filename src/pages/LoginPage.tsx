@@ -35,10 +35,19 @@ const PERKS = [
  * In that mode there is no router history to go "back" to, so we surface a
  * "Continue as guest" escape hatch instead of stranding the user on the screen.
  */
-export default function LoginPage() {
+export default function LoginPage({ onDone }: { onDone?: () => void } = {}) {
   const t = useT();
   const { login, signup, loginWithOtp } = useAuth();
   const nav = useNavigate();
+  /*
+   * Where a successful sign-in goes.
+   *
+   * As the launch screen it moves the person onward — home, or straight into
+   * their first kundli. Inside the sign-in sheet (components/SignInSheet) it
+   * must do neither: they were already somewhere, mid-question, and navigating
+   * would throw that away. `onDone` closes the sheet and their action resumes.
+   */
+  const done = (to: string) => (onDone ? onDone() : nav(to));
   // New user → Sign up (with the perks visible); returning user → Sign in.
   const [mode, setMode] = useState<"login" | "signup">(isReturning() ? "login" : "signup");
   const [name, setName] = useState("");
@@ -85,7 +94,7 @@ export default function LoginPage() {
       await loginWithOtp(email.trim(), otpCode.trim(), name.trim());
       markReturning();
       haptic.success();
-      nav("/");
+      done("/");
     } catch (err: any) {
       haptic.error();
       setError(err?.message || "Could not verify that code.");
@@ -119,14 +128,14 @@ export default function LoginPage() {
       if (mode === "login") {
         await login(email, password);
         markReturning();
-        nav("/");
+        done("/");
       } else {
         await signup(name, email, password);
         markReturning();
         // New account → straight into onboarding: build the first kundli
         // (name / date / time / place), the way astrology apps start.
         haptic.success();
-        nav("/create-chart");
+        done("/create-chart");
       }
     } catch (err: any) {
       haptic.error();

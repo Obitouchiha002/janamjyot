@@ -24,7 +24,9 @@ import { isLockEnabled } from './lib/biometric';
 import TopBar from './components/mobile/TopBar';
 import TabBar from './components/mobile/TabBar';
 import TopNav from './components/desktop/TopNav';
+import SideNav from './components/desktop/SideNav';
 import QuotaListener from './components/mobile/QuotaSheet';
+import SignInListener from './components/SignInSheet';
 import { LoadError } from './components/ErrorState';
 import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
@@ -77,6 +79,7 @@ const DailyGuidancePage = lazy(() => import('./pages/DailyGuidancePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const PlanPage = lazy(() => import('./pages/PlanPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const ReportsHome = lazy(() => import('./pages/ReportsHome'));
 const ReportViewPage = lazy(() => import('./pages/ReportViewPage'));
 const TimelinePage = lazy(() => import('./pages/TimelinePage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
@@ -178,6 +181,8 @@ function AppRoutes({ location }: { location: ReturnType<typeof useLocation> }) {
       <Route path="/right-now/:chartId" element={<RightNowPage />} />
       <Route path="/timeline/:chartId" element={<TimelinePage />} />
       <Route path="/report/:chartId" element={<LifeReportPage />} />
+      {/* "Reports" with no kundli named — the desktop sidebar's destination. */}
+      <Route path="/reports" element={<ReportsHome />} />
       <Route path="/reports/:chartId" element={<ReportsPage />} />
       <Route path="/reports/:chartId/:type" element={<ReportViewPage />} />
       {/* The one chat. */}
@@ -390,8 +395,10 @@ function Shell() {
 
   return (
     <div className="app-shell app-desktop bg-background text-foreground">
-      {/* Desktop / iPad top navbar (>=768px, CSS-gated). Phones keep the mobile
-          top bar + bottom tab bar below. */}
+      {/* Three chromes, one at a time, chosen by width in CSS: a phone keeps
+          the mobile top bar + bottom tabs, a tablet (>=768px) gets the top
+          navbar, and a desktop (>=1024px) gets the sidebar instead. */}
+      <SideNav />
       <TopNav />
       <TopBar scrolled={scrolled} />
 
@@ -429,6 +436,10 @@ function Shell() {
 
       {showTabs && <TabBar />}
 
+      {/* "Sign in to continue", asked only when a feature needs an account —
+          reacts to the `jj-signin` event (lib/gate.ts). */}
+      <SignInListener />
+
       {/* Global quota-reached sheet — reacts to the `va-quota` event. */}
       <QuotaListener />
 
@@ -441,10 +452,23 @@ function Shell() {
   );
 }
 
+/*
+ * On the web the app lives under /app — and it has to, not just start there.
+ *
+ * The domain's root is the marketing page (a real file, because Razorpay will
+ * not verify a root that redirects), so every SPA path that ALSO worked at the
+ * root was a trap: click Home, land on "/", press reload, and the app is gone,
+ * replaced by the landing page. Giving the router a basename makes /app the
+ * app's real home — /app/chat, /app/profiles, /app/plan — so every screen can
+ * be reloaded, shared and bookmarked. The Android build serves its files from
+ * the root of the WebView, so it keeps no basename at all.
+ */
+const WEB_BASE = '/app';
+
 export default function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename={isNative ? undefined : WEB_BASE}>
         <Shell />
       </Router>
     </AuthProvider>

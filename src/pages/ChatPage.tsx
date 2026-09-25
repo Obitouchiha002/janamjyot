@@ -6,6 +6,7 @@ import ChatAction from "@/components/ChatAction";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
 import RelationSheet, { relationLabel, type Relation } from "@/components/RelationSheet";
+import { useSignInGate } from "@/lib/gate";
 import { getLang } from "@/lib/prefs";
 import { haptic } from "@/lib/native";
 import { voiceAvailable, startVoice, stopVoice, type VoiceLang } from "@/lib/voice";
@@ -340,11 +341,16 @@ export default function ChatPage() {
     return () => { alive = false; };
   }, [chartId, scrollToEnd]);
 
+  const needsSignIn = useSignInGate();
+
   const send = async (raw: string) => {
     const q = raw.trim();
     // `busy` is the double-send guard: a second tap while one is in flight
     // would be a second question and a second credit.
     if (!q || busy || !chartId) return;
+    // On the web a guest gets this far: the question is held, the sheet asks
+    // for an account, and the same question is sent the moment they have one.
+    if (needsSignIn("chat", () => send(raw))) return;
     haptic.tap();
     if (listening) { stopVoice().catch(() => {}); setListening(false); }
     setLead(null);
@@ -499,7 +505,7 @@ export default function ChatPage() {
   const listeningWord: Tri = { en: "Listening…", hi: "सुन रहा हूँ…", hinglish: "Sun raha hoon…" };
 
   return (
-    <div className="-mx-4 -mb-6 flex flex-col overflow-hidden" style={shellStyle}>
+    <div className="chat-shell -mx-4 -mb-6 flex flex-col overflow-hidden" style={shellStyle}>
       {/* toolbar — language, the person in your life, and a new chat. */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 py-2">
         <div className="flex items-center gap-1">
@@ -541,7 +547,7 @@ export default function ChatPage() {
       </div>
 
       {/* messages */}
-      <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+      <div ref={scrollRef} className="chat-thread flex-1 space-y-4 overflow-y-auto px-3 py-4">
         {/* Loading the thread: quiet placeholders, not typing dots — dots say
             someone is writing to you, and nobody is yet. */}
         {!historyLoaded && (
@@ -743,7 +749,7 @@ export default function ChatPage() {
       </div>
 
       {/* composer */}
-      <div className="shrink-0 border-t border-border bg-background px-3 py-2.5">
+      <div className="chat-composer shrink-0 border-t border-border bg-background px-3 py-2.5">
         <AskMeter />
         <div className="flex items-end gap-2">
           <textarea
