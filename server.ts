@@ -1,6 +1,7 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
 import { distressLevel, severeReply, lowNote } from "./server/distress";
 import { answerQuestion as vaAnswerQuestion, detectCategory as vaDetectCategory } from "./server/va/gemini";
+import { reportKeyPoints } from "./server/va/keyPoints";
 import { chartClaimErrors } from "./server/claim-check";
 import { isGreetingOnly, greetingReply } from "./server/greeting";
 import { whatToAsk, clarifyReply } from "./server/clarify";
@@ -3739,7 +3740,7 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
         // one-bold-per-paragraph rule existed are already in the database, and a
         // person re-opening the report they paid for should see the fixed page,
         // not the shouting one they saw last week.
-        if (!missing.length) return res.json({ ...tidyReport(cached), cached: true });
+        if (!missing.length) return res.json({ ...tidyReport(cached), key_points: reportKeyPoints(chart), cached: true });
         console.warn(`[generate-report] cached report is missing ${missing.join(", ")} — regenerating free of charge`);
         repairing = true;
       }
@@ -3786,13 +3787,13 @@ async function handleGenerateReport(req: express.Request, res: express.Response)
      */
     if (report?.partial) {
       console.warn(`[generate-report] partial (${(report.missing ?? []).join(", ")} missing) — not stored, not charged`);
-      return res.json(report);
+      return res.json({ ...report, key_points: reportKeyPoints(chart) });
     }
 
     await insertReport({ chartId, report, language: lifeKey });
     // Charged only now, with the report written.
     await settleCharge(req, auth.charge, "life_report", chartId, { category: "life" });
-    res.json(report);
+    res.json({ ...report, key_points: reportKeyPoints(chart) });
   } catch (err: any) {
     console.error("[generate-report] error:", err?.message);
     const quota = /429|quota|rate limit/i.test(err?.message ?? "");
@@ -3862,7 +3863,14 @@ app.post("/api/report/start", async (req: any, res) => {
   const language = normalizeLanguage(req.body?.language, chart.birth_details?.language || "en");
   const lifeKey = `life:${language}:${chart.dasha?.current?.antardasha_to || "na"}`;
   const draftId = await createReportDraft(chartId, lifeKey);
-  res.json({ draftId, areas: REPORT_AREAS, language });
+  /*
+   * The computed summary of what this chart is shouting about (problems, strengths and the
+   * behaviour patterns, from server/va/highlights.ts + psyche.ts). No model is involved, so
+   * it is ready instantly — before the first area is written — and its "kab tak" dates are
+   * recomputed on every read rather than stored, which is why it is not part of the saved
+   * report. The app can show it above the sections, like VedicAstra's report does.
+   */
+  res.json({ draftId, areas: REPORT_AREAS, language, key_points: reportKeyPoints(chart) });
 });
 
 app.post("/api/report/area", async (req: any, res) => {
@@ -3909,7 +3917,7 @@ app.post("/api/report/finish", async (req: any, res) => {
   const me = identityOf(req as any);
   recordUsage({ userId: me.userId, deviceId: me.deviceId, action: "report", meta: { chartId, language: draft.lang_key } }).catch(() => {});
   await settleCharge(req, auth.charge, "life_report", chartId, { category: "life" });
-  res.json({ ok: true, id, report });
+  res.json({ ok: true, id, report, key_points: reportKeyPoints(chart) });
 });
 
 /* ── Report history ───────────────────────────────────────────────────────
@@ -3931,7 +3939,8 @@ app.get("/api/reports/:chartId/history/:id", async (req: any, res) => {
   if (!canAccessChart(req, chart)) return res.status(403).json({ error: "Not your chart." });
   const report = await getReportById(req.params.chartId, req.params.id).catch(() => null);
   if (!report) return res.status(404).json({ error: "That report is no longer here." });
-  res.json({ ...tidyReport(report), cached: true });
+  // Recomputed, never stored: an old report still opens with today's "kab tak" dates.
+  res.json({ ...tidyReport(report), key_points: reportKeyPoints(chart), cached: true });
 });
 
 app.delete("/api/reports/:chartId/history/:id", async (req: any, res) => {
@@ -4796,7 +4805,9 @@ app.post("/api/chat/universal", async (req, res) => {
     // they asked about it — with one line saying help exists.
     const finalAnswer = distress === "low" ? answer + lowNote(language) : answer;
 
-    if (!answer || !answer.trim()) {
+    // va.failed = generation itself came back empty twice, and the text in hand is only
+    // an apology. Treated exactly like an empty answer: no bubble, and no credit spent.
+    if (!answer || !answer.trim() || va.failed) {
       // An empty bubble is worse than an error: it looks like the app broke and
       // it would still have cost a credit below.
       return res.status(502).json({ error: "Jawab poora nahi aaya. Dobara bhejein." });

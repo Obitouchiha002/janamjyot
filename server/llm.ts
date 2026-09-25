@@ -135,6 +135,12 @@ export interface ProviderStat {
   rateLimitAt?: number;
   /** Do not send this provider anything before this time (ms since epoch). */
   coolUntil?: number;
+  /**
+   * The estimated prompt size this provider has actually refused as too large (413).
+   * A learned ceiling beats a cooldown here: the model is fine, this PROMPT is too big for
+   * it, so it stays available for short ones and is skipped for long ones.
+   */
+  tooLargeAbove?: number;
 }
 
 const statsMap = new Map<string, ProviderStat>();
@@ -775,8 +781,12 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
    */
   const estTokens = Math.ceil(prompt.length / 3.5) + (opts.maxTokens ?? 1200);
   const fits = (p: Provider) => {
-    const cap = Number(stat(p.name).rateLimit?.["x-ratelimit-limit-tokens"] ?? 0);
+    const st = stat(p.name);
+    const cap = Number(st.rateLimit?.["x-ratelimit-limit-tokens"] ?? 0);
     if (p.maxContext && estTokens > p.maxContext) return false;
+    // Learned from a real 413 — a chat prompt of this size will be refused again, and the
+    // refusal costs a round trip in front of the provider that was going to answer.
+    if (st.tooLargeAbove && estTokens >= st.tooLargeAbove) return false;
     return !cap || estTokens <= cap;
   };
   const sized = usable.filter(fits);
@@ -949,7 +959,19 @@ export async function llmGenerate(prompt: string, opts: GenOpts = {}): Promise<s
          * (503) or one that just timed out. Each of these cost a round-trip on
          * every chat, in front of the provider that was actually going to answer.
          */
-        if (/\b404\b|no longer available|not found/i.test(msg)) s.coolUntil = Date.now() + 6 * 3600_000;
+        /*
+         * "Request too large" (413) is not the provider being down — it is this prompt not
+         * fitting. Live (25 Sep 2026): all three Groq models are privacy-safe, so every
+         * personal question tried them FIRST and collected three 413s before Gemini was
+         * asked, on every single message. The size is remembered instead.
+         */
+        if (/\b413\b|too large|reduce the length|context length|maximum context/i.test(msg)) {
+          s.tooLargeAbove = Math.min(s.tooLargeAbove ?? Number.MAX_SAFE_INTEGER, estTokens);
+          console.log(`[llm] ${p.name} refuses ~${estTokens} tokens — skipped for prompts this size`);
+        }
+        // Nothing listening (Ollama not started) says the same thing every time.
+        else if (/fetch failed|ECONNREFUSED|ENOTFOUND|socket hang up/i.test(msg)) s.coolUntil = Date.now() + 10 * 60_000;
+        else if (/\b404\b|no longer available|not found/i.test(msg)) s.coolUntil = Date.now() + 6 * 3600_000;
         else if (/\b(401|402|403)\b|payment|permission|denied|insufficient|credit/i.test(msg)) {
           // A billing wall does not clear on its own. Cerebras answers 402 when
           // a key belongs to a personal account with no active credits, and it

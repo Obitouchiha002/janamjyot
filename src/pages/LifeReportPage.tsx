@@ -9,6 +9,7 @@ import { isNative, saveToDownloads, shareFile } from "@/lib/native";
 import SpeakButton from "@/components/SpeakButton";
 import AnswerText from "@/components/AnswerText";
 import ReportChat from "@/components/ReportChat";
+import KeyPointsCard, { type KeyPointsData } from "@/components/KeyPointsCard";
 import { getLang } from "@/lib/prefs";
 import { useT } from "@/lib/i18n";
 import { haptic } from "@/lib/native";
@@ -112,6 +113,9 @@ export default function LifeReportPage() {
   const { chartId } = useParams();
   const [chart, setChart] = useState<any>(null);
   const [report, setReport] = useState<any>(null);
+  /* The computed summary above the sections. It is never part of the saved report — the
+     server recomputes it on every read so its "kab tak" dates stay current. */
+  const [keyPoints, setKeyPoints] = useState<KeyPointsData | null>(null);
   /*
    * Defaults to the language they chose for the app, not to English.
    *
@@ -161,7 +165,7 @@ export default function LifeReportPage() {
     setLoading(true); setError(null); setChosen(true);
     fetch(`/api/reports/${chartId}/history/${id}`)
       .then((r) => r.json())
-      .then((d) => { if (d.error) setError(d.error); else setReport(d); })
+      .then((d) => { if (d.error) setError(d.error); else { setReport(d); setKeyPoints(d.key_points ?? null); } })
       .catch(() => setError("Network error."))
       .finally(() => setLoading(false));
   };
@@ -187,7 +191,7 @@ export default function LifeReportPage() {
       .then(async res => {
         const d = await res.json();
         if (!res.ok || d.error) setError(d.error?.message || d.error || "Could not generate the report.");
-        else { setReport(d); loadHistory(); }
+        else { setReport(d); setKeyPoints(d.key_points ?? null); loadHistory(); }
       })
       .catch(() => setError("Network error while generating the report."))
       .finally(() => setLoading(false));
@@ -243,6 +247,7 @@ export default function LifeReportPage() {
     const d = await r.json().catch(() => ({}));
     if (r.ok && d.ok) {
       setReport(d.report);
+      if (d.key_points) setKeyPoints(d.key_points);
       setOpenId(d.id);
       draftRef.current = null;
       loadHistory();
@@ -253,7 +258,7 @@ export default function LifeReportPage() {
   };
 
   const newReport = async (language: string) => {
-    setError(null); setReport(null); setOpenId(undefined);
+    setError(null); setReport(null); setKeyPoints(null); setOpenId(undefined);
     setLoading(true);
     try {
       const r = await fetch("/api/report/start", {
@@ -263,6 +268,7 @@ export default function LifeReportPage() {
       const d = await r.json();
       if (!r.ok || d.error) { setError(d.error || "Could not start the report."); return; }
       draftRef.current = d.draftId;
+      setKeyPoints(d.key_points ?? null); // computed, so it is ready before any area is
       setLoading(false);
       setWriting({ done: 0, total: d.areas.length, failed: [] });
       let failed = await writeAreas(d.draftId, d.areas, language);
@@ -861,7 +867,12 @@ export default function LifeReportPage() {
           )}
         </div>
       ) : (loading || writing) && !report ? (
-        <ReportProgress />
+        <div className="space-y-5">
+          {/* Computed, so it is ready while the AI is still writing the sections — the
+              person has something real to read instead of only a progress bar. */}
+          {keyPoints && <KeyPointsCard data={keyPoints} />}
+          <ReportProgress />
+        </div>
       ) : error || !report ? (
         <div className="text-center py-16 space-y-4">
           <p className="text-muted-foreground">{error || "No report available."}</p>
@@ -880,6 +891,14 @@ export default function LifeReportPage() {
               tabs into a summary of the whole report: where they are strong,
               where the work is. The bar carries it at a glance — the reading
               underneath says why. */}
+          {/* What the chart itself flags, before the seven sections. Not written by the
+              model — it comes straight from the calculation. */}
+          {keyPoints && (
+            <div className="mb-5">
+              <KeyPointsCard data={keyPoints} />
+            </div>
+          )}
+
           <div className="-mx-4 mb-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="flex w-max gap-2.5">
               {present.map((section) => {

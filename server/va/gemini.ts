@@ -14,6 +14,10 @@ import { computeChartFacts, chartFactsForAI } from "./chartFacts";
 import { buildDayContext, dayContextForAI, weekContextForAI, type DayPlace } from "./today";
 import { rashiInfo } from "./rashi";
 import { computeRemedies } from "./remedies";
+import { chartHighlights } from "./highlights";
+import { psychePatterns } from "./psyche";
+import { connectionFacts } from "./connection";
+import { repetition, repeatsTooMuch, questionParts, asksWhen, givesTime, alreadySaid, wrongBirthNakshatra } from "./replyChecks";
 
 export const SYSTEM_PROMPT = `You are "Acharya", a warm and experienced Vedic astrologer (jyotishi) with decades
 of practice. You are talking to a real person who came to you for guidance. Speak
@@ -291,7 +295,145 @@ export function replyLanguageOff(text: string, language: string): boolean {
   return re ? letters.filter((c) => re.test(c)).length / letters.length < 0.5 : false;
 }
 
-async function inSelectedLanguage(out: { answer: string; reason: string; followups: string[] }, language: string) {
+// A future claim must not carry a date that has already passed. Live slip: "aage June
+// 2025 tak" written in September 2026. Only "<month year> tak" is checked — "2021 se
+// shuru hui" is a legitimate statement about the past.
+const MONTH_WORDS_RE = "january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec";
+const MONTH_NUM: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3, may: 4,
+  june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7, september: 8, sept: 8, sep: 8,
+  october: 9, oct: 9, november: 10, nov: 10, december: 11, dec: 11,
+};
+/** Past months used as a deadline ("… tak"). Exported for tests. */
+export function pastDeadlines(text: string, nowMs = Date.now()): string[] {
+  const now = new Date(nowMs);
+  const nowKey = now.getUTCFullYear() * 12 + now.getUTCMonth();
+  const re = new RegExp(`\\b(${MONTH_WORDS_RE})\\.?,?\\s*(\\d{4})\\b[^.!?\\n]{0,40}?\\btak\\b`, "gi");
+  const out: string[] = [];
+  for (const m of text.matchAll(re)) {
+    const key = Number(m[2]) * 12 + MONTH_NUM[m[1].toLowerCase()];
+    if (key >= nowKey) continue;
+    // A past month is fine as one END of a stated range — "February 2021 se June 2024 tak"
+    // is how a past window is described, and replies now name those (past connections,
+    // finished periods). Only a bare past month used as the deadline is wrong.
+    const head = m[0].match(new RegExp(`^(${MONTH_WORDS_RE})\\.?,?\\s*\\d{4}`, "i"))?.[0] ?? "";
+    const tail = m[0].slice(head.length).trimStart();
+    if (/^(se|to|till|until|–|—|-)\b/i.test(tail)) continue; // it is the range's START
+    const before = text.slice(Math.max(0, (m.index ?? 0) - 32), m.index ?? 0);
+    if (new RegExp(`\\b(${MONTH_WORDS_RE})\\.?,?\\s*\\d{4}\\s*(se|from|–|—|-)\\s*$`, "i").test(before)) continue; // range's END
+    out.push(`${m[1]} ${m[2]}`);
+  }
+  return [...new Set(out)];
+}
+
+export interface ChatReply {
+  answer: string;
+  reason: string;
+  followups: string[];
+  /** True only when generation itself failed and nothing could be shown. */
+  failed?: boolean;
+}
+
+// A reply with no words in it is worse than a wrong one — the user just sees an empty
+// bubble. Live (25 Sep 2026): the model answered "wo kaun hai" with a single "," and that
+// comma is exactly what got saved and shown. Anything this thin is a failed generation.
+export function replyBroken(text: string): boolean {
+  return (text.match(/[\p{L}\p{N}]/gu) ?? []).length < 8;
+}
+
+// Said only when generation itself failed twice — never a way to dodge a question.
+const COULD_NOT_ANSWER: Record<string, string> = {
+  hinglish:
+    "Maaf kijiye — is sawaal ka jawab bante-bante reh gaya, isliye khaali aa gaya. Ek baar dobara bhejiye, ya thoda alag shabdon mein puchhiye.",
+  hi: "क्षमा कीजिए — इस सवाल का जवाब बनते-बनते रह गया, इसलिए खाली आ गया। कृपया एक बार दोबारा भेजिए, या थोड़े अलग शब्दों में पूछिए।",
+  en: "Sorry — this answer failed to come through, so it arrived empty. Please send the question again, or ask it in slightly different words.",
+};
+
+// Someone asking for a recap deserves one — that is not the model repeating itself.
+const WANTS_REPEAT_RE = /\b(phir se|dubara|dobara|repeat|wahi|same|again|summary|summarise|summarize)\b/i;
+
+/**
+ * What only the conversation can reveal: old ground served again, or a "kab" question
+ * answered with no date at all. Both are measured in code — the prompt already forbids both
+ * and gets ignored — and share ONE rewrite that quotes the offending lines back.
+ */
+async function reviseIfOffTarget(
+  out: ChatReply,
+  prompt: string,
+  priorAnswers: string[],
+  question: string
+): Promise<ChatReply> {
+  const checkRepeat = priorAnswers.length > 0 && !WANTS_REPEAT_RE.test(question);
+  const needsTime = asksWhen(question);
+  const score = (r: ChatReply) =>
+    (checkRepeat && repeatsTooMuch(repetition(r.answer, priorAnswers)) ? 1 : 0) +
+    (needsTime && !givesTime(r.answer) ? 1 : 0);
+  const before = score(out);
+  if (!before) return out;
+
+  const notes: string[] = [];
+  const rep = repetition(out.answer, priorAnswers);
+  if (checkRepeat && repeatsTooMuch(rep)) {
+    notes.push(
+      `YOU ALREADY SENT THESE LINES EARLIER IN THIS SAME CHAT, and your draft sent them back almost word for word:\n${rep.lines
+        .map((l) => `  - "${l}"`)
+        .join("\n")}\nThey can scroll up and read them, so repeating them reads as if you never read their new question. If one of those facts still matters, point at it in a few words ("wahi samay jo maine bataya tha") and spend the reply on what is genuinely NEW for what they asked now.`
+    );
+  }
+  if (needsTime && !givesTime(out.answer)) {
+    notes.push(
+      `THEY ASKED WHEN ("kab / kab tak") AND YOUR DRAFT GAVE NO TIME AT ALL. Give the real window from the calculated timing data in the chart above — months and years, or the exact days — never a vague "samay aayega".`
+    );
+  }
+  console.warn(`[chat] revising reply (${notes.length} issue(s), repeat share ${Math.round(rep.share * 100)}%)`);
+  try {
+    const again = await llmGenerate(
+      `${prompt}\n\nYOUR PREVIOUS DRAFT HAD A PROBLEM. Write the whole reply again, answering exactly what they asked this time.\n\n${notes.join("\n\n")}`,
+      { temperature: 0.55, thinkingBudget: 0, timeoutMs: 45_000 }
+    );
+    const retry = parseAnswerReasonFollowups(again);
+    if (replyBroken(retry.answer)) return out;
+    const after = score(retry);
+    // Take the rewrite when it fixes a problem, or when it is meaningfully less of a repeat.
+    if (after < before) return retry;
+    if (after === before && repetition(retry.answer, priorAnswers).share + 0.05 < rep.share) return retry;
+  } catch (e: any) {
+    console.warn("[chat] revision failed:", e?.message);
+  }
+  return out;
+}
+
+/** Empty answer → ask once more, plainly; if that is empty too, salvage rather than show
+ *  a blank bubble. */
+async function retryIfEmpty(out: ChatReply, prompt: string, language: string): Promise<ChatReply> {
+  if (!replyBroken(out.answer)) return out;
+  console.warn("[chat] empty answer, asking again:", JSON.stringify(out.answer.slice(0, 40)));
+  try {
+    const again = await llmGenerate(
+      `${prompt}\n\nYOUR PREVIOUS DRAFT CAME BACK EMPTY — there was no answer in it at all. Write the whole reply again from the start: a real answer to their question under "@@ANSWER@@", the grounding under "@@REASON@@", and the marker lines exactly as specified. If the chart genuinely cannot give something they asked for (a person's name, face or gender, for example), say plainly what it cannot give and then give everything it can.`,
+      { temperature: 0.4, thinkingBudget: 0, timeoutMs: 45_000 }
+    );
+    const retry = parseAnswerReasonFollowups(again);
+    if (!replyBroken(retry.answer)) return retry;
+  } catch (e: any) {
+    console.warn("[chat] empty-answer retry failed:", e?.message);
+  }
+  return salvageEmptyReply(out, language);
+}
+
+/** Last resort for an empty answer: show the detail it did write, else say so honestly. */
+function salvageEmptyReply(out: ChatReply, language: string): ChatReply {
+  const reason = out.reason.trim();
+  if (!replyBroken(reason)) {
+    const paras = reason.split(/\n\s*\n/);
+    return { ...out, answer: paras[0].trim(), reason: paras.slice(1).join("\n\n").trim() };
+  }
+  const key = (language || "en").toLowerCase();
+  // "failed" tells the caller this cost the user nothing — the chat credit is given back.
+  return { answer: COULD_NOT_ANSWER[key] ?? COULD_NOT_ANSWER.en, reason: "", followups: [], failed: true };
+}
+
+async function inSelectedLanguage(out: ChatReply, language: string): Promise<ChatReply> {
   if (!replyLanguageOff(out.answer, language) && !replyLanguageOff(out.reason, language)) return out;
   console.warn(`[chat] reply not in ${language}, rewriting it`);
   try {
@@ -480,6 +622,33 @@ export function buildFullChartContext(chart: any) {
     chart_facts: (() => {
       try { const f = computeChartFacts(chart, Number(process.env.PROKERALA_AYANAMSA) || 1); return f ? chartFactsForAI(f) : null; } catch { return null; }
     })(),
+    // The striking, chart-specific things a real astrologer opens with — computed by rule
+    // (server/va/highlights.ts), the live ones first. Without these the reply drifts into
+    // advice that fits anyone ("padhai par dhyan dijiye").
+    chart_highlights: (() => {
+      try {
+        const f = computeChartFacts(chart, Number(process.env.PROKERALA_AYANAMSA) || 1);
+        return f ? chartHighlights(chart, chartFactsForAI(f)) : null;
+      } catch { return null; }
+    })(),
+    // HOW this person thinks, decides, trusts and trips themselves up — computed
+    // (server/va/psyche.ts), each with the same placement's good side. This is the layer
+    // that used to be improvised, which is why every reading read the same.
+    psyche_patterns: (() => {
+      try {
+        const f = computeChartFacts(chart, Number(process.env.PROKERALA_AYANAMSA) || 1);
+        return f ? psychePatterns(chart, chartFactsForAI(f)) : null;
+      } catch { return null; }
+    })(),
+    // "Wo kaun tha / kaisa rishta tha" — what a chart can honestly say about a past or
+    // present connection (server/va/connection.ts), including what it CANNOT say.
+    connection_facts: (() => {
+      try {
+        const f = computeChartFacts(chart, Number(process.env.PROKERALA_AYANAMSA) || 1);
+        const pp = periodProfile(chart, Number(process.env.PROKERALA_AYANAMSA) || 1);
+        return f ? connectionFacts(chart, chartFactsForAI(f), pp) : null;
+      } catch { return null; }
+    })(),
     // Janma / Naam / Surya rashi with proof (server/rashi.ts): "meri rashi kya hai" must
     // never be answered from a guess, and a user who knows a different rashi gets the reason.
     rashi_info: (() => {
@@ -583,6 +752,34 @@ never your own reading of the chart:
     Rashi.
   • Which past or future dasha period was or will be good or weak for what:
     period_profile.
+  • NEVER DODGE A SPECIFIC QUESTION. When they ask about a particular person, a
+    particular worry or a particular event, answer with what the chart DOES give —
+    the timing windows, chart_highlights, period_profile, and, for anything about a
+    person or a bond, connection_facts (kind of bond, that person's nature, older or
+    younger, where the meeting is likely to have come from, and the years it was live).
+    Then, in ONE short line, say what a chart cannot show (a name, a face, a gender,
+    someone else's chart) — and never guess those. One honest line beats a vague
+    paragraph.
+  • HOW THEY ARE (nature, why the same thing keeps happening, "main aisa kyun hoon",
+    kamzori, swabhav, mann): psyche_patterns. Use their "pattern" and "shows_up_as"
+    almost as written — those are the lines a person recognises themselves in — and give
+    the "gift" of the same placement, so it is never only faults. "because" is the chart
+    evidence for the reason section. Do not invent extra traits beyond these.
+  • WHAT STANDS OUT in this chart: chart_highlights (already ranked; "active_now" = live
+    right now). For any open question ("meri kundli kaisi hai", "koi problem hai",
+    "mera future", or a life area), NAME those specific things first, in their words —
+    pyaar ka uljhav, karz, ghar se doori, mann ka bojh, padhai mein dhyan na lagna.
+    Each one has "kind": problem or strength — give BOTH sides in an open question, the
+    live problem first and the strongest strength after it, so one reply is enough.
+    "until" is when the running phase turns — THAT is the answer to "ye kab tak rahega".
+    "background_until" is the long mahadasha behind it: mention it only as background,
+    never as the answer (nobody is helped by "2041 tak"). For marriage/children/money
+    "kab", use timing_computed instead.
+    Your FIRST sentence is the strongest one of them (the first "active_now", else the
+    first in the list) — not praise, not yogas, not general advice. Good points and
+    yogas come after it. Never open with advice that fits anyone ("padhai par dhyan
+    dijiye", "mehnat kijiye", "aapka dimaag tez hai"). If a highlight is
+    uncomfortable, say it kindly, but say it.
   • GOCHAR ≠ DASHA. A question about a planet's "gochar" or transit ("Guru ka gochar",
     "Shani kab badlega", "Rahu kahan hai") is answered from chart_facts.gochar_calendar:
     which house (from lagna and from Moon) it moves through, with dates, starting from
@@ -649,7 +846,7 @@ export async function answerQuestion(args: {
   // JanamJyot: a correction naming false chart claims in a previous draft, added
   // by its accuracy checker before one regeneration.
   correction?: string;
-}): Promise<{ answer: string; reason: string; followups: string[] }> {
+}): Promise<ChatReply> {
   const basePacket = buildChartPacket(args.chart, args.category, args.transit);
   const priorTurns = (args.history ?? []).filter((m) => m.message).slice(-8);
   const isFollowUp = priorTurns.length > 0;
@@ -763,6 +960,32 @@ period) for a topic:
     : `DATES — HARD RULE: if you mention any future year or period, it must be the real dates
 of a dasha period from the dasha timeline in the data (e.g. an antardasha's from–to).
 Never invent or estimate a year on your own.`;
+
+  // One typed-out message often carries several asks, and the reply used to answer only the
+  // first one — live: "kab tak hogi or kay wo success hogi or kay usse koi fayda hoga long
+  // term mein" came back as timing alone. The split is computed here so it cannot be
+  // skimmed past.
+  const asks = questionParts(args.question);
+  const askList = asks.length
+    ? `\nTHIS ONE MESSAGE ASKS ${asks.length} SEPARATE THINGS. Answer every one of them, in this order, each with something real — never silently drop one. Do not read this list back to them:\n${asks
+        .map((a, i) => `  ${i + 1}. ${a}`)
+        .join("\n")}\n`
+    : "";
+
+  // "Do NOT repeat things you already told them" was in the prompt all along and was still
+  // ignored — a whole paragraph came back four minutes later (25 Sep 2026). Naming the exact
+  // lines that are already on their screen is what it takes.
+  const saidLines = isFollowUp
+    ? alreadySaid(priorTurns.filter((m) => m.role !== "user").map((m) => String(m.message ?? "")))
+    : [];
+  const saidBlock = saidLines.length
+    ? `\nALREADY ON THEIR SCREEN — you wrote these lines earlier in THIS chat:\n${saidLines
+        .map((l) => `  - "${l}"`)
+        .join("\n")}\nDo not write any of these sentences again, in any wording — they can scroll up. If one of
+these facts is still needed for the new question, compress it into a few words ("wahi
+Sep 2026 – Feb 2027 wala samay") and spend the rest of the reply on what is NEW in what
+they just asked.\n`
+    : "";
 
   const historyBlock = isFollowUp
     ? `\nCONVERSATION SO FAR (most recent last — "You" lines are what YOU already told this
@@ -945,7 +1168,12 @@ you're naming 2+ distinct parallel things (a few possible career fields, several
 timing-windows, several traits), lay them out as "• " bullet points each on their own
 line instead of burying them in one run-on sentence — a real reader scans a list faster
 than a paragraph. Bullets are for genuinely listing things, not a substitute for
-flowing prose everywhere.>
+flowing prose everywhere.
+NO SECTION HEADINGS IN "answer". Never number the reply into parts and never write a
+bold mini-title with a colon ("1. **Emotional Life:** ...", "**Mann ka haal:** ...",
+"**Is waqt ka haal:** ..."). That is a form, not a person talking. Say it as connected
+paragraphs the way you would out loud — one thought leading into the next — and put the
+dates and the key words in bold inside those sentences instead.>
 @@REASON@@
 <shown only if they expand it. For QUICK/NORMAL this carries the full astrological
 grounding — everything that explains WHY, tied to their actual chart (houses, planets,
@@ -1012,7 +1240,7 @@ near future. Do not rely on just one chart.
 ${JSON.stringify(packet, null, 2)}
 
 They asked you: "${args.question}"
-
+${askList}${saidBlock}
 ${intentGuidance}
 
 ${timingRule}
@@ -1113,7 +1341,34 @@ ${languageReminder(args.language)}`;
   // 0.7 rather than 0.85: the dates now come from computed facts, and lower variance
   // keeps the wording around them steady as well.
   const text = await llmGenerate(prompt, { temperature: 0.7, thinkingBudget: 0 });
-  let out = parseAnswerReasonFollowups(text);
+  let out: ChatReply = parseAnswerReasonFollowups(text);
+
+  out = await retryIfEmpty(out, prompt, args.language);
+
+  // A deadline that has already passed means the reply misread the timeline: rewrite once.
+  const stale = pastDeadlines(out.answer);
+  if (stale.length) {
+    console.warn("[chat] past deadline in reply, rewriting:", stale);
+    try {
+      const again = await llmGenerate(
+        `${prompt}\n\nYOUR PREVIOUS DRAFT SAID "${stale.join('", "')} tak" — those months are already over, so nothing can last until then. Write the whole reply again, using only dates that are still ahead (the running period's end, or a window from the calculated data).`,
+        { temperature: 0.4, thinkingBudget: 0, timeoutMs: 45_000 }
+      );
+      const retry = parseAnswerReasonFollowups(again);
+      if (retry.answer && pastDeadlines(retry.answer).length === 0) out = retry;
+    } catch (e: any) {
+      console.warn("[chat] rewrite failed:", e?.message);
+    }
+  }
+
+  // Does it answer THIS question, or re-serve the last one?
+  out = await reviseIfOffTarget(
+    out,
+    prompt,
+    priorTurns.filter((m) => m.role !== "user").map((m) => String(m.message ?? "")),
+    args.question
+  );
+
   // A weaker fallback model sometimes writes its own notes before the reply (live:
   // "silent thinking… The user is asking… let's construct the response.Md Ali, …").
   // Keep only the reply, which starts at their name.
@@ -1129,6 +1384,20 @@ ${languageReminder(args.language)}`;
 
 const LEAK_RE = /(^|\n)\s*(silent thinking|thinking:|the user is asking|constraint check|let'?s (refine|construct|check)|okay, let'?s)|\b(FINAL SILENT CHECK|QUALITY GATE|Constraint Check)\b/i;
 
+// A follow-up chip is something the user taps to ask next, so it has to BE a question.
+// Weaker models sometimes dump their own silent checklist into this block instead — live
+// (25 Sep 2026) the three chips read "): Yes", "Confidence Score: 5/5" and one real
+// question. Anything that does not read like a question is dropped.
+const QUESTION_START_RE = /^(kya|kab|kaise|kaisa|kaisi|kaun|kitn|kahan|kyun|kyu|mera|meri|mere|is|iska|iski|what|when|how|why|who|where|which|will|can|should|does|do|tell|क्या|कब|कैसे|कौन|कितन|कहाँ|कहां|क्यों|मेरा|मेरी|मेरे)\b/i;
+function isFollowupQuestion(line: string): boolean {
+  if (line.length < 8 || line.length > 140) return false;
+  if (/^[\d).:,\-*#+=]/.test(line)) return false; // "22. …", "): Yes", "- 5/5"
+  if (!line.includes("?") && !QUESTION_START_RE.test(line)) return false;
+  if (/\?\s*(yes|no|haan|nahi)\.?$/i.test(line)) return false; // a self-check, not a question
+  if (/\b\d+\s*\/\s*\d+\b/.test(line)) return false; // "5/5", "7/10"
+  return !/(reason part|answer part|confidence|score|checklist|@@|constraint|quality gate|plain language|gate)/i.test(line);
+}
+
 // Pulls the trailing "@@FOLLOWUPS@@\n<q1>\n<q2>..." block off the end of a
 // reason (or answer, if reason itself is missing) string, returning the
 // cleaned text plus up to 3 non-empty follow-up question strings.
@@ -1140,8 +1409,7 @@ function splitFollowups(text: string): { text: string; followups: string[] } {
     .split(/\r?\n/)
     .map((l) => l.replace(/^\s*[•\-]\s*/, "").trim())
     .filter(Boolean)
-    // A leaked checklist line is not a question (live: "22. Reason part: … no labels? Yes.").
-    .filter((l) => l.length <= 140 && !/^\d+[.)]\s/.test(l) && !/\?\s*(yes|no)\.?$/i.test(l) && !/(reason part|answer part|@@|constraint|quality gate|plain language)/i.test(l))
+    .filter(isFollowupQuestion)
     .slice(0, 3);
   return { text: text.slice(0, idx).trim(), followups };
 }
@@ -1153,6 +1421,14 @@ function scrubInternalNames(t: string): string {
     .replace(/["'`]?strength_ranking["'`]?/gi, "graha bal")
     .replace(/["'`]?period_profile["'`]?/gi, "dasha ka hisaab")
     .replace(/["'`]?timing_computed["'`]?/gi, "timing ka hisaab")
+    // The newer computed blocks leak the same way (live 25 Sep 2026: "jaisa ki
+    // psyche_patterns mein 'mind-saturn' dikhata hai").
+    .replace(/,?\s*(jaisa ki|jaise|as (shown|seen) in)?\s*["'`]?psyche_patterns["'`]?(\s+mein)?/gi, " swabhav ke hisaab se")
+    .replace(/["'`]?chart_highlights["'`]?/gi, "kundli ke khaas points")
+    .replace(/["'`]?connection_facts["'`]?/gi, "rishte ka hisaab")
+    .replace(/["'`]?highlights_for_this_section["'`]?/gi, "is hisse ke khaas points")
+    // Rule ids are internal too ("mind-saturn", "think-loop", "love-secret").
+    .replace(/\s*["'`](mind|think|identity|control|trust|conflict|impulse|unfinished|love|venus|money|yoga|career|spiritual|debt|health|family|foreign|marriage|studies)-[a-z0-9]+["'`]/gi, "")
     .replace(/["'`]?day_computed["'`]?/gi, "aaj ka hisaab")
     .replace(/["'`]?rashi_info["'`]?/gi, "rashi ka hisaab")
     .replace(/\b(MOST_LIKELY|ALSO_POSSIBLE|RIGHT_NOW|INDICATION|DAY_SCORE|DAY_TONE_WORD)\b/g, "")

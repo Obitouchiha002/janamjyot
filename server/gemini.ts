@@ -9,6 +9,10 @@ import { chartClaimErrors } from "./claim-check";
 import { pastMilestones } from "./past-timeline";
 import { llmGenerate } from "./llm";
 import { detectYogas } from "./yogas";
+import { highlightsFor, reportKeyPoints } from "./va/keyPoints";
+import { wrongBirthNakshatra } from "./va/replyChecks";
+import { computeChartFacts, chartFactsForAI } from "./va/chartFacts";
+import { computeTiming, timingForAI, periodProfile, type TimingTopic } from "./va/timing";
 
 /*
  * Who this astrologer is, and what they may never do. Shared by everything.
@@ -1774,8 +1778,56 @@ async function lifeReportPart(
   // it is actually read — carrying it inside the JSON too was the same 150
   // tokens twice, in a prompt that has to fit a free model's ceiling.
   const { birth_chart_facts: _facts, ...ctx } = buildFullChartContext(chart, scoped) as any;
+  // What THIS chart actually shouts about, worked out by rule (server/va/highlights.ts and
+  // server/va/psyche.ts) and mapped onto the areas being written. Without these every area
+  // came out readable but general — true of almost anyone.
+  const sectionHighlights = highlightsFor(chart, areas);
+  const psychePatterns = reportKeyPoints(chart)?.patterns ?? null;
+
+  // The same three computed blocks VedicAstra's report reads, so both apps' reports rest on
+  // calculation rather than the model's judgement: every fact it may state (chart_facts,
+  // which also carries the RATINGS), which period is strong or weak for what
+  // (period_profile), and the calculated window for each area's main event.
+  const ayan = Number(process.env.PROKERALA_AYANAMSA) || 1;
+  const REPORT_TOPIC: Record<string, TimingTopic> = {
+    health: "health", wealth: "wealth", career: "career", marriage: "marriage",
+    relationships: "relationship", travel: "foreign", business: "business",
+  };
+  const eventTiming: Record<string, any> = {};
+  for (const a of areas) {
+    try {
+      const t = REPORT_TOPIC[a] ? computeTiming(chart, REPORT_TOPIC[a], ayan) : null;
+      if (t) eventTiming[a] = timingForAI(t);
+    } catch { /* one area without a window must not lose the report */ }
+  }
+  /*
+   * Only the parts of chart_facts this report actually speaks from.
+   *
+   * The whole block is ~19,000 characters, and more than half of it (gochar_calendar,
+   * saturn_cycles, the full planet and house-lord tables) is either already in the chart
+   * context above or in live_transit. In a per-area call that has to fit a free model's
+   * ceiling, those duplicates are what push a weak model into answering in prose instead
+   * of JSON. What stays is what the reading states out loud — and the ratings, which are
+   * enforced in code below.
+   */
+  const computedFacts = (() => {
+    try {
+      const f = computeChartFacts(chart, ayan);
+      if (!f) return null;
+      const all = chartFactsForAI(f) as any;
+      const keep = ["note", "ratings", "yogas", "doshas", "strength_ranking", "career", "health", "partner", "lucky", "wealth", "jaimini"];
+      return Object.fromEntries(keep.filter((k) => all[k] != null).map((k) => [k, all[k]]));
+    } catch { return null; }
+  })();
+  const profile = (() => { try { return periodProfile(chart, ayan); } catch { return null; } })();
+
   const fullContext = {
     ...ctx,
+    ...(computedFacts ? { chart_facts: computedFacts } : {}),
+    ...(profile ? { period_profile: profile } : {}),
+    ...(Object.keys(eventTiming).length ? { event_timing_computed: eventTiming } : {}),
+    ...(sectionHighlights ? { highlights_for_this_section: sectionHighlights } : {}),
+    ...(psychePatterns?.length ? { psyche_patterns: psychePatterns } : {}),
     live_transit: transit ?? null,
     timeline: reportTimeline(chart),
     birth_chart_facts: birthChartFactSheet(chart),
@@ -1829,6 +1881,8 @@ YOU in "timeline" below — never invent, shift or round a period's dates. Each 
 ONE plain string (never a list), with one "• " bullet per line in this shape:
 "• **[Lord-Lord] (YYYY–YYYY)**: <what this period specifically means for THIS
 area of their life>."
+The label carries only the two YEARS — "(2028–2031)", never a full date like
+"(2028-04-30 – 2031-05-01)", which reads like a database row rather than a reading.
 Do not invent events (no job titles, no illnesses, no named people) — describe
 the KIND of period it is, concretely enough to recognise.
 
@@ -1859,6 +1913,27 @@ the KIND of period it is, concretely enough to recognise.
     around this; a vague line with a date on it is a failure. This is also where
     the current mahadasha's own end date belongs, if it helps.
 
+EVERY YOGA, DOSHA, CAREER FIELD, HEALTH AREA, PARTNER TRAIT, LUCKY THING AND MONEY LEVEL
+you state must be present in "chart_facts". If it is not there, do not say it — no invented
+yoga names, no dosha the data does not list, no salary figure. Ratings come from
+chart_facts.ratings (see below).
+
+WHAT THIS CHART IS ACTUALLY SHOUTING ABOUT — HARD RULE. "highlights_for_this_section"
+holds the real problems and strengths of THIS chart, worked out by rule and ranked, each
+with "says" (plain words), "because" (the chart reason), "until" (when the running phase
+ends) and "active_now". For every area listed there:
+  • "caution" MUST name that area's computed problem(s) in plain words — carry "says"
+    almost as written, add the "until" date when there is one ("...April 2027 tak"), and
+    work "because" in as a natural clause. A generic caution ("thoda dhyan rakhein",
+    "dhairya rakhein") in place of a computed problem is a failure.
+  • "positive" MUST name that area's computed strength(s) the same way.
+  • "summary" must OPEN with the strongest live one (active_now first), not a general line.
+Do not present anything outside these lists as this chart's main problem or strength.
+"psyche_patterns" (how this person thinks, decides, trusts, and trips themselves up)
+belongs in the summary/guidance of the relationships and health areas: use "pattern" and
+"shows_up_as" nearly as written, and give the "gift" of the same placement too. Invent no
+traits beyond these.
+
 For each area produce an object with EXACTLY these keys:
   "rating"    (a PLAIN INTEGER 1-10, not a string — see below),
   "summary"   (the overall pattern, said warmly),
@@ -1869,12 +1944,27 @@ For each area produce an object with EXACTLY these keys:
   "disclaimer"(one short kind line; for health note it is not medical advice,
                for wealth note it is not financial advice).
 
-"rating" — 1 to 10, judged from what the chart actually shows for THIS area:
-the house and its lord, benefic or malefic influence, whether the running
-periods support it, and how serious the cautions are. 1-3 is genuinely
-difficult, 4-6 mixed, 7-8 good, 9-10 exceptional. Do NOT park everything at 6
-or 7 to be kind — a report where every area scores the same tells them nothing,
-and the number is the first thing they look at.
+"rating" — 1 to 10. It is ALREADY CALCULATED: use exactly
+chart_facts.ratings.<area>.rating ("relationships" → ratings.relationships,
+"travel" → ratings.travel, and so on), as a plain integer, and write "summary",
+"positive" and "caution" so they agree with that number (1-3 genuinely
+difficult, 4-6 mixed, 7-8 good, 9-10 exceptional). Do not judge the number
+yourself and do not round it to be kind.
+
+PERIOD JUDGEMENTS FOLLOW period_profile: in "past", "present" and "future", whether a
+period was or will be GOOD or WEAK for this area must match period_profile for that
+period ("strong_for" / "weak_for", and "health" for the health area). Never call a period
+good for an area that period_profile lists as weak there, or the reverse.
+
+EVENT TIMING — HARD RULE: "event_timing_computed" holds, per area, the window CALCULATED
+by code (dasha + Jupiter/Saturn transits) in which that area's main event is most likely:
+marriage for "marriage", job/career growth for "career", gains for "wealth", foreign
+travel for "travel", and so on. For "health" those windows are the sensitive periods to be
+careful about. The future bullet for the period containing MOST_LIKELY must say it is the
+strongest window for that event, with its peak months. Never call any other period THE
+most likely time; a second window must be one of ALSO_POSSIBLE. Never copy the key names
+(MOST_LIKELY, ALSO_POSSIBLE, INDICATION, RIGHT_NOW) into the text — say it naturally in
+the reply language.
 
 Respond with a SINGLE valid JSON object whose top-level keys are exactly:
 ${list}. Keep summary/positive/caution/guidance/disclaimer to a few natural
@@ -1914,9 +2004,44 @@ ${languageInstruction(language)}`;
   // failure — a part cut off mid-JSON loses the areas after the cut — and an
   // area of this shape (four past bullets, one present, three future, five
   // short prose fields) measures ~800 tokens, so a part is kept to three.
-  const text = await generateChecked(prompt, chart, transit, {
-    temperature: 0.8, thinkingBudget: 0, maxTokens: Math.min(4000, 1000 + 800 * areas.length), purpose: "life_report", strong: true,
+  const genStarted = Date.now();
+  /*
+   * json: true asks the provider for JSON mode (Gemini: responseMimeType
+   * application/json). Without it this call relied on the model choosing to obey "respond
+   * with a single JSON object" — and when every strong model is rate-limited and the call
+   * lands on flash-lite, it answers in warm prose instead ("Namaste! Aapke janm kundli ko
+   * dekhkar…"), which is then thrown away as unparseable. VedicAstra's report has always
+   * asked for JSON mode; this is the same thing.
+   */
+  let text = await generateChecked(prompt, chart, transit, {
+    json: true, temperature: 0.8, thinkingBudget: 0, maxTokens: Math.min(4000, 1000 + 800 * areas.length), purpose: "life_report", strong: true,
   });
+
+  /*
+   * The janma nakshatra is the most individual placement in a whole chart, which is why the
+   * prompt above leans on it — and exactly why naming the wrong one is the worst kind of
+   * error: it reads as precise and is simply not them. (Live in VedicAstra: a Revati pada-2
+   * chart came back as "aapki Rohini Nakshatra".) Checked in code, and corrected once — but
+   * only when the first call was quick, since the function is killed at 60s and a half
+   * report in hand beats no report at all.
+   */
+  const born = (chart as any)?.summary?.nakshatra;
+  const wrongNak = born ? wrongBirthNakshatra(String(text ?? ""), String(born)) : [];
+  if (wrongNak.length && Date.now() - genStarted < 20_000) {
+    console.warn(`[report] wrong birth nakshatra (${wrongNak.join(", ")}) — chart says ${born}, asking again`);
+    try {
+      text = await generateChecked(
+        `${prompt}\n\nYOUR PREVIOUS DRAFT CALLED THEIR BIRTH NAKSHATRA "${wrongNak.join('", "')}". That is not their nakshatra — theirs is "${born}", exactly as "birth_summary.nakshatra" says. Write the whole thing again with that nakshatra and its real classical nature, and never name any other nakshatra as theirs.`,
+        chart, transit,
+        { json: true, temperature: 0.6, thinkingBudget: 0, maxTokens: Math.min(4000, 1000 + 800 * areas.length), purpose: "life_report", strong: true }
+      );
+    } catch (e: any) {
+      console.warn("[report] nakshatra rewrite failed:", e?.message);
+    }
+  } else if (wrongNak.length) {
+    console.warn(`[report] wrong birth nakshatra (${wrongNak.join(", ")}) — no time to regenerate`);
+  }
+
   const j = parseJsonLoose(text);
   if (!j) {
     // Log the shape, never the reading itself: a report is someone's private
@@ -1930,6 +2055,16 @@ ${languageInstruction(language)}`;
   for (const a of areas) {
     for (const f of ["summary", "past", "present", "future", "positive", "caution", "guidance", "disclaimer"]) {
       if (picked[a]?.[f] != null) picked[a][f] = asReportText(picked[a][f], ["past", "present", "future"].includes(f));
+    }
+  }
+
+  // The rating is calculated (chart_facts.ratings), so it is enforced here even when the
+  // model drifted — the number on screen always equals the computed one, exactly as in
+  // VedicAstra. A model-judged score was the one part of this report nothing verified.
+  const computedRatings = (computedFacts as any)?.ratings;
+  if (computedRatings) {
+    for (const a of areas) {
+      if (picked[a] && typeof computedRatings[a]?.rating === "number") picked[a].rating = computedRatings[a].rating;
     }
   }
   /*
