@@ -41,6 +41,11 @@
     <!-- Voice input: speech-to-text for asking questions (runtime-requested) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Updating in place: the app downloads its own APK and hands it to
+         Android's installer. This does NOT install silently — the system still
+         shows its install screen — it only removes the trip to the browser. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Android 11+ package visibility: needed to reach the speech recognizer -->
     <queries>
         <intent>

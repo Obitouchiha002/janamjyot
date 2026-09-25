@@ -2,4 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- Where the downloaded update APK lands, so FileProvider can hand it to
+         the installer (getExternalFilesDir(DIRECTORY_DOWNLOADS)). -->
+    <external-files-path name="apk_updates" path="Download" />
 </paths>

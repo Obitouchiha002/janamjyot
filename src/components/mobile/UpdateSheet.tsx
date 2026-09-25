@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Download, Sparkles, X } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
 import { haptic } from '@/lib/native';
-import { checkForUpdate, skipVersion, startUpdate, type UpdateInfo } from '@/lib/appUpdate';
+import { checkForUpdate, skipVersion, startUpdate, resumePendingInstall, type UpdateInfo, type UpdateStage } from '@/lib/appUpdate';
+import { isNative } from '@/lib/native';
 
 const SPRING = { type: 'spring' as const, stiffness: 400, damping: 36, mass: 0.9 };
 
@@ -13,6 +14,7 @@ const SPRING = { type: 'spring' as const, stiffness: 400, damping: 36, mass: 0.9
  */
 export default function UpdateSheet() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [stage, setStage] = useState<UpdateStage | null>(null);
 
   useEffect(() => {
     // Wait a moment so this never competes with the splash or first paint.
@@ -20,10 +22,30 @@ export default function UpdateSheet() {
     return () => clearTimeout(t);
   }, []);
 
+  /*
+   * They left for the "allow installs" screen and came back. The APK is
+   * already on the phone, so the installer opens by itself rather than making
+   * them start the download over.
+   */
+  useEffect(() => {
+    if (!isNative) return;
+    let handle: any;
+    import('@capacitor/app').then(({ App }) => {
+      App.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) return;
+        resumePendingInstall().then((went) => { if (went) setStage({ stage: 'installing' }); });
+      }).then((h) => { handle = h; });
+    }).catch(() => {});
+    return () => { handle?.remove?.(); };
+  }, []);
+
   const close = () => {
     if (info && !info.mandatory) skipVersion(info.latest);
     setInfo(null);
+    setStage(null);
   };
+
+  const busy = stage?.stage === 'downloading' || stage?.stage === 'installing';
 
   return (
     <AnimatePresence>
@@ -73,15 +95,41 @@ export default function UpdateSheet() {
               You have v{info.current} · latest is v{info.latest}
             </p>
 
+            {/* The button IS the progress bar: the download happens here, in
+                the app, so there is nowhere else to look while it runs. */}
             <Pressable
               feedback="medium"
-              onClick={() => { haptic.medium(); startUpdate(info.apkUrl); }}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+              disabled={busy}
+              onClick={() => { haptic.medium(); startUpdate(info.apkUrl, setStage); }}
+              className="relative mt-5 flex w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-accent px-5 py-3.5 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25 disabled:opacity-95"
             >
-              <Download className="h-[17px] w-[17px]" /> Update now
+              {stage?.stage === 'downloading' && (
+                <motion.span
+                  className="absolute inset-y-0 left-0 bg-white/25"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${stage.percent}%` }}
+                  transition={{ ease: 'easeOut', duration: 0.3 }}
+                />
+              )}
+              <span className="relative flex items-center gap-2">
+                <Download className="h-[17px] w-[17px]" />
+                {stage?.stage === 'downloading'
+                  ? `Downloading… ${stage.percent}%`
+                  : stage?.stage === 'installing'
+                    ? 'Opening the installer…'
+                    : stage?.stage === 'needs-permission'
+                      ? 'Waiting for permission…'
+                      : stage?.stage === 'failed'
+                        ? 'Try again'
+                        : 'Update now'}
+              </span>
             </Pressable>
 
-            {!info.mandatory && (
+            {stage?.stage === 'failed' && (
+              <p className="mt-2 text-center text-[12.5px] font-semibold text-destructive">{stage.message}</p>
+            )}
+
+            {!info.mandatory && !busy && (
               <Pressable
                 subtle onClick={close}
                 className="mt-2 block w-full py-2.5 text-center text-[13px] font-semibold text-muted-foreground"
@@ -91,8 +139,9 @@ export default function UpdateSheet() {
             )}
 
             <p className="mt-3 text-center text-[11.5px] leading-relaxed text-muted-foreground">
-              Android will ask you to confirm the install — that prompt is normal for
-              apps downloaded outside the Play Store.
+              {stage?.stage === 'needs-permission'
+                ? 'Allow JanamJyot to install apps, then come back — the installer opens by itself.'
+                : 'The update downloads here in the app. Android shows its own install screen at the end — that prompt is normal for apps from outside the Play Store.'}
             </p>
           </motion.div>
         </motion.div>
