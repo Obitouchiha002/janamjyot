@@ -83,13 +83,16 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6 pt-2">
+    /* One column on a phone; from 1024px the same cards become two columns —
+       who they are on the left, their day and the tools on the right
+       (.kd-grid in index.css). */
+    <div className="kd-grid space-y-6 pt-2">
       {/* ── Who this kundli is ───────────────────────────────────────────
           The one card on this screen that is about a PERSON, so it is the one
           card allowed to carry their colour: a gradient taken from their moon
           sign, an avatar the app draws itself, and their two signs stated
           plainly instead of left to the jargon cards below. */}
-      <section className="m-card m-enter relative overflow-hidden p-5">
+      <section className="kd-person m-card m-enter relative overflow-hidden p-5">
         <span className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-accent/20 blur-2xl" />
         <div className="relative flex items-start gap-3.5">
           <ChartAvatar name={b.name} size={58} />
@@ -154,7 +157,7 @@ export default function DashboardPage() {
 
       {/* Plain-language "who you are" — read BEFORE the jargon stat cards, so a
           beginner's first impression is about their life, not Sanskrit terms. */}
-      <section className="m-enter" style={{ animationDelay: '0.03s' }}>
+      <section className="kd-you m-enter" style={{ animationDelay: '0.03s' }}>
         <YouCard
           chartId={chartId}
           name={b.name}
@@ -166,14 +169,14 @@ export default function DashboardPage() {
       {/* Today's snapshot, then the link into the full day. The card answers
           "what about today?" on its own; the row below is the way deeper in —
           the other order made the screen read as two competing "today" blocks. */}
-      <section className="m-enter" style={{ animationDelay: '0.04s' }}>
+      <section className="kd-today m-enter" style={{ animationDelay: '0.04s' }}>
         <TodayCard chartId={chartId} lang={b?.language} />
       </section>
 
       <Pressable
         to={`/daily/${chartId}`}
         feedback="select"
-        className="m-enter flex w-full items-center gap-3.5 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5"
+        className="kd-day m-enter flex w-full items-center gap-3.5 rounded-2xl border border-accent/30 bg-accent/[0.07] p-3.5"
         style={{ animationDelay: '0.05s' }}
       >
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground shadow-md shadow-accent/25">
@@ -189,7 +192,7 @@ export default function DashboardPage() {
       </Pressable>
 
       {/* key positions */}
-      <section className="m-enter grid grid-cols-2 gap-2.5" style={{ animationDelay: '0.08s' }}>
+      <section className="kd-stats m-enter grid grid-cols-2 gap-2.5" style={{ animationDelay: '0.08s' }}>
         <Stat label="Lagna" value={data.ascendant.sign} sub={`${data.ascendant.degree.toFixed(1)}°`} />
         <Stat label={t("Moon Rashi")} value={moon} />
         <Stat label={t("Sun Sign")} value={sun} />
@@ -202,7 +205,7 @@ export default function DashboardPage() {
 
       {/* current dasha */}
       <section
-        className="m-card m-enter relative overflow-hidden p-5"
+        className="kd-dasha m-card m-enter relative overflow-hidden p-5"
         style={{ animationDelay: '0.11s' }}
       >
         <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-accent/10 blur-2xl" />
@@ -225,7 +228,7 @@ export default function DashboardPage() {
       </section>
 
       {/* tools */}
-      <section className="m-enter" style={{ animationDelay: '0.14s' }}>
+      <section className="kd-tools m-enter" style={{ animationDelay: '0.14s' }}>
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
           {({ en: 'Chart tools', hi: 'कुंडली टूल्स', hinglish: 'Kundli tools' } as Record<string, string>)[getLang()] ?? 'Chart tools'}
         </h3>

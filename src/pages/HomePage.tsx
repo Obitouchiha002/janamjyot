@@ -36,7 +36,7 @@ import { useT, formatDate } from '@/lib/i18n';
 function ZodiacRing() {
   const spokes = Array.from({ length: 12 }, (_, i) => i);
   return (
-    <div className="pointer-events-none absolute -right-14 -top-10 h-56 w-56 opacity-[0.55]">
+    <div className="hero-ring pointer-events-none absolute -right-14 -top-10 h-56 w-56 opacity-[0.55]">
       <div className="absolute inset-0 rounded-full bg-accent/20 blur-3xl pulse-glow" />
       <svg viewBox="0 0 200 200" className="spin-slow h-full w-full">
         <circle cx="100" cy="100" r="86" fill="none" stroke="currentColor" strokeWidth="0.6" className="text-accent/40" />
@@ -126,9 +126,12 @@ export default function HomePage() {
     : profiles ?? [];
 
   return (
-    <div className="space-y-7 pt-2">
+    /* On a phone this is one column, top to bottom. From 1024px the same
+       sections become a two-column dashboard (see .home-grid in index.css) —
+       a desktop window should not be a phone with wallpaper either side. */
+    <div className="home-grid space-y-7 pt-2">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
+      <section className="home-hero m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
         <ZodiacRing />
         <p className="relative text-[13px] font-medium text-muted-foreground">
           {t(greetingKey())}{firstName ? `, ${firstName}` : ''}
@@ -190,17 +193,17 @@ export default function HomePage() {
           Only with a kundli: the bar reads the day FROM a chart, and without
           one it would open onto nothing. */}
       {primary && (
-        <section className="m-enter" style={{ animationDelay: '0.06s' }}>
+        <section className="home-today m-enter" style={{ animationDelay: '0.06s' }}>
           <TodayCard chartId={primary.id} variant="dark" />
         </section>
       )}
 
       {/* ── Quick actions ─────────────────────────────────────────────────── */}
-      <section className="m-enter" style={{ animationDelay: '0.1s' }}>
+      <section className="home-actions m-enter" style={{ animationDelay: '0.1s' }}>
         <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
           {t("Quick actions")}
         </h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="qa-grid grid grid-cols-2 gap-3">
           {ACTIONS.map((a) => {
             const Icon = a.icon;
             return (
@@ -220,7 +223,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Saved kundlis ─────────────────────────────────────────────────── */}
-      <section className="m-enter" style={{ animationDelay: '0.14s' }}>
+      <section className="home-kundlis m-enter" style={{ animationDelay: '0.14s' }}>
         <div className="mb-3 flex items-center justify-between px-1">
           <h3 className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
             {t("My Kundlis")}
@@ -285,7 +288,7 @@ export default function HomePage() {
           raised Chat tab below does the same thing, and the button sat on
           top of it. */}
       {primary && (
-        <section className="m-enter grid grid-cols-2 gap-3" style={{ animationDelay: '0.18s' }}>
+        <section className="home-jump m-enter grid grid-cols-2 gap-3" style={{ animationDelay: '0.18s' }}>
           <Pressable to={`/chat/${primary.id}`} className="m-card flex items-center gap-3 p-4 text-left">
             <MessageCircle className="h-5 w-5 shrink-0 text-accent" />
             <span className="text-[13.5px] font-bold leading-tight">{t("Talk to Astrologer")}</span>

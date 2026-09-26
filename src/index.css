@@ -508,6 +508,102 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   body::after { animation: none; }
 }
 
+/* ── Desktop: Home becomes a dashboard ─────────────────────────────────────
+   The same sections, laid out for a screen: the hero and what you DO on the
+   left, the day and who you read for on the right. On a phone the order top to
+   bottom is already right, so nothing here applies below 1024px. */
+@media (min-width: 1024px) {
+  .home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+  /* The phone's vertical rhythm comes from space-y-7; in a grid the gap does
+     that job, and the stacked margins would push every column out of line. */
+  .home-grid > * + * { margin-top: 0 !important; }
+  .home-hero    { grid-column: 1; grid-row: 1; }
+  .home-actions { grid-column: 1; grid-row: 2; }
+  .home-jump    { grid-column: 1; grid-row: 3; }
+  .home-today   { grid-column: 2; grid-row: 1; }
+  .home-kundlis { grid-column: 2; grid-row: 2 / span 2; }
+
+  /* The hero has a column to itself now, so it can speak at full size. */
+  .home-hero { padding: 34px 34px 30px; }
+  .home-hero h2 { font-size: 32px !important; max-width: 22ch !important; }
+  .home-hero p { max-width: 46ch !important; }
+  .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+  /* The zodiac wheel is the app's one piece of ornament — on a screen this size
+     it can be seen rather than peeked at. */
+  .home-hero .hero-ring { width: 340px; height: 340px; right: -70px; top: -70px; opacity: 0.5; }
+}
+
+/* ── Desktop: the Kundli screen ────────────────────────────────────────────
+   Who they are on the left, their day and the chart tools on the right. The
+   same cards, in two columns, so a kundli is one screen instead of a scroll. */
+@media (min-width: 1024px) {
+  .kd-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .kd-grid > * + * { margin-top: 0 !important; }
+  .kd-person { grid-column: 1; grid-row: 1; }
+  .kd-you    { grid-column: 1; grid-row: 2; }
+  .kd-stats  { grid-column: 1; grid-row: 3; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  .kd-dasha  { grid-column: 1; grid-row: 4; }
+  .kd-today  { grid-column: 2; grid-row: 1; }
+  .kd-day    { grid-column: 2; grid-row: 2; }
+  .kd-tools  { grid-column: 2; grid-row: 3 / span 2; }
+}
+
+/* ── Desktop: lists that are really galleries ──────────────────────────────
+   A column of one-line rows down the middle of a 1000px window is a phone
+   screenshot. Saved kundlis sit three across instead. */
+@media (min-width: 1024px) {
+  .kundli-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .kundli-list > * + * { margin-top: 0 !important; }
+  /* Three price cards side by side read as a choice; stacked they read as a
+     list you have to get to the bottom of. */
+  .plan-packs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .plan-packs > * + * { margin-top: 0 !important; }
+}
+
+/* ── Desktop: the Life Report reads like a notebook ────────────────────────
+   On a phone the seven areas are cards you swipe through above the reading.
+   Given a screen, they belong down the side: every area's score visible at
+   once — which is a summary of the whole report — with the section you picked
+   open beside it, and the rail staying put as you read. */
+@media (min-width: 1024px) {
+  .lr-shell {
+    max-width: none !important;
+    display: grid;
+    grid-template-columns: 212px minmax(0, 1fr);
+    gap: 20px 26px;
+    align-items: start;
+  }
+  /* Everything reads in the right-hand column; the two exceptions claim their
+     own place below. */
+  .lr-shell > * { grid-column: 2; }
+  .lr-keypoints { grid-column: 1 / -1 !important; }
+  .lr-tabs {
+    grid-column: 1 !important;
+    grid-row: 2 / span 60;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    position: sticky;
+    top: 8px;
+  }
+  .lr-tabs-inner { display: grid !important; width: auto !important; gap: 9px; }
+  .lr-tabs-inner > button { width: 100% !important; }
+}
+
 /* ── Desktop: the chat ─────────────────────────────────────────────────────
    The chat sizes itself against the phone chrome (top bar + tab bar), which a
    desktop window does not have — so the composer sat below the fold and the

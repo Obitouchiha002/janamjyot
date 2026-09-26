@@ -20,6 +20,7 @@ import {
   ArrowLeft, Clock, Copy, CopyCheck, History as HistoryIcon, Mic, MicOff,
   MessageSquareText, SendHorizontal, ShieldAlert, Sparkles, TriangleAlert,
 } from 'lucide-react';
+import { useSignInGate } from "@/lib/gate";
 import { useT } from '@/lib/i18n';
 import { getLang } from '@/lib/prefs';
 import { haptic } from '@/lib/native';
@@ -123,7 +124,10 @@ export default function DecidePage() {
     }
   };
 
+  const needsSignIn = useSignInGate();
+
   const send = async (text: string) => {
+    if (needsSignIn("decide", () => void send(text))) return;
     const clean = text.trim();
     if (!clean || thinking) return;
     haptic.tap();

@@ -23,6 +23,7 @@ import ReferCard from "@/components/ReferCard";
 import { useAuth } from "@/auth";
 import { openCheckout, packWhy } from "@/lib/checkout";
 import { getUiLang } from "@/lib/prefs";
+import { askSignIn } from "@/lib/gate";
 
 type Lang = "en" | "hi" | "hinglish";
 type Tri = { en: string; hi: string; hinglish: string };
@@ -212,19 +213,7 @@ export default function PlanPage() {
     return () => clearInterval(id);
   }, [user?.id]);
 
-  if (!user) {
-    return (
-      <div className="space-y-3 pt-2">
-        <Card>
-          <p className="text-[13.5px] leading-relaxed text-muted-foreground">{t(L.signIn, lang)}</p>
-          <Pressable to="/login" feedback="medium"
-                     className="mt-3.5 block w-full rounded-xl bg-primary py-3 text-center text-[14px] font-bold text-primary-foreground">
-            {t(L.signInBtn, lang)}
-          </Pressable>
-        </Card>
-      </div>
-    );
-  }
+  if (!user) return <PublicPlans lang={lang} />;
 
   if (loading) {
     return (
@@ -477,6 +466,115 @@ export default function PlanPage() {
         <RefreshCw className="h-4 w-4" /> {t(L.refresh, lang)}
         <ChevronRight className="hidden" />
       </Pressable>
+    </div>
+  );
+}
+
+/**
+ * The prices, to someone who has not signed in.
+ *
+ * This screen used to answer "what does it cost?" with "sign in to find out",
+ * which is the one thing a visitor will not do first. The pack list is public
+ * (GET /api/billing/packs), so it is shown in full — and the account is asked
+ * for at the moment they pick one, with the pack they picked carried through
+ * the sign-in and straight into checkout.
+ */
+function PublicPlans({ lang }: { lang: Lang }) {
+  const { user } = useAuth();
+  const [data, setData] = useState<{
+    packs: Credits["packs"];
+    trial: { rupees: number; days: number };
+    prices: Record<string, number>;
+  } | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/billing/packs").then((r) => r.json()).then(setData).catch(() => setData(null));
+  }, []);
+
+  // They signed in from the sheet: finish the purchase they started.
+  useEffect(() => {
+    if (user && pending) {
+      const pack = pending;
+      setPending(null);
+      openCheckout(pack, user.email);
+    }
+  }, [user, pending]);
+
+  const buy = (pack: string) => askSignIn({ reason: "plan", retry: () => setPending(pack) });
+
+  return (
+    <div className="space-y-3 pt-2">
+      <Card>
+        <Heading icon={Coins} tint="#E8B44A">{t(L.credits, lang)}</Heading>
+        <p className="text-[13.5px] leading-relaxed text-muted-foreground">
+          {t({
+            en: "Reading your chart, the panchang and making a kundli are free. Questions, full reports and matching are paid — with credits that never expire.",
+            hi: "कुंडली बनाना, चार्ट और पंचांग देखना मुफ़्त है। सवाल, पूरी रिपोर्ट और मिलान के लिए क्रेडिट लगते हैं, जो कभी खत्म नहीं होते।",
+            hinglish: "Kundli banana, chart aur panchang dekhna free hai. Sawaal, poori report aur matching ke liye credits lagte hain — jo kabhi expire nahi hote.",
+          }, lang)}
+        </p>
+
+        {!data && <div className="skeleton mt-3 h-[120px]" />}
+
+        {data && (
+          <div className="plan-packs mt-3.5 space-y-2">
+            {data.packs.map((p) => {
+              const name = ({ starter: "Starter", popular: "Popular", value: "Value" } as Record<string, string>)[p.id] ?? p.label;
+              const hot = p.id === "popular";
+              const q = data.prices?.chat ? Math.floor(p.credits / data.prices.chat) : null;
+              const r = data.prices?.report ? Math.floor(p.credits / data.prices.report) : null;
+              return (
+                <Pressable
+                  key={p.id}
+                  onClick={() => buy(p.id)}
+                  feedback="medium"
+                  className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left ${hot ? "border-accent bg-accent/10" : "border-border"}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-[14px] font-bold">{name}</span>
+                      {hot && (
+                        <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-accent">
+                          {t(L.mostPopular, lang)}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-[12.5px] font-semibold text-foreground/85">{packWhy(p.id, lang)}</span>
+                    {q !== null && r !== null && (
+                      <span className="mt-0.5 block text-[11.5px] text-muted-foreground">
+                        ≈ {q} {t(L.questionsWord, lang)} {t(L.orWord, lang)} {r} {t(L.reportsWord, lang)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[17px] font-black tabular-nums">₹{p.rupees}</span>
+                  <ChevronRight className="h-[16px] w-[16px] shrink-0 text-muted-foreground" />
+                </Pressable>
+              );
+            })}
+          </div>
+        )}
+
+        {data?.trial && (
+          <Pressable
+            onClick={() => buy("trial")}
+            className="mt-2 block w-full rounded-xl border border-border py-3 text-center text-[14px] font-bold"
+          >
+            {t(L.startTrial, lang)} — ₹{data.trial.rupees} / {data.trial.days} {t(L.days, lang)}
+            <span className="mt-0.5 block text-[11.5px] font-medium text-muted-foreground">{packWhy("trial", lang, data.trial.days)}</span>
+          </Pressable>
+        )}
+
+        <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">{t(L.safe, lang)}</p>
+      </Card>
+
+      <Card>
+        <p className="text-[13.5px] leading-relaxed text-muted-foreground">{t(L.signIn, lang)}</p>
+        <Pressable to="/login" feedback="medium"
+                   className="mt-3.5 block w-full rounded-xl bg-primary py-3 text-center text-[14px] font-bold text-primary-foreground">
+          {t(L.signInBtn, lang)}
+        </Pressable>
+      </Card>
     </div>
   );
 }

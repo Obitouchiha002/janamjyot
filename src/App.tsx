@@ -374,14 +374,23 @@ function Shell() {
     );
   }
 
-  // Sign-in wall. Unlike the earlier version of this gate, it is backed by the
-  // server: every non-public /api route now 401s without a token, so this is
-  // the real boundary rather than a screen someone can skip. No "continue as
-  // guest" for the same reason — there is nothing a guest could load.
-  //
-  // Charts a device created before this shipped are adopted on first sign-in
-  // (claimDeviceCharts), so nobody loses the kundlis they already made.
-  if (!user) {
+  /*
+   * The sign-in wall, and why the web does not have one.
+   *
+   * In the APK it stays: the app was installed deliberately, the first screen
+   * asking who you are is normal, and notifications and the app lock need an
+   * account anyway.
+   *
+   * On the web it was killing the product. A visitor arriving from the site met
+   * a sign-up form before a single word about their chart, and left. So the web
+   * lets them in as a guest: the server now allows making and reading a kundli
+   * with nothing but a device id (see PUBLIC_API in server.ts), and everything
+   * beyond that — chat, reports, matching, a decision — asks for the account at
+   * the moment it is needed (lib/gate.ts), finishing the action afterwards.
+   * Charts made as a guest are adopted on first sign-in (claimDeviceCharts), so
+   * nothing they did is lost.
+   */
+  if (!user && isNative) {
     return (
       <div className="app-shell bg-background text-foreground">
         <div className="app-scroll no-tabbar" style={{ paddingTop: 'calc(var(--sat) + 12px)' }}>

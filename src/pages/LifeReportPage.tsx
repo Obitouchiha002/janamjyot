@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSignInGate } from "@/lib/gate";
 import { PastTimeline } from "@/components/PastTimeline";
 import { ReportProgress } from "@/components/ReportProgress";
 import { useParams, Link } from "react-router-dom";
@@ -331,7 +332,14 @@ export default function LifeReportPage() {
    * one opened the old one again, and there was no way to get a fresh reading
    * at all. Opening an old one is what the "Previous reports" list is for.
    */
-  const generate = (l: string) => { setLang(l); setChosen(true); setOpenId(undefined); void newReport(l); };
+  const needsSignIn = useSignInGate();
+  // A guest can read their chart; a full report is written into their
+  // account and costs a model call, so it asks first — and writes itself
+  // as soon as they are in.
+  const generate = (l: string) => {
+    if (needsSignIn("report", () => generate(l))) return;
+    setLang(l); setChosen(true); setOpenId(undefined); void newReport(l);
+  };
   const onLangChange = (l: string) => { setLang(l); setChosen(true); loadReport(l); };
 
   const downloadPdf = async () => {
@@ -879,7 +887,10 @@ export default function LifeReportPage() {
           <Button onClick={() => loadReport(lang, true)}>Try again</Button>
         </div>
       ) : (
-        <div className="max-w-4xl">
+        /* Phone: tabs across the top, one section below. Desktop (>=1024px):
+           the tabs become a rail down the left with their scores, and the
+           reading fills the rest — see .lr-shell in index.css. */
+        <div className="lr-shell max-w-4xl">
           {/* ── One area at a time ───────────────────────────────────────────
               Seven areas stacked on a phone is a forty-screen scroll, and the
               thing people actually do with a report — read the one part they
@@ -894,13 +905,13 @@ export default function LifeReportPage() {
           {/* What the chart itself flags, before the seven sections. Not written by the
               model — it comes straight from the calculation. */}
           {keyPoints && (
-            <div className="mb-5">
+            <div className="lr-keypoints mb-5">
               <KeyPointsCard data={keyPoints} />
             </div>
           )}
 
-          <div className="-mx-4 mb-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex w-max gap-2.5">
+          <div className="lr-tabs -mx-4 mb-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="lr-tabs-inner flex w-max gap-2.5">
               {present.map((section) => {
                 const Icon = section.icon;
                 const on = section.id === active;

@@ -108,7 +108,8 @@ export default function ProfilesPage() {
         </Pressable>
       )}
 
-      <div className="space-y-2.5">
+      {/* A phone reads a list; a desktop window fits three across (.kundli-list). */}
+      <div className="kundli-list space-y-2.5">
         {profiles?.map((p, i) => (
           <div key={p.id} className="m-card m-enter overflow-hidden" style={{ animationDelay: `${Math.min(i, 8) * 0.04}s` }}>
             <div className="flex items-center gap-2 py-3 pl-4 pr-2">

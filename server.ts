@@ -446,7 +446,22 @@ app.use("/api/auth/otp/request", slowLimiter);
  *   • /panchang, /muhurat, /muhurat-month, /right-now, /horoscope, /astrologers,
  *     /testimonials, /download — not personal to anyone; they take a date or a
  *     place, never a chart, and the public website itself calls them.
+ *   • the GUEST surface (see below) — making and reading a kundli.
  * Admin routes are omitted deliberately: they carry their own requireAdmin.
+ *
+ * ── The guest surface ─────────────────────────────────────────────────────
+ * Nobody signs up for an app they have not seen, and on the web there is no
+ * install to make them commit first. So a visitor can make a kundli and read
+ * it — chart, divisionals, dasha, the day — while everything that COSTS a
+ * model call or holds a conversation (chat, reports, matching, decisions)
+ * still needs an account.
+ *
+ * This is not a hole in the ownership rules. A guest is identified by their
+ * device id (`identityOf`), the same value that already scopes charts, quotas
+ * and abuse limits, so one device sees only the kundlis it made, gets the same
+ * free quota as an account, and `claimDeviceCharts` moves them into the
+ * account on first sign-in. What a guest cannot do is read anything belonging
+ * to a signed-in user: the ownership guard below compares owners, not logins.
  */
 const PUBLIC_API = [
   /^\/auth\//,
@@ -469,6 +484,13 @@ const PUBLIC_API = [
   /^\/testimonials$/,
   /^\/downloads?$/,   // POST /download (record) and GET /downloads (public count)
   /^\/health$/,
+
+  // ── The guest surface: make a kundli, then read it ──────────────────────
+  /^\/create-chart$/,
+  /^\/profiles$/,                 // the device's own kundlis (identityOf scopes it)
+  /^\/profiles\/[^/]+$/,          // rename / delete one of them
+  /^\/chart\/[^/]+$/,             // the chart itself
+  /^\/chart\/[^/]+\/(d1|d9|divisional|dasha|yogas|ashtakavarga|today|remedies)$/,
 ];
 
 /*

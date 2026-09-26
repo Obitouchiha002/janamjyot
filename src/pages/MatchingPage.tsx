@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSignInGate } from "@/lib/gate";
 import { getLang } from "@/lib/prefs";
 import { useT } from "@/lib/i18n";
 import {
@@ -280,7 +281,10 @@ export default function MatchingPage() {
     await shareText("Kundli Matching — JanamJyot", line, "https://janamjyot.lzworth.in");
   };
 
+  const needsSignIn = useSignInGate();
+
   const match = async () => {
+    if (needsSignIn("match", () => void match())) return;
     if (!ready(boy) || !ready(girl)) { haptic.error(); setError(t("Enter name, date and place for both (choose the place from the suggestions).")); return; }
     setLoading(true); setError(null); setResult(null);
     try {
