@@ -20,6 +20,7 @@ import { otaReady, checkWebUpdate } from './lib/ota';
 import { pickPrimary } from './lib/primary';
 import { isOnline, onConnectivityChange } from './lib/offline';
 import { isLockEnabled } from './lib/biometric';
+import { widthFor, useIsDesktop } from './lib/layout';
 
 import TopBar from './components/mobile/TopBar';
 import TabBar from './components/mobile/TabBar';
@@ -253,6 +254,10 @@ function Shell() {
   }, []);
 
   const [scrolled, setScrolled] = useState(false);
+  // A form capped at a readable width, a dashboard given the room — decided by
+  // the route (lib/layout.ts), applied on the content wrapper below.
+  const width = widthFor(location.pathname);
+  const desktop = useIsDesktop();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const depth = depthOf(location.pathname);
@@ -422,12 +427,17 @@ function Shell() {
             two never overlap. Both legs are short tweens (≤150ms) — a spring
             here read as the app lagging behind the tap. */}
         <AnimatePresence mode="wait" initial={false}>
+          {/* A phone slides screens sideways, the way a phone does. A desktop
+              window has no back gesture and no stack — there a page should
+              settle in, not swipe past. */}
           <motion.main
             key={location.pathname}
-            initial={{ opacity: 0, x: (back ? -1 : 1) * (isLowPowerDevice ? 8 : 14) }}
-            animate={{ opacity: 1, x: 0, transition: { duration: 0.14, ease: [0.22, 1, 0.36, 1] } }}
-            exit={{ opacity: 0, transition: { duration: 0.07, ease: 'easeOut' } }}
-            className="app-content px-4 pb-6"
+            initial={desktop ? { opacity: 0, y: 10 } : { opacity: 0, x: (back ? -1 : 1) * (isLowPowerDevice ? 8 : 14) }}
+            animate={desktop
+              ? { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } }
+              : { opacity: 1, x: 0, transition: { duration: 0.14, ease: [0.22, 1, 0.36, 1] } }}
+            exit={{ opacity: 0, transition: { duration: 0.09, ease: 'easeOut' } }}
+            className={`app-content ${width} px-4 pb-6`}
           >
             {/*
               A screen now arrives as its own chunk, so there is a moment

@@ -409,24 +409,41 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
 .app-sidenav { display: none; }
 
 @media (min-width: 1024px) {
-  :root { --sidenav-w: 244px; --content-max: 1080px; }
+  :root { --sidenav-w: 246px; --content-max: 1080px; }
+  /*
+   * The shell itself becomes the layout: a rail column and a scrolling column.
+   *
+   * The rail was `position: fixed` with the page padded out of its way, which
+   * is two descriptions of the same edge that have to be kept in step — and a
+   * fixed element is the first thing to fall out of a screenshot, a print, or
+   * any ancestor that ever grows a transform. As a grid column it simply
+   * occupies its space.
+   */
+  .app-desktop {
+    display: grid;
+    grid-template-columns: var(--sidenav-w) minmax(0, 1fr);
+    grid-template-rows: 100dvh;
+  }
   .app-sidenav {
     display: block;
-    position: fixed;
-    top: 0; left: 0; bottom: 0;
-    width: var(--sidenav-w);
-    z-index: 50;
+    grid-column: 1;
+    grid-row: 1;
+    height: 100dvh;
     background: var(--chrome-bg);
     border-right: 1px solid var(--glass-brd);
-    backdrop-filter: saturate(180%) blur(18px);
-    -webkit-backdrop-filter: saturate(180%) blur(18px);
     overflow-y: auto;
     scrollbar-width: none;
+    position: relative;
   }
   .app-sidenav::-webkit-scrollbar { display: none; }
   /* The rail replaces the navbar — two of them is one too many. */
   .app-desktop .app-topnav { display: none; }
-  .app-desktop .app-scroll { padding-left: var(--sidenav-w); padding-top: 28px; padding-bottom: 56px; }
+  .app-desktop .app-scroll {
+    grid-column: 2;
+    grid-row: 1;
+    padding-top: 28px;
+    padding-bottom: 56px;
+  }
   /* A little more room to breathe than a phone's 16px gutter. */
   .app-desktop .app-content { padding-inline: 32px; }
   .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
@@ -508,6 +525,42 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   body::after { animation: none; }
 }
 
+/* ── Desktop: the design layer ─────────────────────────────────────────────
+   Everything in this app was drawn at phone width. Stretched across a desktop
+   window the same components stop being a design: a name field two thousand
+   pixels wide, a button the width of a table, a card with a phone's padding
+   floating in the middle of nothing. These rules give the desktop its own
+   proportions — a width per kind of screen, card surfaces with the weight a
+   large screen expects, controls that stop growing, and type that steps up
+   with the room. Phones never see any of it. */
+@media (min-width: 1024px) {
+  /* A form, a settings list, a page of text: one readable column. */
+  .app-desktop .app-content.narrow { max-width: 720px; }
+
+  /* Cards carry more weight on a big screen: a deeper radius, a real shadow,
+     and padding that matches the type rather than a thumb. */
+  .app-desktop .m-card { border-radius: 26px; box-shadow: 0 18px 44px -34px rgba(0, 0, 0, 0.5); }
+  .app-desktop .app-content.narrow .m-card { padding: 26px 28px; }
+
+  /* A primary action is a button, not a banner: it takes the width of what it
+     says, and sits where the eye leaves the form. */
+  .app-desktop .form-actions { justify-content: flex-end; }
+  .app-desktop .form-actions > .flex-1 { flex: 0 0 auto; min-width: 220px; padding-inline: 28px; }
+
+  /* An input fills a narrow form column; on a wide page it stops growing. */
+  .app-desktop .app-content.wide input[type="text"],
+  .app-desktop .app-content.wide input[type="email"],
+  .app-desktop .app-content.wide input[type="search"],
+  .app-desktop .app-content.wide select { max-width: 460px; }
+
+  /* Section headings get the air a desktop page has to spare. */
+  .app-desktop h2 { letter-spacing: -0.015em; }
+  .app-desktop .app-content.narrow h1 { font-size: 30px; line-height: 1.15; }
+
+  /* The keyboard lives on a phone; a desktop page does not need its inset. */
+  .app-desktop { --kb-inset: 0px; }
+}
+
 /* ── Desktop: Home becomes a dashboard ─────────────────────────────────────
    The same sections, laid out for a screen: the hero and what you DO on the
    left, the day and who you read for on the right. On a phone the order top to
@@ -524,9 +577,14 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   .home-grid > * + * { margin-top: 0 !important; }
   .home-hero    { grid-column: 1; grid-row: 1; }
   .home-actions { grid-column: 1; grid-row: 2; }
+  /* Row 3 belongs to whichever of these is on screen: the jump links once a
+     kundli exists, the "what you can do here" cards while none does. */
   .home-jump    { grid-column: 1; grid-row: 3; }
+  .home-value   { grid-column: 1; grid-row: 3; }
   .home-today   { grid-column: 2; grid-row: 1; }
   .home-kundlis { grid-column: 2; grid-row: 2 / span 2; }
+  /* Two feature cards across, so each keeps a readable line length. */
+  .value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   /* The hero has a column to itself now, so it can speak at full size. */
   .home-hero { padding: 34px 34px 30px; }

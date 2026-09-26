@@ -542,8 +542,10 @@ export default function CreateChartPage() {
         )}
       </div>
 
-      {/* actions */}
-      <div className="mt-5 flex items-center gap-3">
+      {/* actions — a full-width bar under the thumb on a phone; on a desktop
+          the same buttons sit at the end of the form, sized to their words
+          (.form-actions in index.css). */}
+      <div className="form-actions mt-5 flex items-center gap-3">
         {step > 0 && (
           <Pressable
             onClick={prev}

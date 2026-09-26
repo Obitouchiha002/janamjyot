@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Sparkles, Plus, Settings, LogIn, Crown,
@@ -41,6 +42,23 @@ export default function SideNav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  /*
+   * The balance lives in the phone's top bar, which a desktop window does not
+   * have — so a paying person had no way to see what they had left. It sits on
+   * the plan row here, refreshed whenever something spends credits.
+   */
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    if (!user) { setBalance(null); return; }
+    let alive = true;
+    const read = () => fetch('/api/credits')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && typeof d?.balance === 'number') setBalance(d.balance); })
+      .catch(() => {});
+    read();
+    window.addEventListener('jj:credits', read);
+    return () => { alive = false; window.removeEventListener('jj:credits', read); };
+  }, [user?.id]);
 
   const Item = ({ to, label, icon: Icon }: NavItem) => {
     // "/" only matches itself; every other item also owns its sub-screens, so
@@ -105,6 +123,11 @@ export default function SideNav() {
               >
                 <Crown className="h-[18px] w-[18px] shrink-0" />
                 My plan
+                {balance !== null && (
+                  <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[11.5px] font-bold tabular-nums text-accent">
+                    {balance}
+                  </span>
+                )}
               </button>
               <button
                 type="button"
