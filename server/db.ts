@@ -1594,9 +1594,14 @@ export const CREDIT_PRICES: Record<string, number> = {
 export const TRIAL = {
   paise: 100,
   days: 3,
-  // Re-cut with the new prices: five life readings for one rupee was ₹445 of
-  // product, which is not a trial, it is the whole thing for free.
-  limits: { life_report: 2, chat: 60, matching: 3, report: 3, timeline: 3, chart: 3 },
+  /*
+   * One of each, and five questions. A trial shows what the thing does; it is
+   * not a cheap way to buy it. At the current prices the old caps handed over
+   * roughly ₹470 of product for a rupee — sixty questions alone were ₹162 —
+   * and anyone who wanted the app for free simply took the trial and left.
+   * One full reading is still the most persuasive thing we have.
+   */
+  limits: { life_report: 1, chat: 5, matching: 1, report: 1, timeline: 1, chart: 2 },
 } as const;
 
 export interface TrialState {
