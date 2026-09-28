@@ -1397,20 +1397,26 @@ app.delete("/api/admin/keys/:id", requireAdmin, async (req: any, res) => {
   res.json({ ok: true });
 });
 
+/** An admin who has asked to be metered like everyone else (see checkQuota). */
+const asFreeUser = (req: any) => !!req?.user?.limits_json?.act_as_free;
+
 /** GET /api/me/usage — the caller's own plan and remaining quota. */
 app.get("/api/me/usage", async (req: any, res) => {
   const me = identityOf(req);
-  const limits = quotasFor(req.user ?? null);
+  const limits = quotasFor(asFreeUser(req) ? ({ ...req.user, role: "user", plan: "free" } as any) : req.user ?? null);
   const out: Record<string, { used: number; limit: number; window: string }> = {};
-  const myPlan = (req.user?.plan ?? "free") as PlanId;
-  for (const a of ["chart", "report", "ask", "match"] as QuotaAction[]) {
+  const myPlan = (asFreeUser(req) ? "free" : req.user?.plan ?? "free") as PlanId;
+  // Every metered action, not four of them: "decide" was missing, so the Plan
+  // screen could not say how many free decisions were left — the one quota
+  // that never refills.
+  for (const a of ["chart", "report", "ask", "match", "decide", "daily"] as QuotaAction[]) {
     out[a] = {
       used: await usageCount({ userId: me.userId, deviceId: me.deviceId, plan: myPlan }, a),
       limit: limits[a],
       window: windowFor(a, myPlan),
     };
   }
-  const asFree = !!(req.user as any)?.limits_json?.act_as_free;
+  const asFree = asFreeUser(req);
   res.json({
     plan: req.user?.role === "admin" && !asFree ? "unlimited" : asFree ? "free" : req.user?.plan ?? "free",
     act_as_free: asFree || undefined,
