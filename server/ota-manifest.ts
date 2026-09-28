@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609280512",
-  "url": "/ota/web-202609280512.zip",
-  "checksum": "3f842c71887cb7f428e82974dc230e3f8018c3da4f9176d64e33dbb3740dd3a7",
+  "build": "202609280524",
+  "url": "/ota/web-202609280524.zip",
+  "checksum": "7fcc822ee52cb65a29c1014124ec57f6884838453da54c4ef1772bc86aeeab7d",
   "min_native": "1.17",
-  "notes": "Reminder ab sahi time par aate hain. Report upar aapki kundli ki khaas baatein dikhati hai."
+  "notes": "Home screen phone par wapas wahi hai. Reminder sahi time par aate hain."
 };
