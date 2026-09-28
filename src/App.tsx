@@ -33,6 +33,7 @@ import SignInListener from './components/SignInSheet';
 import { LoadError } from './components/ErrorState';
 import FeedbackListener from './components/mobile/FeedbackSheet';
 import LockScreen from './components/mobile/LockScreen';
+import OtaBanner from './components/mobile/OtaBanner';
 import UpdateSheet from './components/mobile/UpdateSheet';
 import LanguageGate, { languageChosen } from './components/LanguageGate';
 import { depthOf, hidesTabBar } from './components/mobile/routes';
@@ -475,6 +476,10 @@ function Shell() {
 
       {/* Offers the newer APK when this build is behind (sideloaded = no store). */}
       <UpdateSheet />
+
+      {/* An over-the-air bundle has downloaded: apply it now, or let it take
+          over on the next cold start by itself. */}
+      {isNative && <OtaBanner />}
     </div>
   );
 }

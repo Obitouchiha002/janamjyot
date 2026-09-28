@@ -1,4 +1,6 @@
 import { Mail, Globe, Github, Instagram, Phone, Code2, Heart } from 'lucide-react';
+import OtaStatusCard from '@/components/mobile/OtaStatusCard';
+import { isNative } from '@/lib/native';
 import { Pressable } from '@/components/mobile/Pressable';
 import { writeClipboard, shareText } from '@/lib/native';
 
@@ -39,6 +41,9 @@ export default function DeveloperPage() {
 
   return (
     <div className="space-y-6 pt-2">
+      {/* What the updater last decided, and a way to run it now. */}
+      {isNative && <OtaStatusCard />}
+
       {/* profile */}
       <section className="m-card m-enter flex flex-col items-center p-6 text-center">
         <span className="grid h-20 w-20 place-items-center rounded-3xl bg-accent text-[34px] font-bold text-accent-foreground shadow-lg shadow-accent/25">

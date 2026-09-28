@@ -16,9 +16,9 @@ export interface OtaManifest {
 }
 
 export const OTA_MANIFEST: OtaManifest | null = {
-  "build": "202609280524",
-  "url": "/ota/web-202609280524.zip",
-  "checksum": "7fcc822ee52cb65a29c1014124ec57f6884838453da54c4ef1772bc86aeeab7d",
+  "build": "202609280534",
+  "url": "/ota/web-202609280534.zip",
+  "checksum": "d95b9805bf51fc1c37e5f128d004f447c52543b274cae41db3dc4a5ff7205ad8",
   "min_native": "1.17",
-  "notes": "Home screen phone par wapas wahi hai. Reminder sahi time par aate hain."
+  "notes": "Update ab turant lag jaata hai — 'Restart now' dabao. More > Developer me dikhta hai update kyun aaya ya nahi aaya."
 };
