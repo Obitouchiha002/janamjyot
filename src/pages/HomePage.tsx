@@ -1,73 +1,49 @@
 /**
- * Home — the layout the app launched with, brought back on request.
+ * Home — the astrologer, waiting.
  *
- * Three later redesigns (a night-sky Today card, a day arc, a kundli
- * thumbnail) added information and took away the calm: a cream hero with one
- * clear headline and one button, a dark "Today" bar, and four big tiles. That
- * first version is the one people pointed at as better, so it is the one here.
+ * This screen has been a grid of tiles three times now, and each time it said
+ * the same thing: here are eleven places you could go. The rail on the left and
+ * the strip along the top already say that, better, from every screen — so a
+ * dashboard repeating them is a page with nothing of its own, and it read
+ * exactly like one: spread out, busy, and silent about what to actually do.
  *
- * What is NOT brought back is what was wrong with it:
- *  · it greeted you with whichever kundli was newest — often a partner's —
- *    instead of your own (pickPrimary);
- *  · every word was English, whatever language you chose;
- *  · a floating "Talk to Astrologer" button that now sits on top of the Chat
- *    tab doing the same thing.
+ * What this app IS, is a conversation with someone who has read your chart. So
+ * that is what opens: a person waiting, a box to type into, and four things
+ * people actually ask. Beside it, who is being read — the chart's own facts and
+ * the day. Nothing here is navigation; everything here is the product.
+ *
+ * With no kundli yet the same surface asks for the one thing it needs first,
+ * instead of selling five features to someone who has given nothing.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
-  Sparkles, Plus, ChevronRight, HeartHandshake, CalendarDays,
-  MessageCircle, Orbit, ScrollText, Gem, User, Compass,
-  ShieldCheck, FileText, Languages,
+  ChevronRight, MessageCircle, FileText, HeartHandshake, Compass, Clock,
+  Grid2x2, Orbit, Sparkles, History, Leaf, CalendarDays, MapPin,
 } from 'lucide-react';
 import { Pressable } from '@/components/mobile/Pressable';
+import { NorthIndianChart } from '@/components/NorthIndianChart';
+import YouCard from '@/components/YouCard';
 import TodayCard from '@/components/TodayCard';
 import PanchangToday from '@/components/PanchangToday';
+import DayHours from '@/components/DayHours';
+import ChartAvatar from '@/components/ChartAvatar';
+import HomeHero from '@/components/HomeHero';
 import { useAuth } from '@/auth';
 import { pickPrimary } from '@/lib/primary';
 import { useT, formatDate } from '@/lib/i18n';
 
 /**
- * Rotating zodiac ring behind the hero. Pure SVG geometry — 12 house spokes and
- * a marker dot per sign.
- *
- * The signs are deliberately NOT drawn as ♈♉♊ glyphs: Android resolves those
- * codepoints through its emoji font and paints full-colour blobs, ignoring the
- * gold fill (a U+FE0E text-presentation selector doesn't override it inside
- * SVG <text> either).
+ * Profiles survive tab switches in memory. Without this Home refetched on every
+ * visit, so the greeting flashed back to "create your first kundli" before the
+ * name reappeared. Render the cached list on the first frame, refresh behind it.
  */
-function ZodiacRing() {
-  const spokes = Array.from({ length: 12 }, (_, i) => i);
-  return (
-    <div className="hero-ring pointer-events-none absolute -right-14 -top-10 h-56 w-56 opacity-[0.55]">
-      <div className="absolute inset-0 rounded-full bg-accent/20 blur-3xl pulse-glow" />
-      <svg viewBox="0 0 200 200" className="spin-slow h-full w-full">
-        <circle cx="100" cy="100" r="86" fill="none" stroke="currentColor" strokeWidth="0.6" className="text-accent/40" />
-        <circle cx="100" cy="100" r="68" fill="none" stroke="currentColor" strokeWidth="0.4" className="text-accent/25" strokeDasharray="3 5" />
-        <circle cx="100" cy="100" r="44" fill="none" stroke="currentColor" strokeWidth="0.4" className="text-accent/20" />
-        {spokes.map((i) => {
-          const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
-          const cos = Math.cos(a);
-          const sin = Math.sin(a);
-          return (
-            <g key={i}>
-              <line
-                x1={100 + cos * 68} y1={100 + sin * 68}
-                x2={100 + cos * 86} y2={100 + sin * 86}
-                stroke="currentColor" strokeWidth="0.5" className="text-accent/30"
-              />
-              <circle
-                cx={100 + cos * 77} cy={100 + sin * 77}
-                r={i % 3 === 0 ? 2.6 : 1.5}
-                className="fill-accent"
-                opacity={i % 3 === 0 ? 0.85 : 0.5}
-              />
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
+let profilesCache: any[] | null = null;
+
+/** Drop the cached list after a create or delete. */
+export function invalidateProfiles() {
+  profilesCache = null;
 }
 
 function greetingKey(): string {
@@ -78,70 +54,50 @@ function greetingKey(): string {
   return 'Good evening';
 }
 
+/** What people actually open the app to ask, in their own words. */
+const STARTERS = [
+  'Meri naukri kab lagegi?',
+  'Shaadi ka samay kab hai?',
+  'Aaj ka din kaisa rahega?',
+  'Paisa kab tak theek hoga?',
+];
+
 /**
- * What an account gets, shown to someone who does not have one yet.
+ * The chart's own screens. Each keeps a colour of its own, the way a real
+ * product's sections do — a grid where every tile is the same accent reads as
+ * a menu; a grid with a palette reads as a place.
  *
- * The first screen of the web app used to be a headline, five small tiles and
- * an empty "No kundlis yet" box — a product describing nothing. These are the
- * four things people actually come for, said in one line each, and each one is
- * a live destination: tapping it asks for the kundli (or the account) exactly
- * when it is needed rather than in advance.
+ * None of these repeats the rail or the top strip: they are all about THIS
+ * chart, and they live nowhere else.
  */
-const VALUE = [
-  { icon: MessageCircle, tint: '#D97706', to: '/chat',
-    title: 'Ask an astrologer, any hour',
-    line: 'Plain questions in Hindi, Hinglish or English — answered from your real chart, not a horoscope column.' },
-  { icon: FileText, tint: '#2F9E7E', to: '/reports',
-    title: 'A full life report',
-    line: 'Seven areas — career, money, marriage, health and more — each with the years behind it.' },
-  { icon: HeartHandshake, tint: '#F26D9B', to: '/match',
-    title: 'Kundli matching',
-    line: '36-guna Ashtakoot milan with the doshas explained, not just a score out of 36.' },
-  { icon: Compass, tint: '#7C6BF2', to: '/decide',
-    title: 'Faisla — should I do this?',
-    line: 'Bring a real decision and get a clear yes, no or wait, with the timing for it.' },
+const EXPLORE = [
+  { key: 'd1', label: 'Lagna chart', sub: 'D1 — the whole life', icon: Grid2x2, tint: '#4338ca', to: (id: string) => `/chart/${id}/d1` },
+  { key: 'd9', label: 'Navamsa', sub: 'D9 — marriage, dharma', icon: Sparkles, tint: '#db2777', to: (id: string) => `/chart/${id}/d9` },
+  { key: 'div', label: 'Divisional charts', sub: 'D10, D6, D11 and more', icon: Orbit, tint: '#2563eb', to: (id: string) => `/chart/${id}/divisional` },
+  { key: 'dasha', label: 'Dasha timeline', sub: 'Which period, and when', icon: Clock, tint: '#0d9488', to: (id: string) => `/chart/${id}/dasha` },
+  { key: 'past', label: 'Life timeline', sub: 'What the years did', icon: History, tint: '#7c3aed', to: (id: string) => `/timeline/${id}` },
+  { key: 'rem', label: 'Remedies', sub: 'What actually helps', icon: Leaf, tint: '#059669', to: (id: string) => `/chart/${id}/remedies` },
 ];
 
-const TRUST = [
-  { icon: ShieldCheck, text: 'Checked against the Swiss Ephemeris' },
-  { icon: Orbit, text: 'D1, D9, D10 and 9 more divisional charts' },
-  { icon: Languages, text: 'Hindi · Hinglish · English' },
+/** For a visitor with no chart yet: what the conversation can cover. */
+const CAN_ASK = [
+  { icon: MessageCircle, text: 'Career, money, marriage, health — asked in plain words' },
+  { icon: FileText, text: 'A full life report: seven areas, each with its years' },
+  { icon: HeartHandshake, text: 'Kundli matching, with the doshas explained' },
+  { icon: Compass, text: 'A real decision — should I, and when' },
 ];
-
-const ACTIONS = [
-  // First, and deliberately: this is the thing people open the app at midnight
-  // for. Everything else here is a reading; this one makes a decision with them.
-  { label: 'What should I do?', sub: 'Decide together', to: '/decide', icon: Compass, tint: '#2F9E7E' },
-  { label: 'Matching', sub: 'Guna Milan', to: '/match', icon: HeartHandshake, tint: '#F26D9B' },
-  { label: 'Panchang', sub: 'Today', to: '/panchang', icon: CalendarDays, tint: '#E8B44A' },
-  { label: 'Yogas', sub: 'Chart yogas', to: '/yogas', icon: Gem, tint: '#7DD3C0' },
-  { label: 'Muhurat', sub: 'Auspicious timing', to: '/muhurat', icon: Orbit, tint: '#A78BFA' },
-];
-
-/**
- * Profiles survive tab switches in memory. Without this the Home tab refetched
- * on every visit, so the hero flashed back to "create your first kundli"
- * before the name reappeared. Render the cached list on the first frame,
- * refresh in the background.
- */
-let profilesCache: any[] | null = null;
-
-/**
- * Drop the cached list after a create or delete, so coming back to Home never
- * shows a deleted person's name in the hero for a frame.
- */
-export function invalidateProfiles() {
-  profilesCache = null;
-}
 
 export default function HomePage() {
   const t = useT();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<any[] | null>(profilesCache);
+  const [chart, setChart] = useState<any>(null);
+  const [draft, setDraft] = useState('');
 
   useEffect(() => {
     fetch('/api/profiles')
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
         const list = Array.isArray(d) ? d : [];
         profilesCache = list;
@@ -151,285 +107,284 @@ export default function HomePage() {
   }, []);
 
   // Your own kundli, not the newest one — the newest is very often a partner's.
-  const primary = pickPrimary(profiles, user?.name);
+  const primary = useMemo(() => pickPrimary(profiles, user?.name), [profiles, user?.name]);
   const firstName = (user?.name || '').trim().split(/\s+/)[0];
-  // The list with the primary first, so "Active" always marks the right person.
-  const ordered = primary
-    ? [primary, ...(profiles ?? []).filter((p) => p.id !== primary.id)]
-    : profiles ?? [];
+
+  // The chart's own facts, for the panel beside the conversation.
+  useEffect(() => {
+    if (!primary?.id) { setChart(null); return; }
+    let alive = true;
+    fetch(`/api/chart/${primary.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setChart(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [primary?.id]);
+
+  /** Send them into the chat with the question already on its way. */
+  const ask = (text: string) => {
+    const q = text.trim();
+    if (!primary) { navigate('/create-chart'); return; }
+    navigate(q ? `/chat/${primary.id}?q=${encodeURIComponent(q)}` : `/chat/${primary.id}`);
+  };
+
+  // Their own chart, drawn on their own dashboard. A page about someone that
+  // never shows their chart is a page about nobody.
+  const [d1, setD1] = useState<any>(null);
+  useEffect(() => {
+    if (!primary?.id) { setD1(null); return; }
+    let alive = true;
+    fetch(`/api/chart/${primary.id}/d1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && !d.error) setD1(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [primary?.id]);
+
+  const lagna = chart?.summary?.lagna || chart?.ascendant?.sign;
+  const moon = chart?.summary?.rashi || chart?.summary?.moon_sign;
+  const nakshatra = chart?.summary?.nakshatra || chart?.ascendant?.nakshatra;
+  const maha = chart?.dashas?.current_mahadasha || chart?.summary?.current_mahadasha;
+  const antar = chart?.dashas?.current_antardasha;
 
   return (
-    /* On a phone this is one column, top to bottom. From 1024px the same
-       sections become a two-column dashboard (see .home-grid in index.css) —
-       a desktop window should not be a phone with wallpaper either side. */
-    <div className="home-grid space-y-7 pt-2">
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="home-hero m-card m-enter relative overflow-hidden px-5 pt-6 pb-5">
-        <ZodiacRing />
-        <p className="relative text-[13px] font-medium text-muted-foreground">
-          {t(greetingKey())}{firstName ? `, ${firstName}` : ''}
-        </p>
-        {primary ? (
-          <div className="relative">
-            <h2 className="mt-1 max-w-[80%] text-[25px] font-bold leading-[1.2] tracking-tight">
-              <span className="text-accent">{String(primary.name).split(' ')[0]}</span>{t("'s stars,")}<br />
-              {t("ready for today")}
-            </h2>
-            <p className="mt-2 max-w-[80%] text-[13px] leading-relaxed text-muted-foreground">
-              {t("Your kundli is saved. Open today's personalised guidance.")}
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
-              <Pressable
-                to={`/daily/${primary.id}`}
-                feedback="medium"
-                className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+    <div className="home-grid pt-2">
+      <div className="home-main">
+        {/* ── The astrologer ──────────────────────────────────────────────
+            One card, and it is a conversation: who is here, what they can be
+            asked, and the box to ask in. */}
+        <HomeHero
+          primary={primary}
+          chart={chart}
+          firstName={firstName}
+          greeting={t(greetingKey())}
+          onAsk={ask}
+        />
+
+        {/* Four things people actually ask, one tap from an answer. */}
+        {primary && (
+          <div className="flex flex-wrap gap-2">
+            {STARTERS.map((q, i) => (
+              <motion.button
+                key={q}
+                type="button"
+                onClick={() => ask(q)}
+                className="rounded-full border border-border bg-card px-3.5 py-2 text-[12.5px] font-semibold text-foreground/80 shadow-sm transition-colors hover:border-accent hover:text-accent"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.16 + i * 0.05, duration: 0.3 }}
               >
-                <Sparkles className="h-[17px] w-[17px]" /> {t("Today's Guidance")}
-              </Pressable>
-              <Pressable
-                to={`/dashboard/${primary.id}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-3 text-[13.5px] font-bold"
-              >
-                {t("Open Kundli")}
-              </Pressable>
-            </div>
-            <Pressable
-              to="/create-chart"
-              subtle
-              className="mt-3.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-muted-foreground"
-            >
-              <Plus className="h-[14px] w-[14px]" strokeWidth={2.6} /> {t("New Kundli")}
-            </Pressable>
+                {q}
+              </motion.button>
+            ))}
           </div>
-        ) : (
-          <motion.div
-            className="relative"
-            initial={{ opacity: 0, y: 14 }}
+        )}
+
+        {/* ── Their chart, and what it says about them ──────────────────
+            The dashboard should be recognisably THEIRS: the birth details they
+            gave, the chart those details produced, and a few honest lines about
+            what it means — not a menu. */}
+        {primary && d1?.planets?.length && (
+          <motion.section
+            className="home-chart m-card p-5"
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ delay: 0.08, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
           >
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/12 px-3 py-1 text-[11.5px] font-bold uppercase tracking-wider text-accent">
-              <Sparkles className="h-[13px] w-[13px]" /> {t("Free to start — no sign-up")}
-            </span>
-            <h2 className="mt-3 max-w-[16ch] text-[27px] font-bold leading-[1.15] tracking-tight">
-              {t("Your stars,")}<br />
-              <span className="text-accent">{t("precisely read")}</span>
-            </h2>
-            <p className="mt-2.5 max-w-[46ch] text-[13.5px] leading-relaxed text-muted-foreground">
-              {t("Your birth chart calculated to the minute, the periods running in your life right now, and an astrologer who answers from that chart — not from your sun sign.")}
-            </p>
-            <div className="mt-5 flex flex-wrap items-center gap-2.5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-[15.5px] font-bold leading-tight">
+                  {t('Your birth chart')}
+                </h3>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-muted-foreground">
+                  {chart?.birth_details?.date_of_birth && (
+                    <span className="flex items-center gap-1.5">
+                      <CalendarDays className="h-[13px] w-[13px] shrink-0" />
+                      {formatDate(chart.birth_details.date_of_birth, undefined, { weekday: false })}
+                      {chart.birth_details.time_of_birth ? ` · ${chart.birth_details.time_of_birth}` : ''}
+                    </span>
+                  )}
+                  {chart?.birth_details?.place_of_birth && (
+                    <span className="flex items-center gap-1.5">
+                      <MapPin className="h-[13px] w-[13px] shrink-0" />
+                      {chart.birth_details.place_of_birth}
+                    </span>
+                  )}
+                </p>
+              </div>
               <Pressable
-                to="/create-chart"
-                feedback="medium"
-                className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
+                to={`/chart/${primary.id}/d1`}
+                subtle
+                className="flex shrink-0 items-center gap-1 text-[13px] font-bold text-accent"
               >
-                <Plus className="h-[18px] w-[18px]" strokeWidth={2.6} />
-                {t("Create my free kundli")}
-              </Pressable>
-              <Pressable
-                to="/panchang"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-3 text-[13.5px] font-bold"
-              >
-                <CalendarDays className="h-[16px] w-[16px]" /> {t("Today's Panchang")}
+                {t('Full chart')} <ChevronRight className="h-4 w-4" />
               </Pressable>
             </div>
 
-            {/* Why any of this should be believed, in three lines nobody has to
-                take on faith — each one is a thing the app actually computes. */}
-            <ul className="mt-5 flex flex-col gap-1.5 border-t border-border pt-4">
-              {TRUST.map(({ icon: Icon, text }, i) => (
+            <div className="chart-split grid gap-5">
+              <div className="mx-auto w-full max-w-[340px]">
+                <NorthIndianChart
+                  planets={(d1.planets ?? []).map((p: any) => ({ ...p, short: String(p.planet).slice(0, 2) }))}
+                  ascendantSign={d1.ascendant?.sign || lagna}
+                  shortNames
+                />
+              </div>
+              {/* Plain language, from the same computed facts — this is the
+                  part people read first and the only part they quote back. */}
+              <div className="min-w-0">
+                <YouCard chartId={primary.id} name={primary.name} moonSign={moon} dashaLord={maha} />
+              </div>
+            </div>
+          </motion.section>
+        )}
+
+        {/* ── Their chart's own screens ─────────────────────────────── */}
+        {primary && (
+          <section>
+            <h3 className="mb-3 px-1 text-[12px] font-bold uppercase tracking-widest text-muted-foreground">
+              {t('Explore your chart')}
+            </h3>
+            <div className="explore-grid grid grid-cols-2 gap-3">
+              {EXPLORE.map(({ key, label, sub, icon: Icon, tint, to }, i) => (
+                <motion.div
+                  key={key}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.04 * i, duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <Pressable to={to(primary.id)} className="m-card va-card-hover group block h-full p-4 text-left">
+                    <span
+                      className="mb-3 grid h-10 w-10 place-items-center rounded-xl text-white shadow-sm"
+                      style={{ background: tint }}
+                    >
+                      <Icon className="h-[19px] w-[19px]" />
+                    </span>
+                    <p className="text-[14.5px] font-bold leading-tight">{t(label)}</p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">{t(sub)}</p>
+                  </Pressable>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Today's hours ─────────────────────────────────────────────
+            Real, computed, and free of any account — the answer to "is now a
+            good time" that people check before they do anything. */}
+        <DayHours />
+
+        {/* ── Where the conversation continues ──────────────────────────── */}
+        {primary && (
+          <motion.section
+            className="home-jump grid grid-cols-2 gap-3"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.4 }}
+          >
+            <Pressable to={`/chat/${primary.id}`} className="m-card flex items-center gap-3 p-4 text-left">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">
+                <MessageCircle className="h-[19px] w-[19px]" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-bold leading-tight">{t('Open the chat')}</span>
+                <span className="block text-[12px] text-muted-foreground">{t('Everything you have asked')}</span>
+              </span>
+            </Pressable>
+            <Pressable to={`/reports/${primary.id}`} className="m-card flex items-center gap-3 p-4 text-left">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/12 text-accent">
+                <FileText className="h-[19px] w-[19px]" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-bold leading-tight">{t('Life report')}</span>
+                <span className="block text-[12px] text-muted-foreground">{t('Seven areas, with dates')}</span>
+              </span>
+            </Pressable>
+          </motion.section>
+        )}
+      </div>
+
+      <div className="home-side">
+        {/* ── Who is being read ─────────────────────────────────────────── */}
+        {primary && (
+          <motion.section
+            className="home-profile m-card p-5"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.06, duration: 0.4 }}
+          >
+            <div className="flex items-center gap-3">
+              <ChartAvatar name={primary.name} size={46} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[16px] font-bold leading-tight">{primary.name}</p>
+                <p className="truncate text-[12px] text-muted-foreground">
+                  {primary.date ? formatDate(primary.date, undefined, { weekday: false }) : ''}
+                </p>
+              </div>
+            </div>
+
+            {(lagna || moon || nakshatra) && (
+              <div className="mt-3.5 grid grid-cols-3 gap-2">
+                {[[t('Lagna'), lagna], [t('Moon'), moon], [t('Nakshatra'), nakshatra]].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl bg-muted px-2.5 py-2">
+                    <p className="text-[9.5px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+                    <p className="mt-0.5 truncate text-[13px] font-bold">{value ? t(String(value)) : '—'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {maha && (
+              <p className="mt-3 flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
+                <Clock className="h-[14px] w-[14px] shrink-0 text-accent" />
+                {t('Running now')}:{' '}
+                <span className="font-bold text-foreground">{antar ? `${maha}–${antar}` : maha}</span>
+              </p>
+            )}
+
+            <Pressable
+              to={`/dashboard/${primary.id}`}
+              subtle
+              className="mt-3 flex items-center gap-1 text-[13px] font-bold text-accent"
+            >
+              {t('Open kundli')} <ChevronRight className="h-4 w-4" />
+            </Pressable>
+          </motion.section>
+        )}
+
+        {/* ── The day ───────────────────────────────────────────────────── */}
+        <section className="home-today">
+          {primary ? <TodayCard chartId={primary.id} variant="dark" /> : <PanchangToday />}
+        </section>
+
+        {/* ── What the conversation covers, for someone deciding whether to
+            give their birth details at all. */}
+        {!primary && (
+          <motion.section
+            className="m-card p-5"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12, duration: 0.45 }}
+          >
+            <h3 className="text-[15.5px] font-bold leading-tight">{t('What you can ask')}</h3>
+            <ul className="mt-3 space-y-2.5">
+              {CAN_ASK.map(({ icon: Icon, text }, i) => (
                 <motion.li
                   key={text}
-                  className="flex items-center gap-2 text-[12.5px] font-medium text-muted-foreground"
+                  className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted-foreground"
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.15 + i * 0.07, duration: 0.35 }}
+                  transition={{ delay: 0.16 + i * 0.06, duration: 0.32 }}
                 >
-                  <Icon className="h-[14px] w-[14px] shrink-0 text-accent" /> {t(text)}
+                  <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent/12 text-accent">
+                    <Icon className="h-[15px] w-[15px]" />
+                  </span>
+                  {t(text)}
                 </motion.li>
               ))}
             </ul>
-          </motion.div>
+          </motion.section>
         )}
-      </section>
-
-      {/* ── Today ─────────────────────────────────────────────────────────
-          Only with a kundli: the bar reads the day FROM a chart, and without
-          one it would open onto nothing. */}
-      <section className="home-today m-enter" style={{ animationDelay: '0.06s' }}>
-        {primary ? <TodayCard chartId={primary.id} variant="dark" /> : <PanchangToday />}
-      </section>
-
-      {/* ── Quick actions ─────────────────────────────────────────────────── */}
-      <section className="home-actions m-enter" style={{ animationDelay: '0.1s' }}>
-        <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-          {t("Quick actions")}
-        </h3>
-        <div className="qa-grid grid grid-cols-2 gap-3">
-          {ACTIONS.map((a, i) => {
-            const Icon = a.icon;
-            return (
-              <motion.div
-                key={a.to}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.04 * i, duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <Pressable to={a.to} className="m-card block h-full p-4 text-left">
-                  <span
-                    className="mb-3 grid h-11 w-11 place-items-center rounded-2xl"
-                    style={{ background: `${a.tint}22`, color: a.tint }}
-                  >
-                    <Icon className="h-[21px] w-[21px]" />
-                  </span>
-                  <p className="text-[15px] font-bold leading-tight">{t(a.label)}</p>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">{t(a.sub)}</p>
-                </Pressable>
-              </motion.div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── What this app does, for someone with nothing on screen yet ───── */}
-      {!profiles?.length && (
-        <section className="home-value m-enter" style={{ animationDelay: '0.12s' }}>
-          <h3 className="mb-3 px-1 text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-            {t("What you can do here")}
-          </h3>
-          <div className="value-grid grid gap-3">
-            {VALUE.map(({ icon: Icon, tint, to, title, line }, i) => (
-              <motion.div
-                key={to}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.06 * i, duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <Pressable to={to} className="m-card flex h-full items-start gap-3.5 p-4 text-left">
-                  <span
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
-                    style={{ background: `${tint}1F`, color: tint }}
-                  >
-                    <Icon className="h-[21px] w-[21px]" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-bold leading-tight">{t(title)}</span>
-                    <span className="mt-1 block text-[12.5px] leading-relaxed text-muted-foreground">{t(line)}</span>
-                  </span>
-                  <ChevronRight className="mt-1 h-[17px] w-[17px] shrink-0 text-muted-foreground" />
-                </Pressable>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Saved kundlis ─────────────────────────────────────────────────── */}
-      <section className="home-kundlis m-enter" style={{ animationDelay: '0.14s' }}>
-        <div className="mb-3 flex items-center justify-between px-1">
-          <h3 className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground">
-            {t("My Kundlis")}
-          </h3>
-          {!!profiles?.length && (
-            <Pressable to="/profiles" subtle className="flex items-center gap-0.5 text-[13px] font-semibold text-accent">
-              {t("View all")} <ChevronRight className="h-4 w-4" />
-            </Pressable>
-          )}
-        </div>
-
-        {profiles === null && (
-          <div className="space-y-2.5">
-            <div className="skeleton h-[68px]" />
-            <div className="skeleton h-[68px] opacity-60" />
-          </div>
-        )}
-
-        {/* Nothing saved yet. An empty box that says "empty" is a dead end, so
-            this says what it takes and what comes out of it. */}
-        {profiles?.length === 0 && (
-          <motion.div
-            className="m-card relative overflow-hidden p-5"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <span className="pointer-events-none absolute -right-10 -bottom-12 h-40 w-40 rounded-full bg-accent/15 blur-2xl" />
-            <span className="relative grid h-11 w-11 place-items-center rounded-2xl bg-accent/15 text-accent">
-              <Sparkles className="h-[21px] w-[21px]" />
-            </span>
-            <p className="relative mt-3 text-[16px] font-bold leading-tight">{t("Your kundli takes 30 seconds")}</p>
-            <p className="relative mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
-              {t("Name, date, time and place of birth — that is all. Everything else on this page is then about you.")}
-            </p>
-            <ul className="relative mt-3 space-y-1.5">
-              {[
-                t("Lagna, Moon sign, nakshatra and 12 charts"),
-                t("The dasha running now, with its dates"),
-                t("Today read from your own chart"),
-              ].map((line) => (
-                <li key={line} className="flex items-start gap-2 text-[12.5px] text-muted-foreground">
-                  <span className="mt-[7px] h-[5px] w-[5px] shrink-0 rounded-full bg-accent" />
-                  {line}
-                </li>
-              ))}
-            </ul>
-            <Pressable
-              to="/create-chart"
-              feedback="medium"
-              className="relative mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3 text-[14px] font-bold text-accent-foreground shadow-lg shadow-accent/25"
-            >
-              <Plus className="h-[17px] w-[17px]" strokeWidth={2.6} /> {t("Create my free kundli")}
-            </Pressable>
-          </motion.div>
-        )}
-
-        <div className="space-y-2.5">
-          {ordered.slice(0, 3).map((p, i) => (
-            <Pressable
-              key={p.id}
-              to={`/dashboard/${p.id}`}
-              subtle
-              className={`m-card flex w-full items-center gap-3 px-4 py-3.5 text-left ${i === 0 ? 'ring-2 ring-accent/40' : ''}`}
-            >
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
-                <User className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-[15px] font-bold">{p.name}</span>
-                  {i === 0 && (
-                    <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
-                      {t("Active")}
-                    </span>
-                  )}
-                </span>
-                <span className="block truncate text-[12px] text-muted-foreground">
-                  {p.date ? formatDate(p.date, undefined, { weekday: false }) : ''}
-                </span>
-              </span>
-              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-            </Pressable>
-          ))}
-        </div>
-      </section>
-
-      {/* ── Chat and reports for your own kundli ──────────────────────────
-          The floating "Talk to Astrologer" button is gone on purpose: the
-          raised Chat tab below does the same thing, and the button sat on
-          top of it. */}
-      {primary && (
-        <section className="home-jump m-enter grid grid-cols-2 gap-3" style={{ animationDelay: '0.18s' }}>
-          <Pressable to={`/chat/${primary.id}`} className="m-card flex items-center gap-3 p-4 text-left">
-            <MessageCircle className="h-5 w-5 shrink-0 text-accent" />
-            <span className="text-[13.5px] font-bold leading-tight">{t("Talk to Astrologer")}</span>
-          </Pressable>
-          <Pressable to={`/reports/${primary.id}`} className="m-card flex items-center gap-3 p-4 text-left">
-            <ScrollText className="h-5 w-5 shrink-0 text-accent" />
-            <span className="text-[13.5px] font-bold leading-tight">{t("Reports")}</span>
-          </Pressable>
-        </section>
-      )}
+      </div>
     </div>
   );
 }

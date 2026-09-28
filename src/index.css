@@ -449,9 +449,10 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   .qa-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
 }
 
-/* A wide monitor: the reading column stops growing, the window does not. */
+/* A wide monitor. A dashboard earns the extra width — a form does not, and it
+   is capped separately by `.narrow` above. */
 @media (min-width: 1440px) {
-  :root { --content-max: 1140px; }
+  :root { --content-max: 1280px; }
 }
 
 /* ── Desktop: the craft ────────────────────────────────────────────────────
@@ -462,7 +463,15 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
    can actually grab. All keyed off the theme's own variables, so every theme
    gets its own version rather than an orange one. */
 @media (min-width: 1024px) {
-  /* The wash. Two soft lights, drifting slowly enough to feel like weather. */
+  /*
+   * The wash. Three soft lights and a faint star grid, drifting slowly enough
+   * to feel like weather.
+   *
+   * A flat cream field behind two cards is what made this screen read as empty
+   * even when it was not — nothing anchored the page, so the cards floated.
+   * The texture is drawn, not an image: two SVG dot layers at different scales
+   * over the gradients, so it costs nothing to load and follows the theme.
+   */
   body::after {
     content: "";
     position: fixed;
@@ -470,9 +479,27 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
     z-index: 0;
     pointer-events: none;
     background:
-      radial-gradient(760px 460px at 16% -12%, color-mix(in srgb, var(--color-accent) 13%, transparent), transparent 62%),
-      radial-gradient(640px 400px at 102% -4%, color-mix(in srgb, var(--color-primary) 10%, transparent), transparent 58%);
+      radial-gradient(820px 500px at 14% -12%, color-mix(in srgb, var(--color-accent) 15%, transparent), transparent 62%),
+      radial-gradient(680px 420px at 102% -4%, color-mix(in srgb, var(--color-primary) 11%, transparent), transparent 58%),
+      radial-gradient(900px 560px at 60% 118%, color-mix(in srgb, var(--color-accent) 9%, transparent), transparent 60%);
     animation: aurora-drift 28s ease-in-out infinite alternate;
+  }
+  /* The stars: two dot fields, the far one smaller and dimmer. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image:
+      radial-gradient(currentColor 1px, transparent 1.2px),
+      radial-gradient(currentColor 1px, transparent 1.2px);
+    background-size: 56px 56px, 23px 23px;
+    background-position: 0 0, 12px 18px;
+    color: color-mix(in srgb, var(--color-foreground) 7%, transparent);
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
+    -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 30%, transparent 78%);
   }
 
   /* The rail: glass with a gold breath at the top and a lit edge. */
@@ -525,6 +552,32 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   body::after { animation: none; }
 }
 
+/* ── Desktop: the top strip ────────────────────────────────────────────────
+   A second navigation the phone has no room for: whose chart is being read,
+   the account's plan and credits, and the deeper tools. Sticky, quiet, and
+   only above 1024px — the phone keeps its own top bar. */
+.top-strip { display: none; }
+
+@media (min-width: 1024px) {
+  .top-strip {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 32px;
+    background: color-mix(in srgb, var(--color-background) 84%, transparent);
+    backdrop-filter: saturate(180%) blur(16px);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    border-bottom: 1px solid var(--glass-brd);
+  }
+  /* The strip provides the top spacing now, so the scroller stops adding its
+     own — otherwise the page starts 28px below a bar stuck at 0. */
+  .app-desktop .app-scroll { padding-top: 0; }
+  .app-desktop .app-content { padding-top: 24px; }
+}
+
 /* ── Desktop: the design layer ─────────────────────────────────────────────
    Everything in this app was drawn at phone width. Stretched across a desktop
    window the same components stop being a design: a name field two thousand
@@ -561,6 +614,17 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   .app-desktop { --kb-inset: 0px; }
 }
 
+/* Home's two column wrappers do not exist on a phone: `display: contents`
+   drops them, and the cards keep the order a phone reads them in. */
+.home-grid { display: flex; flex-direction: column; gap: 22px; }
+.home-main, .home-side { display: contents; }
+.home-hero { order: 1; }
+.home-today { order: 2; }
+.home-actions { order: 3; }
+.home-value { order: 4; }
+.home-kundlis { order: 5; }
+.home-jump { order: 6; }
+
 /* ── Desktop: Home becomes a dashboard ─────────────────────────────────────
    The same sections, laid out for a screen: the hero and what you DO on the
    left, the day and who you read for on the right. On a phone the order top to
@@ -568,32 +632,32 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
 @media (min-width: 1024px) {
   .home-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 22px;
+    grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr);
+    gap: 16px;
     align-items: start;
   }
-  /* The phone's vertical rhythm comes from space-y-7; in a grid the gap does
-     that job, and the stacked margins would push every column out of line. */
-  .home-grid > * + * { margin-top: 0 !important; }
-  .home-hero    { grid-column: 1; grid-row: 1; }
-  .home-actions { grid-column: 1; grid-row: 2; }
-  /* Row 3 belongs to whichever of these is on screen: the jump links once a
-     kundli exists, the "what you can do here" cards while none does. */
-  .home-jump    { grid-column: 1; grid-row: 3; }
-  .home-value   { grid-column: 1; grid-row: 3; }
-  .home-today   { grid-column: 2; grid-row: 1; }
-  .home-kundlis { grid-column: 2; grid-row: 2 / span 2; }
+  /* Two INDEPENDENT columns, each packing its own cards. Sharing grid rows is
+     what left a hole of empty space under the short "today" card while the
+     tall hero finished its row. */
+  .home-main, .home-side { display: flex; flex-direction: column; gap: 16px; }
+  .home-main > *, .home-side > * { order: 0; margin-top: 0 !important; }
   /* Two feature cards across, so each keeps a readable line length. */
   .value-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-  /* The hero has a column to itself now, so it can speak at full size. */
-  .home-hero { padding: 34px 34px 30px; }
-  .home-hero h2 { font-size: 32px !important; max-width: 22ch !important; }
-  .home-hero p { max-width: 46ch !important; }
+  /* The conversation card leads the page, at the size a person speaks. */
+  .home-hero { padding: 24px 26px; }
+  .home-hero h2 { font-size: 23px !important; max-width: 30ch !important; }
+  .qa-grid .m-card { padding: 15px 16px; }
+  .home-grid h3 { margin-bottom: 10px; }
+  .home-side .m-card, .home-value .m-card { padding: 18px 20px; }
+  /* Their chart beside what it means — the drawing is square and stops
+     growing, the words take the rest. */
+  .chart-split { grid-template-columns: minmax(0, 320px) minmax(0, 1fr); align-items: start; }
+  /* Three of the chart's screens across, so the row reads as a set. */
+  .explore-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The dark panel is the page's anchor: give it room to be one. */
+  .home-hero { padding: 0 !important; }
   .qa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
-  /* The zodiac wheel is the app's one piece of ornament — on a screen this size
-     it can be seen rather than peeked at. */
-  .home-hero .hero-ring { width: 340px; height: 340px; right: -70px; top: -70px; opacity: 0.5; }
 }
 
 /* ── Desktop: the Kundli screen ────────────────────────────────────────────

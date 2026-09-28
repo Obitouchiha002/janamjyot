@@ -26,6 +26,8 @@ import TopBar from './components/mobile/TopBar';
 import TabBar from './components/mobile/TabBar';
 import TopNav from './components/desktop/TopNav';
 import SideNav from './components/desktop/SideNav';
+import PageHeader from './components/desktop/PageHeader';
+import TopStrip from './components/desktop/TopStrip';
 import QuotaListener from './components/mobile/QuotaSheet';
 import SignInListener from './components/SignInSheet';
 import { LoadError } from './components/ErrorState';
@@ -421,6 +423,9 @@ function Shell() {
         className={`app-scroll ${showTabs ? '' : 'no-tabbar'}`}
         onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 6)}
       >
+        {/* The desktop's second nav: whose chart is being read, the account's
+            plan and credits, and the tools a phone buries under "More". */}
+        {desktop && <TopStrip />}
         <OfflineBanner />
         <AnnouncementBanner />
         {/* "wait": the old screen leaves before the new one arrives, so the
@@ -446,6 +451,9 @@ function Shell() {
               reads as the screen already arriving, and on a warm cache it is
               gone in a frame either way.
             */}
+            {/* The screen's name and its way back, for the window that has no
+                phone top bar. Desktop only, and never on a root destination. */}
+            {desktop && <PageHeader />}
             <Suspense fallback={<ScreenSkeleton />}>
               <AppRoutes location={location} />
             </Suspense>

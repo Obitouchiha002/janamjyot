@@ -1,6 +1,7 @@
 import "./server/env"; // must be first: loads .env.local before anything reads process.env
 import { distressLevel, severeReply, lowNote } from "./server/distress";
 import { answerQuestion as vaAnswerQuestion, detectCategory as vaDetectCategory } from "./server/va/gemini";
+import { buildDayContext, todayTouches } from "./server/va/today";
 import { reportKeyPoints } from "./server/va/keyPoints";
 import { chartClaimErrors } from "./server/claim-check";
 import { isGreetingOnly, greetingReply } from "./server/greeting";
@@ -3275,8 +3276,41 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
     // free-form string is an unbounded set of cache misses, each one an AI call.
     const lang = normalizeLanguage(req.query.lang, b.language || "en");
     const cacheKey = `today:${todayLocal}:${lang}`;
+
+    /*
+     * What today actually touches — calculated, not imagined, and never cached.
+     *
+     * The day card used to be pure AI prose, and it read as invented because half of it
+     * was: nothing computed "an old friend may call". These lines each come from a real
+     * calculation — the house the Moon lights up now, Tara Bala, Chandra Bala, the natal
+     * planets the Moon crosses, and whether the weekday lord also runs the dasha.
+     *
+     * Computed before the cache check and merged into the cached reply too. It costs
+     * nothing, the time windows shift as the day runs, and a reading generated this
+     * morning would otherwise serve the rest of the day without them.
+     */
+    let touches: ReturnType<typeof todayTouches> = [];
+    try {
+      const dayCtx = buildDayContext(chart, todayLocal, AYANAMSA,
+        Number.isFinite(b.latitude) && Number.isFinite(b.longitude)
+          ? { latitude: b.latitude, longitude: b.longitude, timezone: tz, label: b.place_of_birth }
+          : undefined);
+      touches = todayTouches(dayCtx);
+    } catch (e: any) { console.warn("[today] touches skipped:", e?.message); }
+
     const cached = await getReport(req.params.chartId, cacheKey);
-    if (cached) return res.json({ ...cached, cached: true });
+    if (cached) {
+      /*
+       * Keep the wording that was already written in the reader's language, but take the
+       * live windows: "from 11:31 AM" is only true while it is. A cached day from before
+       * touches existed simply gets the freshly computed ones.
+       */
+      const prev: any[] = Array.isArray(cached.touches) ? cached.touches : [];
+      const merged = prev.length === touches.length
+        ? touches.map((t, i) => ({ ...t, says: String(prev[i]?.says ?? t.says) }))
+        : touches;
+      return res.json({ ...cached, touches: merged, cached: true });
+    }
 
     // Gated AFTER the cache check, so re-reading a generated page is free and
     // only real AI work counts. Without this an authenticated device could
@@ -3301,11 +3335,16 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
 
     let tip: string | null = null;
     try {
-      const language = lang;
-      tip = await generateDailyTip({
+      const said = await generateDailyTip({
         name: b.name, dasha: chart.dasha?.current, moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
         transit_highlights: tr.highlights, panchang,
-      }, language);
+        what_today_touches: touches,
+      }, lang);
+      tip = said.tip || null;
+      // The facts stay as calculated — only their wording moves into the reader's language.
+      if (said.touches.length === touches.length) {
+        touches = touches.map((t, i) => ({ ...t, says: said.touches[i] }));
+      }
     } catch (e: any) { console.warn("[today] tip skipped:", e?.message); }
 
     const payload = {
@@ -3314,6 +3353,7 @@ app.get("/api/chart/:chartId/today", async (req, res) => {
       moon_transit: moonT ? { sign: moonT.sign, house_from_lagna: moonT.house_from_lagna, house_from_moon: moonT.house_from_moon } : null,
       transit_highlights: tr.highlights,
       panchang,
+      touches,
       tip,
     };
     // Cache for the day only once the AI tip succeeded (so a failed tip retries later).
