@@ -89,9 +89,9 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "moon-in-love-house",
       theme: "love",
       says: h === 7
-        ? "Mann rishton par tika rehta hai — kisi ek vyakti ka khayal baar-baar aata hai, aur uska asar padhai/kaam par padta hai."
-        : "Dil jaldi lag jaata hai — pyaar, aakarshan aur dil ki baatein soch par haavi rehti hain.",
-      because: `Moon (mann) ${h}th house mein hai (${h === 7 ? "partner/rishte" : "prem, romance"} ka ghar).`,
+        ? "Your mind stays fixed on relationships — one person keeps coming back into your thoughts, and it shows in your studies and work."
+        : "Your heart engages quickly — love, attraction and matters of the heart tend to take over your thinking.",
+      because: `The Moon (the mind) sits in your ${h}th house — the house of ${h === 7 ? "partners and bonds" : "love and romance"}.`,
       weight: 3,
       lords: ["Moon"],
     };
@@ -101,8 +101,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "venus-rahu",
       theme: "love",
-      says: "Kisi ke prati bahut tez aakarshan rehta hai — rishta tez shuru hota hai, aur usmein uljhan ya chhupav aa sakta hai.",
-      because: `Venus (prem) aur Rahu ek saath ${c.houseOf("Venus")}th house mein hain.`,
+      says: "There is a very strong pull towards someone — it starts fast, and it tends to carry confusion or something kept hidden.",
+      because: `Venus (love) and Rahu sit together in your ${c.houseOf("Venus")}th house.`,
       weight: 3,
       lords: ["Venus", "Rahu"],
     };
@@ -115,9 +115,9 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "love-secret",
       theme: "love",
-      says: "Prem sambandh chhupa hua ya gharwalon se alag rehta hai — sab ko bataya nahi jaata, aur isi wajah se tanav rehta hai.",
+      says: "Love tends to stay private, or apart from the family — not everyone is told, and that itself keeps the tension on.",
       because: in12
-        ? `5th house (prem) ka swami ${fifthLord} 12th house (chhupi baatein) mein hai.`
+        ? `The lord of your 5th house (love), ${fifthLord}, sits in the 12th — the house of hidden things.`
         : `${fifthLord} 5th (prem) aur 12th (chhupi baatein, kharch) dono ka swami hai.`,
       weight: 3,
       lords: [fifthLord],
@@ -130,9 +130,9 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "rahu-in-love-house",
       theme: h === 7 ? "marriage" : "love",
       says: h === 7
-        ? "Partner alag maahaul ya alag samaj se ho sakta hai, aur shaadi ke maamle mein jaldi ya dhoka dono ka khatra rehta hai — soch samajh kar kadam lijiye."
-        : "Pyaar mein junoon zyada rehta hai — jaldi jud jaate hain, aur baad mein pata chalta hai ki samne wala waisa nahi tha.",
-      because: `Rahu ${h}th house mein hai.`,
+        ? "A partner may come from a different background or community, and in marriage there is a risk of both haste and being misled — move thoughtfully."
+        : "Love runs on intensity — you attach quickly, and only later see that the other person was not quite what you thought.",
+      because: `Rahu sits in your ${h}th house.`,
       weight: 3,
       lords: ["Rahu"],
     };
@@ -145,8 +145,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "venus-delay",
       theme: "love",
-      says: "Rishton mein deri aur on-off chalta rehta hai — baat banti hai, rukti hai, phir banti hai. Jaldbaazi se kaam nahi banega.",
-      because: `Venus ${v.retrograde ? "vakri (retrograde) hai" : ""}${v.retrograde && withSaturn ? " aur " : ""}${withSaturn ? "Saturn ke saath/drishti mein hai" : ""}.`,
+      says: "Relationships move in stops and starts — it builds, it stalls, it builds again. Rushing will not help here.",
+      because: `Venus ${v.retrograde ? "is retrograde" : ""}${v.retrograde && withSaturn ? " and " : ""}${withSaturn ? "sits with Saturn, or under its aspect" : ""}.`,
       weight: 2,
       lords: ["Venus", ...(withSaturn ? ["Saturn"] : [])],
     };
@@ -158,8 +158,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "seventh-lord-dusthana",
       theme: "marriage",
-      says: "Rishton mein door-door rehna, bahas ya ek tarfa mehnat ban sakti hai — partner chunte waqt jaldi mat kijiye.",
-      because: `7th house (rishte) ka swami ${lord7} ${h}th house mein hai (${h === 6 ? "vivaad" : h === 8 ? "rukawat" : "door/kharch"} ka ghar).`,
+      says: "Distance, arguments or one-sided effort can show up in relationships — take your time choosing a partner.",
+      because: `The lord of your 7th house (bonds), ${lord7}, sits in the ${h}th — the house of ${h === 6 ? "conflict" : h === 8 ? "obstruction" : "distance and spending"}.`,
       weight: 2,
       lords: [lord7],
     };
@@ -170,8 +170,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "mars-marriage-heat",
       theme: "marriage",
-      says: "Rishte mein garmi aur zid jaldi aa jaati hai — chhoti baat bhi badi ban jaati hai. Bolne se pehle ruk jaana hi upay hai.",
-      because: `Mars ${m}th house mein hai.`,
+      says: "Heat and stubbornness arrive quickly in a bond — a small thing turns big. Pausing before you speak is the remedy.",
+      because: `Mars sits in your ${m}th house.`,
       weight: 2,
       lords: ["Mars"],
     };
@@ -186,9 +186,9 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "moon-heavy",
       theme: "mind",
       says: withSat
-        ? "Mann par bojh rehta hai — akelapan, soch zyada, aur neend ya mood ki dikkat. Ye kamzori nahi, grah ki sthiti hai."
-        : "Mann kabhi-kabhi khaali sa lagta hai, kisi cheez mein dil nahi lagta — spiritual taraf jhukav bhi rehta hai.",
-      because: `Moon ${withSat ? "Saturn" : "Ketu"} ke saath hai.`,
+        ? "There is a weight on the mind — loneliness, overthinking, and trouble with sleep or mood. This is a planetary position, not a weakness in you."
+        : "The mind can feel empty at times, with nothing quite holding your interest — there is a pull towards the spiritual side too.",
+      because: `The Moon sits with ${withSat ? "Saturn" : "Ketu"}.`,
       weight: 3,
       lords: ["Moon", withSat ? "Saturn" : "Ketu"],
     };
@@ -199,8 +199,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "sixth-loaded",
       theme: "health",
-      says: "Sehat mein chhoti-moti dikkatein lagi rehti hain, khaaskar pet/nas ya thakan ki. Routine aur khaana theek rakhein toh kaabu mein rehta hai.",
-      because: `6th house (rog) mein ${sixth.join(" aur ")} hain.`,
+      says: "Small health niggles keep returning — mostly the stomach, the nerves or plain tiredness. A steady routine and regular meals keep it in check.",
+      because: `Your 6th house (illness) holds ${sixth.join(" and ")}.`,
       weight: 2,
       lords: sixth,
     };
@@ -216,10 +216,10 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "studies-disturbed",
       theme: "studies",
-      says: "Padhai mein dhyan tootta hai — mann kahin aur rehta hai, isliye mehnat ke hisaab se result kam aata hai.",
+      says: "Focus slips while studying — the mind is somewhere else, so the result lags behind the effort.",
       because: bad
-        ? `5th house (padhai/buddhi) ka swami ${lord5} ${c.houseOf(lord5)}th house mein hai.`
-        : `Rahu ${c.houseOf("Rahu")}th house mein hai.`,
+        ? `The lord of your 5th house (study and intellect), ${lord5}, sits in the ${c.houseOf(lord5)}th.`
+        : `Rahu sits in your ${c.houseOf("Rahu")}th house.`,
       weight: 2,
       lords: bad ? [lord5] : ["Rahu"],
     };
@@ -232,12 +232,12 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "career-slow-start",
       theme: "career",
-      says: "Career shuru mein dheema chalta hai — mehnat zyada, pehchaan der se. Jo tik gaya, wo aage bahut upar jaata hai.",
+      says: "Career starts slow — more effort, recognition later. Whoever holds on here goes a long way.",
       because: tenth.includes("Saturn")
-        ? "Saturn 10th house (career) mein hai."
+        ? "Saturn sits in your 10th house — the house of career."
         : tenth.includes("Ketu")
-          ? "Ketu 10th house (career) mein hai."
-          : `10th house ka swami ${lord10} 12th house mein hai.`,
+          ? "Ketu sits in your 10th house — the house of career."
+          : `The lord of your 10th house, ${lord10}, sits in the 12th.`,
       weight: 2,
       lords: tenth.includes("Saturn") ? ["Saturn"] : tenth.includes("Ketu") ? ["Ketu"] : [lord10],
     };
@@ -252,10 +252,10 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "loans",
       theme: "debt",
-      says: "Udhaar, EMI ya kisi ko diya hua paisa chalta rehta hai — kamai ke saath kharch bhi badhta hai.",
+      says: "Loans, EMIs or money lent out keep running — as the income grows, so do the outgoings.",
       because: in2or11
-        ? `6th house (karz) ka swami ${lord6} ${c.houseOf(lord6)}th house (dhan) mein hai.`
-        : "Rahu 2nd house (dhan) mein hai.",
+        ? `The lord of your 6th house (debt), ${lord6}, sits in the ${c.houseOf(lord6)}th — the house of wealth.`
+        : "Rahu sits in your 2nd house — the house of wealth.",
       weight: 2,
       lords: in2or11 ? [lord6] : ["Rahu"],
     };
@@ -266,8 +266,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "expenses",
       theme: "money",
-      says: "Paisa aata hai par tikta nahi — kharch achanak nikal aate hain. Bachat alag khaate mein rakhna hi kaam aata hai.",
-      because: `12th house (kharch) mein ${twelfth.join(", ")} hain.`,
+      says: "Money comes but does not stay — expenses appear out of nowhere. Savings only survive in a separate account.",
+      because: `Your 12th house (spending) holds ${twelfth.join(", ")}.`,
       weight: 2,
       lords: twelfth,
     };
@@ -282,10 +282,10 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "home-distance",
       theme: "family",
-      says: "Ghar se mann thoda door rehta hai — ya toh gharwalon se soch nahi milti, ya kaam ke liye ghar chhodna padta hai.",
+      says: "Home feels a little distant — either the thinking does not match at home, or work takes you away from it.",
       because: fourth.length
-        ? `4th house (ghar, maa) mein ${fourth.join(", ")} hain.`
-        : `4th house ka swami ${lord4} ${c.houseOf(lord4)}th house mein hai.`,
+        ? `Your 4th house (home and mother) holds ${fourth.join(", ")}.`
+        : `The lord of your 4th house, ${lord4}, sits in the ${c.houseOf(lord4)}th.`,
       weight: 2,
       lords: fourth.length ? fourth : [lord4],
     };
@@ -297,8 +297,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "foreign",
       theme: "foreign",
-      says: "Videsh ya apne shehar se door ke kaam se fayda milta hai — door jaane par kismat khulti hai.",
-      because: [9, 12].includes(r) ? `Rahu ${r}th house mein hai.` : `12th house ka swami ${lord12} 9th house mein hai.`,
+      says: "Work abroad, or far from your own city, pays off — luck opens up at a distance.",
+      because: [9, 12].includes(r) ? `Rahu sits in your ${r}th house.` : `The lord of your 12th house, ${lord12}, sits in the 9th.`,
       weight: 1,
       lords: [[9, 12].includes(r) ? "Rahu" : lord12],
     };
@@ -309,17 +309,17 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     if (!exalted.length) return null;
     const p = exalted[0];
     const area: Record<string, string> = {
-      Sun: "naam, pehchaan aur authority", Moon: "mann ki taakat aur logon se judaav",
-      Mars: "himmat, zameen-jaydaad aur mehnat", Mercury: "dimaag, baat-cheet aur business",
-      Jupiter: "gyaan, salah dena aur bhagya", Venus: "kala, sukh, aur logon ko apni taraf khinchna",
-      Saturn: "tik kar kaam karna aur lambi race jeetna",
+      Sun: "standing, recognition and authority", Moon: "strength of mind and connecting with people",
+      Mars: "courage, property and hard work", Mercury: "sharp thinking, communication and business",
+      Jupiter: "knowledge, guiding others and good fortune", Venus: "art, comfort, and drawing people to you",
+      Saturn: "staying with the work and winning the long race",
     };
     return {
       id: `exalted-${p}`,
       theme: "strength",
       kind: "strength",
-      says: `Aapki sabse badi taakat ${area[p]} hai — is raaste par mehnat ka phal doosron se zyada milta hai.`,
-      because: `${p} uchch (exalted) hai.`,
+      says: `Your strongest side is ${area[p]} — effort on this road pays you more than it pays most people.`,
+      because: `${p} is exalted.`,
       weight: 3,
       lords: [p],
     };
@@ -328,19 +328,19 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     const good = ["Gaja Kesari Yoga", "Budha-Aditya Yoga", "Raj Yoga", "Viparita Raja Yoga (Harsha)", "Dharma-Karmadhipati Yoga"].filter((y) => c.yogas.some((x) => x.startsWith(y.split(" (")[0])));
     if (!good.length) return null;
     const meaning: Record<string, string> = {
-      "Gaja Kesari Yoga": "log aapki baat sunte hain aur izzat dete hain — leadership wale kaam mein aap chamakte hain",
-      "Budha-Aditya Yoga": "dimaag tez hai aur baat samjhane mein aap aage hain — padhana, salah dena, likhna ya business",
-      "Raj Yoga": "pad, samman aur upar uthne ke yog hain — ek baar mauka mila toh aap tik jaate hain",
-      "Viparita Raja Yoga": "mushkil ke baad hi aapki badi jeet aati hai — jahan doosre haar maante hain, wahan aap nikal jaate hain",
-      "Dharma-Karmadhipati Yoga": "kismat aur mehnat ek saath chalte hain — apna kaam ya bade pad tak pahunchne ka yog",
+      "Gaja Kesari Yoga": "people listen to you and respect you — you shine in work that asks you to lead",
+      "Budha-Aditya Yoga": "a sharp mind and a gift for explaining — teaching, advising, writing or business",
+      "Raj Yoga": "position, respect and a rise — once you get the opening, you hold it",
+      "Viparita Raja Yoga": "your big wins come after the hard part — where others give up, you get through",
+      "Dharma-Karmadhipati Yoga": "luck and effort pull together — your own venture, or a senior position",
     };
     const key = Object.keys(meaning).find((k) => good[0].startsWith(k.split(" (")[0]))!;
     return {
       id: "yoga-strength",
       theme: "strength",
       kind: "strength",
-      says: `Aapki kundli mein ${key} bana hai: ${meaning[key]}.`,
-      because: `${good.join(", ")} kundli mein ban raha hai.`,
+      says: `Your chart forms ${key}: ${meaning[key]}.`,
+      because: `${good.join(", ")} is formed in your chart.`,
       weight: 3,
     };
   },
@@ -353,10 +353,10 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "money-strength",
       theme: "money",
       kind: "strength",
-      says: "Paisa kamaane aur bachane ki kshamata acchi hai — jahan aap dhyan lagate hain, wahan se aamdani ka rasta ban jaata hai.",
+      says: "You are good at both earning and keeping money — wherever you put your attention, an income opens up.",
       because: strong
         ? `Dhan ke gharon ka swami (${strong && c.strengthOf(lord2) >= 6.5 ? lord2 : lord11}) mazboot hai.`
-        : "2nd/11th house ke ashtakavarga bindu 30+ hain.",
+        : "The ashtakavarga points on your 2nd and 11th houses are 30 or more.",
       weight: 2,
       lords: [lord2, lord11],
     };
@@ -368,8 +368,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "career-strength",
       theme: "career",
       kind: "strength",
-      says: "Kaam aur career aapke liye sabse mazboot pehlu hai — sahi field mein aap naam bana lete hain.",
-      because: `10th house (career) ka swami ${lord10} ${c.strengthOf(lord10) >= 6.5 ? "mazboot hai" : `kendra (${c.houseOf(lord10)}th) mein hai`}.`,
+      says: "Work and career are your strongest side — in the right field you make a name for yourself.",
+      because: `The lord of your 10th house (career), ${lord10}, ${c.strengthOf(lord10) >= 6.5 ? "is strong" : `sits in a kendra (the ${c.houseOf(lord10)}th)`}.`,
       weight: 2,
       lords: [lord10],
     };
@@ -382,8 +382,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
       id: "luck-strength",
       theme: "strength",
       kind: "strength",
-      says: "Mushkil waqt mein kahin na kahin se madad aa hi jaati hai — bade log, guru ya parivar ka haath saath rehta hai.",
-      because: jupKendra ? `Jupiter kendra (${c.houseOf("Jupiter")}th) mein hai.` : `9th house (bhagya) ka swami ${lord9} mazboot hai.`,
+      says: "When things get hard, help arrives from somewhere — seniors, a teacher or family stand by you.",
+      because: jupKendra ? `Jupiter sits in a kendra (the ${c.houseOf("Jupiter")}th).` : `The lord of your 9th house (fortune), ${lord9}, is strong.`,
       weight: 2,
       lords: jupKendra ? ["Jupiter"] : [lord9],
     };
@@ -395,8 +395,8 @@ const RULES: Array<(c: Ctx) => RuleOut | null> = [
     return {
       id: "spiritual",
       theme: "spiritual",
-      says: "Andar se ek khaalipan aur sawal rehte hain — puja, dhyaan ya guru ka saath mann ko sambhaalta hai.",
-      because: `Ketu ${k}th house mein hai.`,
+      says: "Inside there is an emptiness and big questions — prayer, meditation or a teacher's company steadies the mind.",
+      because: `Ketu sits in your ${k}th house.`,
       weight: 1,
       lords: ["Ketu"],
     };

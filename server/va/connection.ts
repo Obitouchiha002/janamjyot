@@ -24,49 +24,49 @@ const SIGN_LORDS = [
   "Venus", "Mars", "Jupiter", "Saturn", "Saturn", "Jupiter",
 ];
 const SIGN_NATURE: Record<string, string> = {
-  Aries: "tez, seedha bolne wala, jaldi decide karne wala",
-  Taurus: "shaant, sundarta pasand, thoda zidd wala",
-  Gemini: "baaton wala, chanchal, dimaag tez",
-  Cancer: "bhavuk, ghar se juda, dhyan rakhne wala",
-  Leo: "aatmvishwasi, dikhne mein aakarshak, thoda ego wala",
-  Virgo: "samajhdar, detail dekhne wala, halka critical",
-  Libra: "milansaar, sundar, sabko khush rakhne wali aadat",
-  Scorpio: "gehra, apni baat chhupane wala, bahut intense",
-  Sagittarius: "khula vichaar, ghoomne wala, seedha bolne wala",
-  Capricorn: "practical, mehnati, jazbaat kam dikhata hai",
-  Aquarius: "alag soch, dosti wala, thoda door-door",
-  Pisces: "narm dil, sapne dekhne wala, jaldi ghul-mil jaata hai",
+  Aries: "quick, direct in speech, decides fast",
+  Taurus: "calm, drawn to beauty, a little stubborn",
+  Gemini: "talkative, restless, quick-minded",
+  Cancer: "emotional, attached to home, caring",
+  Leo: "confident, striking to look at, a little ego",
+  Virgo: "sensible, notices detail, mildly critical",
+  Libra: "sociable, attractive, tries to keep everyone happy",
+  Scorpio: "deep, keeps things to themselves, very intense",
+  Sagittarius: "open-minded, loves to travel, speaks plainly",
+  Capricorn: "practical, hard-working, shows little emotion",
+  Aquarius: "thinks differently, friendly, keeps some distance",
+  Pisces: "soft-hearted, dreamy, warms to people quickly",
 };
 /** How old they are likely to be, from the nature of the house lord. */
 const AGE_BY_LORD: Record<string, string> = {
-  Sun: "aapse bada ya zyada mature",
-  Saturn: "aapse kaafi bada, ya umar se zyada gambhir",
-  Jupiter: "aapse bada ya padha-likha, guru jaisa",
-  Mars: "lagbhag aapki umar ka, energy wala",
-  Venus: "lagbhag aapki umar ka ya thoda chhota",
-  Mercury: "aapse chhota ya umar se kam lagne wala",
-  Moon: "aapse chhota ya bahut bhavuk",
-  Rahu: "umar ka fark saaf ho sakta hai, ya background bilkul alag",
-  Ketu: "alag duniya ka, thoda door-door rehne wala",
+  Sun: "older than you, or more mature",
+  Saturn: "considerably older than you, or serious beyond their years",
+  Jupiter: "older or better educated, teacher-like",
+  Mars: "about your age, full of energy",
+  Venus: "about your age or slightly younger",
+  Mercury: "younger than you, or looks younger than they are",
+  Moon: "younger than you, or very emotional",
+  Rahu: "the age gap may be obvious, or the background entirely different",
+  Ketu: "from a different world, keeps some distance",
 };
 /** Where the meeting is likely to have come from, by the house the lord sits in. */
 const MET_BY_HOUSE: Record<number, string> = {
-  1: "aas-paas hi, roz ke maahaul mein",
-  2: "parivaar ya jaan-pehchaan ke zariye",
-  3: "aas-padosh, bhai-behen ke dost, ya phone/online baat se",
-  4: "ghar, mohalle ya school se",
-  5: "college, function, ya kisi shauk (music, sports, art) ke zariye",
-  6: "kaam ki jagah, roz ke routine ya kisi seva ke kaam se",
-  7: "logon se milne-julne, business ya kisi public jagah se",
-  8: "achanak, ya aise rishte se jo shuru se chhupa raha",
-  9: "padhai, guru, ya ghar se door safar mein",
-  10: "kaam/career ki jagah se",
-  11: "doston ke group ya kisi bade circle se",
-  12: "door se, online, ya aise jagah jahan doosre na dekh sakein",
+  1: "close by, in your everyday surroundings",
+  2: "through family or people you already know",
+  3: "the neighbourhood, a sibling's friends, or talking online",
+  4: "home, the neighbourhood or school",
+  5: "college, an event, or a shared interest — music, sport, art",
+  6: "the workplace, daily routine, or service work",
+  7: "meeting people, business, or somewhere public",
+  8: "suddenly, or through a bond that stayed hidden from the start",
+  9: "study, a teacher, or travel far from home",
+  10: "through work or career",
+  11: "a group of friends or a wider circle",
+  12: "from far away, online, or somewhere others could not see",
 };
 const HOUSE_BOND: Record<number, string> = {
-  3: "dosti jaisa rishta", 4: "ghar-parivaar wala rishta", 5: "prem ya bachchon jaisa lagav",
-  7: "partner jaisa rishta", 11: "doston ke group wala rishta",
+  3: "a friendship", 4: "a family-like bond", 5: "love, or an attachment like one has to a child",
+  7: "a partnership", 11: "a bond within a group of friends",
 };
 
 export interface PersonSketch {
@@ -100,7 +100,7 @@ export function connectionFacts(chart: any, facts: any, periods: any[] | null): 
       nature: SIGN_NATURE[signOf(house)] ?? "",
       age_hint: AGE_BY_LORD[lord] ?? "",
       how_met: MET_BY_HOUSE[lordHouse] ?? "",
-      based_on: `${house}th house ${signOf(house)} mein hai, uska swami ${lord} ${lordHouse}th house mein hai.`,
+      based_on: `The ${house}th house is ${signOf(house)}, and its lord ${lord} sits in the ${lordHouse}th house.`,
     };
   };
 
@@ -122,12 +122,12 @@ export function connectionFacts(chart: any, facts: any, periods: any[] | null): 
   }
 
   return {
-    love: sketch(5, "prem / aakarshan wala rishta"),
-    marriage: sketch(7, "jeevansathi ya lamba chalne wala rishta"),
+    love: sketch(5, "a love or attraction"),
+    marriage: sketch(7, "a life partner, or a bond meant to last"),
     past_windows: past_windows.slice(-4),
     cannot_say:
-      "Kundli kisi ka naam, chehra ya gender nahi batati, aur na hi ye ki wo bachcha tha ya bada. " +
-      "Wo sirf rishte ka TYPE (prem, dosti, ghar, kaam), samne wale ka swabhav, umar ka andaza aur milne ki jagah bata sakti hai. " +
-      "Isse aage jaana ho to unki apni janm details chahiye.",
+      "A chart never gives a name, a face or a gender, and it cannot say whether the person was a child or an adult. " +
+      "It can only give the KIND of bond (love, friendship, family, work), that person's temperament, a sense of their age, and where the meeting is likely to have come from. " +
+      "To go further than that, their own birth details are needed.",
   };
 }

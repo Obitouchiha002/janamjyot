@@ -79,30 +79,30 @@ const RULES: Rule[] = [
     const el = ELEMENT[m.sign];
     const text: Record<string, [string, string, string]> = {
       water: [
-        "Aap dil se chalte hain — faisla logic se nahi, feeling se hota hai, aur puraani baatein bhool nahi paate.",
-        "Kisi ki kahi hui baat mahino tak chubhti rehti hai; mood par kaam ki speed badalti hai.",
-        "Logon ko padh lete hain aur unka dard samajh jaate hain — isi wajah se log aap par bharosa karte hain.",
+        "You go by the heart — decisions come from feeling rather than logic, and old things are hard to let go of.",
+        "Something someone said can sting for months; your pace of work rises and falls with your mood.",
+        "You read people and understand their hurt — which is exactly why people trust you.",
       ],
       fire: [
-        "Aapka mann jaldi garam hota hai — jo theek lagta hai wahi turant kar dete hain, baad mein sochte hain.",
-        "Nayi cheez shuru karne mein sabse aage, par lambi khinchne wali cheez mein mann ut jaata hai.",
-        "Himmat aur pehal — jahan doosre soch rahe hote hain, aap shuru kar dete hain.",
+        "Your mind heats up quickly — whatever feels right gets done at once, and the thinking comes after.",
+        "First to start something new, but interest fades on anything that drags on.",
+        "Courage and initiative — while others are still thinking it over, you have begun.",
       ],
       earth: [
-        "Aap tab tak nahi hilte jab tak cheez pakki na lage — risk lene se pehle zameen dekhte hain.",
-        "Badlav mein waqt lagta hai; log kehte hain aap zidd karte hain, par aap bas pakka karna chahte hain.",
-        "Jo pakad lete hain use nibhate hain — lambe samay mein aapki jama-poonji doosron se zyada hoti hai.",
+        "You do not move until a thing looks solid — you check the ground before taking a risk.",
+        "Change takes you time; people call it stubbornness, but you simply want to be sure.",
+        "What you take on, you see through — over a long stretch you end up holding more than most.",
       ],
       air: [
-        "Aapka dimaag ek jagah tikta nahi — ek saath kai cheezein chalti rehti hain.",
-        "Baat karne mein aage, par ek hi kaam par mahino tikne mein mushkil.",
-        "Naye vichaar aur logon se judaav — aap kisi se bhi baat shuru kar sakte hain.",
+        "Your mind does not settle in one place — several things run at once.",
+        "Strong with words, but staying on one task for months is the hard part.",
+        "New ideas and easy connection — you can start a conversation with anyone.",
       ],
     };
     const [pattern, shows, gift] = text[el] ?? text.air;
     return {
       id: `mind-${el}`, area: "mind", pattern, shows_up_as: shows, gift,
-      because: `Moon ${m.sign} (${el} sign) mein hai — mann ka swabhav isi se banta hai.`,
+      because: `The Moon is in ${m.sign}, ${el === "water" ? "a water sign" : el === "fire" ? "a fire sign" : el === "earth" ? "an earth sign" : "an air sign"} — this is what shapes the mind.`,
       weight: 3,
     };
   },
@@ -110,9 +110,9 @@ const RULES: Rule[] = [
     if (!c.hitBy("Moon", "Saturn")) return null;
     return {
       id: "mind-saturn", area: "fear",
-      pattern: "Aap khush hone se pehle hi soch lete hain ki kya galat ho sakta hai — mann par ek halka bojh hamesha rehta hai.",
-      shows_up_as: "Akela mehsoos karna bhari bheed mein bhi, neend ya mood ka upar-neeche hona, aur apni khushi ko baad ke liye taal dena.",
-      gift: "Mushkil waqt aap sabse achha nibhate hain — jahan doosre toot jaate hain, aap tik jaate hain.",
+      pattern: "Before you let yourself be happy you have already worked out what could go wrong — there is a quiet weight on the mind.",
+      shows_up_as: "Feeling alone even in a full room, sleep or mood swinging, and putting your own happiness off for later.",
+      gift: "You handle hard times best — where others break, you hold.",
       because: "Moon par Saturn ka prabhav (saath ya drishti) hai.",
       weight: 3,
     };
@@ -121,9 +121,9 @@ const RULES: Rule[] = [
     if (!c.hitBy("Moon", "Rahu") && !c.with("Moon", "Rahu")) return null;
     return {
       id: "mind-rahu", area: "fear",
-      pattern: "Mann mein ek bechaini rehti hai — jo mila hai wo kam lagta hai, aur jo nahi mila uski soch chalti rehti hai.",
-      shows_up_as: "Raat mein phone par ghanton nikal jaana, doosron se apni tulna, aur achanak bada faisla le lena.",
-      gift: "Aap wahan pahunch sakte hain jahan aapke ghar mein koi nahi pahuncha — yahi bechaini aage bhi dhakelti hai.",
+      pattern: "There is a restlessness in you — what you have feels like less, and what you do not have stays on your mind.",
+      shows_up_as: "Hours lost on the phone at night, comparing yourself with others, and suddenly making a big decision.",
+      gift: "You can reach where nobody in your family has — that same restlessness is what pushes you forward.",
       because: "Moon par Rahu ka prabhav hai.",
       weight: 3,
     };
@@ -132,9 +132,9 @@ const RULES: Rule[] = [
     if (!c.with("Moon", "Ketu") && !c.hitBy("Moon", "Ketu")) return null;
     return {
       id: "mind-ketu", area: "trust",
-      pattern: "Beech-beech mein sab kuch bemaani lagne lagta hai — jise sabse zyada chahte hain, usi se door hone ka mann karta hai.",
-      shows_up_as: "Rishte mein rehkar bhi akela lagna, achanak baat karna band kar dena, aur phir pachtaana.",
-      gift: "Cheezon se lagav kam hai, isliye nuksaan aapko doosron jitna nahi todta — aur adhyatmik taraf gehrai aati hai.",
+      pattern: "Every so often it all starts to feel pointless — and you want distance from the very thing you love most.",
+      shows_up_as: "Feeling alone inside a relationship, suddenly going quiet, and regretting it afterwards.",
+      gift: "You hold on to things lightly, so a loss does not break you the way it breaks others — and the spiritual side runs deep.",
       because: "Moon par Ketu ka prabhav hai.",
       weight: 3,
     };
@@ -143,9 +143,9 @@ const RULES: Rule[] = [
     if (c.moonWeak !== true) return null;
     return {
       id: "mind-waning", area: "identity",
-      pattern: "Aap apne aap ko kam aank lete hain — kaam accha karke bhi lagta hai ki ' itna kaafi nahi hai'.",
-      shows_up_as: "Tareef sunkar asahaj hona, apni jeet chhota bata dena, aur nayi jagah par pehle chup rehna.",
-      gift: "Ghamand nahi aata, aur log aapki vinamrata ki wajah se pass aate hain.",
+      pattern: "You underrate yourself — even after good work it feels like it was not quite enough.",
+      shows_up_as: "Discomfort at a compliment, playing your own wins down, and staying quiet at first in a new place.",
+      gift: "Arrogance never sets in, and people come closer because of that modesty.",
       because: "Janm ke samay Chandrama kshin (waning) tha — paksha bala kam hai.",
       weight: 2,
     };
@@ -159,9 +159,9 @@ const RULES: Rule[] = [
     if (!slow) return null;
     return {
       id: "think-loop", area: "decision",
-      pattern: "Ek hi baat ko baar-baar sochte hain — faisla lene se pehle har taraf se ghuma kar dekhte hain, aur isi mein samay nikal jaata hai.",
+      pattern: "You turn the same thing over and over — every angle gets examined before you decide, and the time goes in the turning.",
       shows_up_as: "Message type karke mitana, mauka nikal jaane ke baad 'haan kar dena chahiye tha' lagna.",
-      gift: "Aapke faisle mein galti kam nikalti hai — jo aap soch kar karte hain wo tikta hai.",
+      gift: "Your decisions hold up — what you think through tends to last.",
       because: me.retrograde ? "Mercury vakri (retrograde) hai." : "Mercury par Saturn ka prabhav hai.",
       weight: 3,
     };
@@ -171,9 +171,9 @@ const RULES: Rule[] = [
     if (!me?.combust) return null;
     return {
       id: "think-fused", area: "thinking",
-      pattern: "Apni baat par aapko itna yakeen hota hai ki doosre ki alag raay sunna mushkil ho jaata hai.",
-      shows_up_as: "Bahas mein apni baat manwa lena, aur baad mein lagna ki shayad samne wala bhi sahi tha.",
-      gift: "Aap confidence se bolte hain, isliye log aapki baat maan lete hain.",
+      pattern: "You are so sure of your own view that a different one is hard to sit with.",
+      shows_up_as: "Winning the argument, and realising afterwards that the other person may also have been right.",
+      gift: "You speak with conviction, so people go along with you.",
       because: "Mercury Sun ke bahut paas hai (ast/combust) — soch aur khud ki pehchaan ek ho jaati hai.",
       weight: 2,
     };
@@ -183,8 +183,8 @@ const RULES: Rule[] = [
     return {
       id: "think-shortcut", area: "thinking",
       pattern: "Aapka dimaag shortcut dhoondhta hai — seedha raasta chhodkar chalaak raasta pehle dikhta hai.",
-      shows_up_as: "Naye idea par jaldi kood jaana, aur baad mein detail mein uljhan.",
-      gift: "Jahan doosre atak jaate hain, wahan aap koi na koi raasta nikaal lete hain.",
+      shows_up_as: "Jumping on a new idea quickly, then getting tangled in the detail.",
+      gift: "Where others get stuck, you find some way through.",
       because: "Mercury par Rahu ka prabhav hai.",
       weight: 2,
     };
@@ -198,10 +198,10 @@ const RULES: Rule[] = [
     if (!weak) return null;
     return {
       id: "identity-approval", area: "validation",
-      pattern: "Andar se ek sawal rehta hai — 'kya main kaafi hoon?' Isliye doosron ki haan aur tareef zaroori lagti hai.",
+      pattern: "A question sits underneath it all — \"am I enough?\" — which makes other people's approval feel necessary.",
       shows_up_as: "Bade logon ya boss ke saamne asahaj hona, na keh paana, aur apna kaam kam karke batana.",
-      gift: "Aap ahankaar se nahi, kaam se jagah banate hain — isi wajah se log aapko sachcha maante hain.",
-      because: /debilit|enemy/i.test(s.dignity) ? `Sun ${s.dignity} mein hai.` : "Sun par Saturn ka prabhav hai (authority se takraav).",
+      gift: "You make your place through the work, not through ego — which is why people take you as genuine.",
+      because: /debilit|enemy/i.test(s.dignity) ? `The Sun is ${s.dignity}.` : "Saturn influences the Sun — friction with authority.",
       weight: 3,
     };
   },
@@ -211,10 +211,10 @@ const RULES: Rule[] = [
     if (![1, 10, 11].includes(s.house) && !/exalt|own/i.test(s.dignity)) return null;
     return {
       id: "identity-recognition", area: "validation",
-      pattern: "Aapko kaam se zyada uski pehchaan chahiye — naam na mile to sabse achha kaam bhi khali lagta hai.",
-      shows_up_as: "Aise kaam mein mann nahi lagta jahan credit kisi aur ko jaaye; peeche rehkar kaam karna bhaari lagta hai.",
-      gift: "Zimmedari aur leadership aapko suit karti hai — log aapko aage rakhte hain.",
-      because: `Sun ${ord(s.house)} house mein${/exalt|own/i.test(s.dignity) ? ` aur ${s.dignity} mein` : ""} hai.`,
+      pattern: "You need the recognition as much as the work — without the credit, even your best work feels empty.",
+      shows_up_as: "Work where the credit goes to someone else does not hold you; staying in the background feels heavy.",
+      gift: "Responsibility and leadership suit you — people put you in front.",
+      because: `The Sun sits in your ${ord(s.house)} house${/exalt|own/i.test(s.dignity) ? `, and it is ${s.dignity}` : ""}.`,
       weight: 2,
     };
   },
@@ -224,10 +224,10 @@ const RULES: Rule[] = [
     if (![6, 8, 12].includes(l.house)) return null;
     return {
       id: "identity-hidden", area: "self_sabotage",
-      pattern: "Aap khud ko peeche rakh dete hain — mauka saamne hote hue bhi 'abhi nahi' keh dete hain.",
-      shows_up_as: "Apni kaabiliyat kam batana, mauka kisi aur ko chale jaana, aur baad mein khud par gussa.",
-      gift: "Dikhawe se door rehkar aap gehrai mein kaam karte hain — isi se aisi samajh aati hai jo dikhne wale logon mein nahi hoti.",
-      because: `Lagna ka swami ${c.lagnaLord} ${ord(l.house)} house mein hai.`,
+      pattern: "You hold yourself back — the chance is right there and you still say \"not yet\".",
+      shows_up_as: "Underselling what you can do, watching the opening go to someone else, and being angry with yourself later.",
+      gift: "Away from the show, you work deeply — and that gives you an understanding the visible people do not have.",
+      because: `Your lagna lord, ${c.lagnaLord}, sits in the ${ord(l.house)} house.`,
       weight: 3,
     };
   },
@@ -239,10 +239,10 @@ const RULES: Rule[] = [
     if (![1, 4, 10].includes(sa.house) && !c.sadeSati) return null;
     return {
       id: "control-duty", area: "control",
-      pattern: "Aap sab kuch apne haath mein rakhna chahte hain — kisi aur par chhodne se dar lagta hai ki bigad jayega.",
-      shows_up_as: "Kaam doosron ko dene ke baad bhi khud check karna, aur zimmedari ke bojh se thakan.",
-      gift: "Log aankh band karke aap par bharosa karte hain, kyunki aap kaam adhoora nahi chhodte.",
-      because: c.sadeSati ? "Sade Sati chal rahi hai aur Saturn zimmedari ke ghar se juda hai." : `Saturn ${ord(sa.house)} house mein hai.`,
+      pattern: "You want everything in your own hands — leaving it to someone else feels like it will go wrong.",
+      shows_up_as: "Checking the work yourself even after handing it over, and tiredness from carrying the responsibility.",
+      gift: "People trust you without a second thought, because you do not leave things half done.",
+      because: c.sadeSati ? "Sade Sati is running, and Saturn is tied to the house of responsibility." : `Saturn sits in your ${ord(sa.house)} house.`,
       weight: 2,
     };
   },
@@ -255,10 +255,10 @@ const RULES: Rule[] = [
     if (!free || !bound) return null;
     return {
       id: "control-vs-freedom", area: "control",
-      pattern: "Andar do cheezein ladti rehti hain — azadi chahiye, par surakshit raasta chhodne mein dar lagta hai. Isliye bada faisla taalte rehte hain.",
+      pattern: "Two things pull against each other inside — you want the freedom, and you are afraid to leave the safe road. So the big decision keeps getting postponed.",
       shows_up_as: "Naukri chhodne ka mann par na chhodna, naya kaam shuru karne ka plan banakar rakh dena.",
-      gift: "Jab aap kood'te hain to bina tayyari ke nahi kood'te — isliye aapka risk doosron se kam bigadta hai.",
-      because: `Rahu ${ord(ra.house)} (azadi/bade sapne) aur Saturn ${ord(sa!.house)} (suraksha/zimmedari) mein hai.`,
+      gift: "When you do jump, you never jump unprepared — so your risks go wrong less often than other people's.",
+      because: `Rahu sits in your ${ord(ra.house)} house (freedom and big dreams) and Saturn in the ${ord(sa!.house)} (safety and duty).`,
       weight: 3,
     };
   },
@@ -268,10 +268,10 @@ const RULES: Rule[] = [
     if (!h4.length && ![8, 12].includes(moonHouse ?? 0)) return null;
     return {
       id: "trust-guarded", area: "trust",
-      pattern: "Aap jaldi khulte nahi — apni asli baat sirf ek-do logon tak rakhte hain, aur wo bhi poori nahi.",
-      shows_up_as: "Sab theek hai keh dena jab theek na ho, aur madad maangne mein jhijhak.",
-      gift: "Aap kisi ka bharosa nahi todte — jo aapne suna hai wo aap tak hi rehta hai.",
-      because: h4.length ? `4th house (mann ki jad, ghar) par ${h4.join(", ")} ka prabhav hai.` : `Moon ${ord(moonHouse!)} house (chhupi bhavnaayein) mein hai.`,
+      pattern: "You do not open up quickly — the real thing is shared with one or two people, and even then not fully.",
+      shows_up_as: "Saying everything is fine when it is not, and hesitating to ask for help.",
+      gift: "You never break a confidence — what you were told stays with you.",
+      because: h4.length ? `Your 4th house (the root of the mind, and home) is influenced by ${h4.join(", ")}.` : `Moon ${ord(moonHouse!)} house (chhupi bhavnaayein) mein hai.`,
       weight: 2,
     };
   },
@@ -285,17 +285,17 @@ const RULES: Rule[] = [
       id: suppressed ? "conflict-hold" : "conflict-direct",
       area: "conflict",
       pattern: suppressed
-        ? "Gussa aap turant nahi nikalte — andar jama karte hain, aur ek din chhoti si baat par sab ek saath nikal jaata hai."
-        : "Baat seedhi bolte hain — takraar ke waqt sach kehna zaroori lagta hai, chahe rishta bigad jaye.",
+        ? "You do not let anger out as it comes — it collects, and one day a small thing brings all of it out at once."
+        : "You say it straight — in a clash, telling the truth feels necessary even if the relationship suffers.",
       shows_up_as: suppressed
-        ? "Dino tak chup rehna, phir achanak tez bol dena — aur baad mein guilt."
-        : "Bahas mein aapka lahja tez ho jaana, aur samne wale ka chup ho jaana.",
+        ? "Days of silence, then a sharp word out of nowhere — and guilt afterwards."
+        : "Your tone sharpens in an argument, and the other person goes quiet.",
       gift: suppressed
-        ? "Aap jaldi nahi bharakte — isliye log aapko shaant aur sambhala hua maante hain."
-        : "Aapke saath koi dhoka nahi hota — jo hai wo saamne bol dete hain.",
+        ? "You do not flare up easily — so people see you as calm and steady."
+        : "Nobody is misled with you — whatever it is, you say it to their face.",
       because: suppressed
-        ? (c.hitBy("Mars", "Saturn") ? "Mars par Saturn ka prabhav hai." : `Mars ${ord(ma.house)} house mein hai.`)
-        : `Mars ${ma.sign} mein ${ord(ma.house)} house mein hai.`,
+        ? (c.hitBy("Mars", "Saturn") ? "Saturn influences Mars." : `Mars sits in your ${ord(ma.house)} house.`)
+        : `Mars is in ${ma.sign}, in your ${ord(ma.house)} house.`,
       weight: 2,
     };
   },
@@ -306,10 +306,10 @@ const RULES: Rule[] = [
     if (!ra || ![5, 8].includes(ra.house)) return null;
     return {
       id: "impulse", area: "self_sabotage",
-      pattern: "Jab mann bharta hai to aap ek jhatke mein bada faisla le lete hain — aur jab mann ut'ta hai to utni hi jaldi chhod dete hain.",
-      shows_up_as: "Achanak kaam/course/rishta shuru karna aur beech mein rok dena; paisa ek dum laga dena.",
-      gift: "Aap wo mauke pakad lete hain jinhe sochne wale ganwa dete hain.",
-      because: `Rahu ${ord(ra.house)} house mein hai.`,
+      pattern: "When something takes hold of you, the big decision happens in one go — and when the interest lifts, you drop it just as fast.",
+      shows_up_as: "Starting a job, a course or a relationship suddenly and stopping midway; putting money in all at once.",
+      gift: "You catch the chances that the over-thinkers lose.",
+      because: `Rahu sits in your ${ord(ra.house)} house.`,
       weight: 2,
     };
   },
@@ -318,10 +318,10 @@ const RULES: Rule[] = [
     if (!ke || ![1, 10, 11].includes(ke.house)) return null;
     return {
       id: "unfinished", area: "self_sabotage",
-      pattern: "Shuruaat zabardast hoti hai, par jaise hi cheez routine banti hai, mann ut jaata hai — kaam 80% par chhoot jaata hai.",
-      shows_up_as: "Kai adhoore project, course ya plan; aur phir 'main consistent nahi hoon' wala guilt.",
-      gift: "Aapke paas kai cheezon ka anubhav hai — jab koi ek cheez dil se lag jaati hai, usme aap bahut gehre chale jaate hain.",
-      because: `Ketu ${ord(ke.house)} house mein hai.`,
+      pattern: "The start is superb, but the moment it turns into routine the interest lifts — and the work is left at eighty percent.",
+      shows_up_as: "Several unfinished projects, courses or plans; and then the guilt of \"I am not consistent\".",
+      gift: "You have touched many things — and when one of them truly takes you, you go very deep into it.",
+      because: `Ketu sits in your ${ord(ke.house)} house.`,
       weight: 3,
     };
   },

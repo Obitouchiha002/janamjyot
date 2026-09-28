@@ -590,3 +590,122 @@ export function weekContextForAI(chart: any, startDate: string, ayanamsa: number
     careful_days: days.filter((d) => d.score <= 4).map((d) => d.label),
   };
 }
+/**
+ * What today actually touches in this person's life — computed, not imagined.
+ *
+ * The day card used to ask the model for "3-5 things that could realistically happen
+ * today", and it obliged: an old friend calling, an unplanned expense on the vehicle.
+ * Nothing computed those. They were plausible sentences with nothing behind them, and a
+ * reader can feel that — which is exactly what made the section read as invented while the
+ * report and the chat read as real.
+ *
+ * Every line below comes from a calculation already in this file: which house the Moon
+ * lights up right now, the personal star (Tara Bala), the Moon's distance from the birth
+ * Moon (Chandra Bala), the natal planets the Moon crosses today, and whether any of that
+ * belongs to the running period. The model only says them in the reader's language.
+ */
+export function todayTouches(d: DayContext): Array<{ says: string; because: string; when: string | null; tone: "good" | "caution" | "mixed" }> {
+  const out: Array<{ says: string; because: string; when: string | null; tone: "good" | "caution" | "mixed" }> = [];
+  const pm: any = (d as any).primary_moon;
+  const planets: any[] = (d as any).natal?.planets ?? [];
+  /** The first two words of a house's areas — five of them is a list, not a sentence. */
+  const areaOf = (h: number | null | undefined) =>
+    h ? (HOUSE_AREAS[h] ?? "").split(",").slice(0, 2).map((x) => x.trim()).join(" and ") : null;
+  const byName = new Map(planets.map((p: any) => [p.planet, p]));
+  /** What a natal planet is actually about for THIS chart: where it sits and what it rules. */
+  const mattersOf = (name: string) => {
+    const p: any = byName.get(name);
+    if (!p) return null;
+    const areas = [p.house, ...(p.rules_houses ?? [])]
+      .filter((h: number, i: number, a: number[]) => h && a.indexOf(h) === i)
+      .map((h: number) => (HOUSE_AREAS[h] ?? "").split(",")[0].trim())
+      .filter(Boolean)
+      .slice(0, 3);
+    return areas.length ? areas.join(", ") : null;
+  };
+
+  /*
+   * The Moon's segment usually runs past bedtime into tomorrow morning, and printing
+   * "11:31 AM to 06:11 AM" reads like a mistake. Anything spilling past the waking day is
+   * shown as "from 11:31 AM" instead.
+   */
+  const windowOf = (seg: any) =>
+    !seg ? null : seg.to_ms > (d as any).waking_end_ms ? `from ${seg.from}` : `${seg.from} to ${seg.to}`;
+
+  if (pm?.moon_house_from_lagna) {
+    out.push({
+      says: `Your attention today sits on ${areaOf(pm.moon_house_from_lagna)}.`,
+      because: `The Moon is moving through your ${ordinal(pm.moon_house_from_lagna)} house (${pm.moon_sign}).`,
+      when: windowOf(pm),
+      tone: "mixed",
+    });
+  }
+
+  const cb: any = pm?.chandra_bala;
+  if (cb) {
+    out.push({
+      says: cb.quality === "bad"
+        ? `Mood and judgement are not at their steadiest today — ${cb.meaning}`
+        : cb.quality === "good"
+          ? `Your mood carries you today — ${cb.meaning}`
+          : `Mood runs mixed today — ${cb.meaning}`,
+      because: `The Moon is ${ordinal(cb.house_from_natal_moon)} from your birth Moon sign.`,
+      when: null,
+      tone: cb.quality === "bad" ? "caution" : cb.quality === "good" ? "good" : "mixed",
+    });
+  }
+
+  const tb: any = pm?.tara_bala;
+  if (tb) {
+    out.push({
+      says: tb.quality === "bad"
+        ? `Today's star is a difficult one for you: ${tb.meaning}`
+        : tb.quality === "good"
+          ? `Today's star supports you: ${tb.meaning}`
+          : `Today's star is mixed for you: ${tb.meaning}`,
+      because: `In your personal nine-star cycle, today is the ${tb.tara} star, counted ${tb.count} from your birth star.`,
+      when: null,
+      tone: tb.quality === "bad" ? "caution" : tb.quality === "good" ? "good" : "mixed",
+    });
+  }
+
+  const dashaLords: string[] = (d as any).moon_on_dasha_lord ?? [];
+  for (const name of (pm?.moon_over_natal_planets ?? []).slice(0, 2)) {
+    const matters = mattersOf(name);
+    if (!matters) continue;
+    out.push({
+      says: `${matters} get stirred today${dashaLords.includes(name) ? " — and this is a running period's own theme, so it shows up more plainly" : ""}.`,
+      because: `The Moon passes over your birth ${name} today.`,
+      when: windowOf(pm),
+      tone: "mixed",
+    });
+  }
+  for (const name of (pm?.moon_opposite_natal_planets ?? []).slice(0, 1)) {
+    const matters = mattersOf(name);
+    if (!matters) continue;
+    out.push({
+      says: `${matters} pull for your attention from the other side — a conversation there can turn tense.`,
+      because: `The Moon faces your birth ${name} today.`,
+      when: windowOf(pm),
+      tone: "caution",
+    });
+  }
+
+  const wd: any = (d as any).weekday;
+  if (wd?.is_a_dasha_lord) {
+    const matters = mattersOf(wd.lord);
+    out.push({
+      says: `${wd.day} belongs to ${wd.lord}, which also runs your current period${matters ? ` — so ${matters} carry extra weight today` : ""}.`,
+      because: `The weekday lord ${wd.lord} is also a running dasha lord.`,
+      when: null,
+      tone: "mixed",
+    });
+  }
+
+  /*
+   * Three at most. The card is read in a few seconds on a phone before the day starts;
+   * five true lines are still a wall, and the fourth one is never the reason someone opens
+   * it. The strongest facts come first above, so the cut takes the weakest.
+   */
+  return out.slice(0, 3);
+}

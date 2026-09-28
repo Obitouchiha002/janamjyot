@@ -216,3 +216,101 @@ export function wrongBirthNakshatra(text: string, actual: string): string[] {
   }
   return [...new Set(found)];
 }
+
+// ---- 4. the visible answer must be in life language -------------------------------------
+
+/*
+ * The part every user reads first is not the place for machinery. The prompt has said so
+ * for months and the answer still arrives with "Moon aapke janm Moon sign se 12th house
+ * mein hai" in it (live, 25 Sep 2026). So it is measured here instead.
+ *
+ * A person who ASKS in these words gets them back — "mera lagna kya hai" deserves the word
+ * lagna. The check only fires when the technical word is the model's idea, not theirs.
+ */
+const HOUSE_NUMBER_RE = /\b(\d{1,2})\s*(st|nd|rd|th)?\s*(house|bhav|bhaav)\b|\b(pehle|dusre|teesre|chauthe|panchve|paanchve|chhathe|saatve|aathve|navein|dasve|gyarahve|barahve)\s+(house|bhav|bhaav)\b/i;
+const TECH_WORDS_RE =
+  /\b(mahadasha|maha dasha|antardasha|antar dasha|pratyantar|dasha|dasa|bhukti|gochar|transit kar|transit mein|navamsa|navamsha|dasamsa|shashtamsa|ekadasamsa|d1|d9|d10|d6|d11|uchch|ucch|neech|exalted|debilitated|combust|astangat|vargottama|drishti|retrograde|vakri|ashtakavarga|bindu|karaka|lagnesh)\b/i;
+
+/** Technical terms the reply used on its own. Empty when the person used them first. */
+export function technicalTerms(answer: string, question: string): string[] {
+  const q = String(question || "");
+  const a = String(answer || "");
+  const theirs = HOUSE_NUMBER_RE.test(q) || TECH_WORDS_RE.test(q) || /\bnakshatra|rashi|kundli|yoga|dosha|graha\b/i.test(q);
+  if (theirs) return [];
+  const hits: string[] = [];
+  const house = a.match(new RegExp(HOUSE_NUMBER_RE.source, "gi"));
+  if (house) hits.push(...house.slice(0, 3));
+  const words = a.match(new RegExp(TECH_WORDS_RE.source, "gi"));
+  if (words) hits.push(...[...new Set(words.map((w) => w.toLowerCase()))].slice(0, 4));
+  return hits;
+}
+
+/**
+ * Worth one rewrite: a house number is the most jarring of all (nobody thinks in houses),
+ * and two or more technical words means the answer is written for an astrologer. A single
+ * stray word is left alone — a rewrite costs the person a wait.
+ */
+export function tooTechnical(hits: string[], answer: string): boolean {
+  if (!hits.length) return false;
+  return HOUSE_NUMBER_RE.test(answer) || hits.length >= 2;
+}
+
+// ---- 5. no reading the question back ----------------------------------------------------
+
+/*
+ * "Aapne pucha hai ki aapki kundli mein abhi kya problems chal rahi hain…"
+ *
+ * The person knows what they asked; an opening that repeats it costs them a line and reads
+ * like a form letter. The prompt asks for no restating and it still arrives, so the opener
+ * is simply removed when it says nothing else — no extra model call for a line that only
+ * needs deleting.
+ */
+const ECHO_RE =
+  /^(?:[A-Z][\p{L}]*\s*(?:ji)?\s*[,—-]\s*)?(?:aap(?:ne|ka|ke|ki)?\s+)?(?:is\s+)?(?:sawal|sawaal|question|prashn)[^.!?]{0,60}[.!?]|^(?:[A-Z][\p{L}]*\s*(?:ji)?\s*[,—-]\s*)?aap(?:ne)?\s+(?:pucha|poocha|puchha|puchhа|jaanna chaha)[^.!?]{0,80}[.!?]|^(?:[A-Z][\p{L}]*\s*(?:ji)?\s*[,—-]\s*)?(?:you asked|as you asked|regarding your question)[^.!?]{0,80}[.!?]/iu;
+
+/** The reply without its "you asked X" opener, when dropping it leaves a real answer. */
+export function stripQuestionEcho(answer: string): string {
+  const a = String(answer || "").trimStart();
+  const m = a.match(ECHO_RE);
+  if (!m) return answer;
+  const rest = a.slice(m[0].length).trimStart();
+  // Only when something substantial is left — an answer that IS the echo stays as it is,
+  // and the empty-reply check deals with it.
+  if (rest.replace(/[^\p{L}\p{N}]/gu, "").length < 60) return answer;
+  // The name at the front was theirs, not part of the echo: keep it on the new opener.
+  const name = a.match(/^([A-Z][\p{L}]*)\s*(?:ji)?\s*[,—-]/u)?.[1];
+  if (name && !new RegExp(`^${name}\\b`, "u").test(rest)) return `${name}, ${rest[0].toLowerCase()}${rest.slice(1)}`;
+  return rest;
+}
+
+// ---- 6. no claims about a life it cannot see --------------------------------------------
+
+/*
+ * A chart shows tendencies and periods. It does not know whether this person currently has
+ * a loan, a job, a spouse or children — and yet replies have said so flatly ("aapka koi
+ * karz nahi hai", "aapki shaadi ho chuki hai"). One sentence like that, wrong, costs the
+ * whole reading its credibility with the person reading it.
+ *
+ * Only FLAT assertions about the present are caught. "Karz ka yog banta hai" or "is samay
+ * naye karz se bachiye" are readings, not claims, and pass through.
+ */
+const LIFE_CLAIM_RE = new RegExp(
+  [
+    // "aapka koi loan nahi hai" / "aap par karz nahi hai"
+    String.raw`\baap(?:ka|ke|ki|\s+par)?\s+(?:koi\s+)?(?:loan|karz|karja|kraz|debt|udhaar|udhar)\s+(?:nahi|nhi)\s*(?:hai|h)\b`,
+    // "aapki shaadi ho chuki hai" / "aap married hain" / "aap abhi single hain"
+    String.raw`\baap(?:ki)?\s+(?:shaadi|shadi|vivah)\s+(?:ho\s+)?(?:chuki|gayi|hui)\s*(?:hai|h)\b`,
+    String.raw`\baap\s+(?:abhi\s+)?(?:married|shaadi-?shuda|single|kunwara|kunwari)\s*(?:hain|hai|ho)\b`,
+    // "aapke bachche hain / nahi hain"
+    String.raw`\baapke\s+(?:koi\s+)?(?:bachche|bachhe|santan)\s+(?:nahi\s+)?(?:hain|hai)\b`,
+    // "aap job karte hain" / "aapka business hai"
+    String.raw`\baap\s+(?:abhi\s+)?(?:job|naukri|business|vyapar)\s+(?:karte|kar\s+rahe)\s*(?:hain|ho)\b`,
+    String.raw`\baapka\s+(?:apna\s+)?(?:business|vyapar|ghar|makaan)\s+(?:hai|h)\b`,
+  ].join("|"),
+  "giu"
+);
+
+/** Flat statements about their current life that no chart can know. */
+export function lifeClaims(answer: string): string[] {
+  return [...new Set((String(answer || "").match(LIFE_CLAIM_RE) ?? []).map((m) => m.trim()))].slice(0, 3);
+}

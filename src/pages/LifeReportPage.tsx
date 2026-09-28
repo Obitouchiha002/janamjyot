@@ -669,7 +669,7 @@ export default function LifeReportPage() {
       doc.setPage(i);
       setDraw(C.line); doc.setLineWidth(0.6); doc.line(M, PH - footerH + 4, PW - M, PH - footerH + 4);
       doc.setFont("helvetica", "normal"); doc.setFontSize(8); setText(C.muted);
-      doc.text(`Vedic Astra  ·  ${name}`, M, PH - 14);
+      doc.text(`JanamJyot  ·  ${name}`, M, PH - 14);
       doc.text(`Page ${i} of ${pages}`, PW - M, PH - 14, { align: "right" });
     }
 
@@ -677,7 +677,17 @@ export default function LifeReportPage() {
     // Android webview. Hand the bytes to the native layer instead: it writes the
     // file to the phone's Documents folder, posts a "saved" notification, and
     // offers the system share sheet.
-    const fileName = `${name.replace(/\s+/g, "_")}_Life_Report.pdf`;
+    /*
+     * Dated, so a new report never collides with an old one.
+     *
+     * Every download was written as "<Name>_Life_Report.pdf". The save falls back
+     * Documents → External → Cache, so a later download could land in a different
+     * folder while the first file kept the name — and the person opening their
+     * Downloads got the OLD report back, with no sign that a newer one existed.
+     * A date and time in the name makes the newest obvious and keeps the history.
+     */
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "");
+    const fileName = `${name.replace(/\s+/g, "_")}_Life_Report_${stamp}.pdf`;
     if (!isNative) {
       doc.save(fileName);
       return;

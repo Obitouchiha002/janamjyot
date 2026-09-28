@@ -8,6 +8,10 @@ const tests: Array<{ name: string; fn: Fn }> = [];
 const stack: string[] = [];
 export function describe(name: string, fn: () => void) { stack.push(name); fn(); stack.pop(); }
 export function it(name: string, fn: Fn) { tests.push({ name: [...stack, name].join(" › "), fn }); }
+/** `it.each([...])("name %s", fn)` — one case per row, like vitest's. */
+it.each = <T,>(rows: T[]) => (name: string, fn: (row: T) => void | Promise<void>) => {
+  rows.forEach((row, i) => it(name.replace(/%[sdifjo#]/g, () => String(row)) + (name.includes("%") ? "" : ` [${i}]`), () => fn(row)));
+};
 export const test = it;
 const eq = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 function matchers(v: any, negate = false) {

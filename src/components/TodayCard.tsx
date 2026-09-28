@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Sun, Moon, Clock, ChevronDown, Languages } from "lucide-react";
+import { Sun, Moon, Clock, ChevronDown, Languages, Sparkles } from "lucide-react";
 import AnswerText from "@/components/AnswerText";
 import SpeakButton from "@/components/SpeakButton";
 import { Pressable } from "@/components/mobile/Pressable";
@@ -144,6 +144,29 @@ export default function TodayCard(
                       <p className="mt-0.5 break-words text-[12.5px] font-bold leading-snug">{value}</p>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Computed, not written by the model: each line comes from the Moon's
+                  house right now, the personal star, Chandra Bala, or a natal planet
+                  the Moon crosses today. This is the part of the card that is true by
+                  construction, so it sits above the prose. */}
+              {Array.isArray(d.touches) && d.touches.length > 0 && (
+                <div className="mb-3 rounded-2xl border border-border bg-muted/40 p-3.5">
+                  <p className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-widest text-accent">
+                    <Sparkles className="h-3 w-3" /> {t("What today touches")}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {d.touches.map((x: any, i: number) => (
+                      <li key={i} className="selectable flex gap-2 text-[13px] leading-relaxed">
+                        <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                        <span>
+                          {x.says}
+                          {x.when && <span className="text-muted-foreground"> · {x.when}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
 

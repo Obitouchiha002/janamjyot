@@ -8,6 +8,7 @@
 import { chartClaimErrors } from "./claim-check";
 import { pastMilestones } from "./past-timeline";
 import { llmGenerate } from "./llm";
+import { genericFields, chartAnchored } from "./va/reportChecks";
 import { detectYogas } from "./yogas";
 import { highlightsFor, reportKeyPoints } from "./va/keyPoints";
 import { wrongBirthNakshatra } from "./va/replyChecks";
@@ -1934,6 +1935,16 @@ belongs in the summary/guidance of the relationships and health areas: use "patt
 "shows_up_as" nearly as written, and give the "gift" of the same placement too. Invent no
 traits beyond these.
 
+GUIDANCE MUST BE THIS CHART'S GUIDANCE — HARD RULE. Two people who both come to
+this app must not be able to swap their "guidance" fields without noticing. So every
+"guidance" has to be tied to something calculated: the placement or period that makes
+that advice apply to THEM ("because Saturn sits in your 1st house...", "while
+Venus-Moon runs until Mar 2027..."), and it must name that planet, house, nakshatra,
+dasha or year in the sentence. Advice that would fit any reader — "keep patience",
+"communicate openly", "do yoga daily", "save money" — is a failure, however kindly it
+is phrased. Same for "summary": open with what is specific to this chart, never with
+a general observation about life. If a remedy is offered, say which planet it is for.
+
 For each area produce an object with EXACTLY these keys:
   "rating"    (a PLAIN INTEGER 1-10, not a string — see below),
   "summary"   (the overall pattern, said warmly),
@@ -2103,7 +2114,71 @@ export async function generateReportArea(chart: any, language: string, transit: 
     console.warn(`[report-area] ${area}: ${err.message} — trying once more`);
     out = await lifeReportPart(chart, language, transit, [area]);
   }
-  return tidyReport(out[area]);
+  return await groundArea(tidyReport(out[area]), area, chart, language);
+}
+
+/**
+ * Rewrites the advice in one area when it could have been written for anybody.
+ *
+ * A user and his friend generated full reports four minutes apart and said they were
+ * "same to same, line by line". Measured, the two shared 0% of their phrasing — but the
+ * friend's report had all seven "guidance" fields written as free-floating advice ("keep
+ * patience", "communicate openly", "do yoga daily"), and that is what a reader notices when
+ * two reports sit side by side. The prompt now forbids it; this catches the times the model
+ * does it anyway and asks for those fields — only those — again.
+ *
+ * One extra call, only when a field actually failed the check. A rewrite that comes back
+ * short or still unanchored is discarded: a weak paragraph beats an empty one.
+ */
+async function groundArea(body: any, area: string, chart: any, language: string): Promise<any> {
+  const loose = genericFields({ [area]: body }, [area]);
+  if (!loose.length) return body;
+  console.warn(`[report-area] ${area}: generic (no chart anchor) in ${loose.join(", ")} — asking again`);
+
+  let facts: any;
+  try {
+    facts = chartFactsForAI(computeChartFacts(chart, 1));
+  } catch {
+    facts = chart;
+  }
+
+  const asked = loose
+    .map((path) => {
+      const field = path.split(".")[1];
+      return `"${field}" currently reads:\n${String(body[field]).replace(/\s+/g, " ").slice(0, 600)}`;
+    })
+    .join("\n\n");
+
+  const prompt = `You wrote the "${area}" section of a Vedic astrology life report for this person.
+These fields say nothing that is true only of THIS chart — another person could be handed
+the same words:
+
+${asked}
+
+Write each one again so it stands on this chart. Every rewritten field must name the actual
+planet, house, nakshatra, dasha period or year that makes the advice apply to them, taken from
+the chart data below — not invented. Keep the same length, warmth and language, keep any
+**bold** marks, and keep the practical suggestion; just make it theirs.
+
+CHART DATA (use only this):
+${JSON.stringify(facts, null, 1).slice(0, 10000)}
+
+Reply with ONLY a JSON object whose keys are exactly ${loose.map((x) => `"${x.split(".")[1]}"`).join(", ")}
+and whose values are the rewritten strings.
+
+${languageInstruction(language)}`;
+
+  try {
+    const fixed = JSON.parse(stripJsonFences((await llmGenerate(prompt, { json: true, temperature: 0.6 })) || "{}"));
+    for (const path of loose) {
+      const field = path.split(".")[1];
+      const next = String(fixed?.[field] ?? "").trim();
+      if (next.split(/\s+/).length >= 10 && chartAnchored(next)) body[field] = next;
+    }
+  } catch (e: any) {
+    console.warn(`[report-area] ${area}: grounding pass failed:`, e?.message);
+  }
+  return body;
 }
 
 /*
@@ -3523,7 +3598,20 @@ Each value is the prediction string for that sign.`;
 }
 
 /** One short, warm, personalised "tip of the day" from dasha + transit + panchang. */
-export async function generateDailyTip(context: any, language: string): Promise<string> {
+/**
+ * The home card's day reading, plus today's computed lines said in the reader's language.
+ *
+ * "touches" are not the model's ideas — they are calculated in server/va/today.ts (the
+ * house the Moon is lighting up now, Tara Bala, Chandra Bala, the natal planets the Moon
+ * crosses) and handed over as finished sentences. The model only puts them into the
+ * chosen language, because the card has a language picker and computed English lines
+ * under a Hindi reading is exactly the seam a reader notices. If the call fails, the
+ * caller still has the computed lines to show.
+ */
+export async function generateDailyTip(
+  context: any,
+  language: string,
+): Promise<{ tip: string; touches: string[] }> {
   const prompt = `${SYSTEM_PROMPT}
 
 ${languageInstruction(language)}
@@ -3533,8 +3621,40 @@ write a SHORT "today for you" guidance — 2-3 warm sentences. Be specific (ment
 area of life and one practical thing to do today). Use **bold** for the 1-2 key words.
 No headings, no bullets — just the short paragraph.
 
-Data: ${JSON.stringify(context, null, 2)}`;
-  return await llmGenerate(prompt, { temperature: 0.85, thinkingBudget: 0 });
+"what_today_touches" holds the lines this day's reading is actually built on — each one
+was CALCULATED (the house the Moon is lighting up now, the personal star, the Moon's
+distance from their birth Moon, the natal planets it crosses). Build your guidance on
+those. Do NOT invent an event that is not there — no phone calls from old friends, no
+unexpected expenses, no visitors. If the list is empty, speak only from the dasha and
+the transit.
+
+Reply with ONLY this JSON object:
+{
+  "tip": "<the 2-3 sentence guidance, in the reply language>",
+  "touches": [<one string per item of what_today_touches, IN THE SAME ORDER: that item's
+               "says" put into the reply language, almost word for word. Do not add an
+               item of your own, do not merge two, do not turn them into events. If
+               what_today_touches is empty, return []>]
+}
+
+Data: ${JSON.stringify(context)}`;
+
+  const raw = await llmGenerate(prompt, { temperature: 0.85, thinkingBudget: 0, json: true });
+  const computed: any[] = context?.what_today_touches ?? [];
+  try {
+    const out = JSON.parse(stripJsonFences(raw || "{}"));
+    const said = Array.isArray(out?.touches) ? out.touches.map((x: any) => String(x ?? "").trim()) : [];
+    return {
+      tip: String(out?.tip ?? "").trim(),
+      // Only accept the translation if it kept one line per computed fact; anything else
+      // means the model rewrote the list, and the computed wording is the safer answer.
+      touches: said.length === computed.length && said.every(Boolean)
+        ? said
+        : computed.map((t: any) => String(t?.says ?? "")).filter(Boolean),
+    };
+  } catch {
+    return { tip: String(raw ?? "").trim(), touches: computed.map((t: any) => String(t?.says ?? "")).filter(Boolean) };
+  }
 }
 
 /**

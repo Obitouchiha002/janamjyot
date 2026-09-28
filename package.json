@@ -25,7 +25,7 @@
     "check:rate-limit": "tsx server/__checks__/rate-limit.ts",
     "check:report-json": "tsx server/__checks__/report-json.ts",
     "check:ai": "tsx server/__checks__/accuracy-ai.ts",
-    "check:va": "tsx server/va/__shim__/run.ts ../timing.test.ts ../today.test.ts ../rashi.test.ts ../panchang.test.ts ../replyChecks.test.ts",
+    "check:va": "tsx server/va/__shim__/run.ts ../timing.test.ts ../today.test.ts ../rashi.test.ts ../panchang.test.ts ../replyChecks.test.ts ../reportChecks.test.ts",
     "check:highlights": "tsx server/__checks__/highlights.ts"
   },
   "dependencies": {

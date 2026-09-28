@@ -1,6 +1,5 @@
 /* Ported from VedicAstra (new-vedic-astra/server) to run its chat system inside JanamJyot.
-   Core computation (engine, normalize, validate, panchang, transit, llm) is JanamJyot's own,
-   verified against Swiss Ephemeris and ProKerala. */
+   Core computation (engine, normalize, validate, panchang, transit, llm) is JanamJyot own. */
 /**
  * Event timing engine: "kab hoga?" (when will it happen?), computed deterministically.
  *
@@ -414,6 +413,13 @@ export function periodProfile(chart: any, ayanamsa: number, nowMs = Date.now(), 
     return v >= strongCut && max > min ? "strong" : rel >= 0.5 ? "good" : rel >= 0.2 ? "average" : "weak";
   };
 
+  // Their own health baseline: the median of every period, and the top of the range.
+  const healthScores = [...scores.health].sort((x, y) => x - y);
+  const healthMid = healthScores.length ? healthScores[Math.floor(healthScores.length / 2)] : 0;
+  const healthTop = healthScores.length ? healthScores[healthScores.length - 1] : 0;
+  const healthHigh = healthTop * 0.8;
+  const healthWatch = healthTop * 0.6;
+
   return list.map((a, i) => {
     const from = Date.parse(a.from), to = Date.parse(a.to);
     const age = Number.isFinite(birthMs) ? (from - birthMs) / (365.25 * 86400000) : 30;
@@ -426,12 +432,23 @@ export function periodProfile(chart: any, ayanamsa: number, nowMs = Date.now(), 
       if (l === "strong") strong.push(PROFILE_LABEL[topic]);
       else if (l === "weak") weak.push(PROFILE_LABEL[topic]);
     }
-    const h = label("health", i);
+    /*
+     * Health is graded against THIS person's own baseline, not ranked like the other topics.
+     *
+     * label() is relative — the top fifth is always "strong" and half of everything is at
+     * least "good" — so a life read this way came out with half its periods "sensitive" and
+     * the rest "watch", which tells a reader nothing and frightens them for decades. A
+     * period is only called out when its score genuinely SPIKES above their median.
+     */
+    const v = scores.health[i];
+    const health = v >= healthHigh && v > healthMid * 1.5 ? "sensitive (take care)"
+      : v >= healthWatch && v > healthMid * 1.2 ? "watch"
+      : "stable";
     return {
       period: `${a.mahadasha}–${a.lord}`,
       from: a.from, to: a.to, when,
       strong_for: strong, weak_for: weak,
-      health: h === "strong" ? "sensitive (take care)" : h === "good" ? "watch" : "stable",
+      health,
     };
   });
 }

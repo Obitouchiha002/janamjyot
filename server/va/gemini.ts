@@ -11,13 +11,15 @@
 import { llmGenerate } from "../llm";
 import { computeTiming, detectTimingTopics, timingForAI, periodProfile, type TimingTopic } from "./timing";
 import { computeChartFacts, chartFactsForAI } from "./chartFacts";
+import { avakahada } from "../matching";
+import { SIGNS, NAKSHATRAS } from "../normalize";
 import { buildDayContext, dayContextForAI, weekContextForAI, type DayPlace } from "./today";
 import { rashiInfo } from "./rashi";
 import { computeRemedies } from "./remedies";
 import { chartHighlights } from "./highlights";
 import { psychePatterns } from "./psyche";
 import { connectionFacts } from "./connection";
-import { repetition, repeatsTooMuch, questionParts, asksWhen, givesTime, alreadySaid, wrongBirthNakshatra } from "./replyChecks";
+import { repetition, repeatsTooMuch, questionParts, asksWhen, givesTime, alreadySaid, wrongBirthNakshatra, technicalTerms, tooTechnical, stripQuestionEcho, lifeClaims } from "./replyChecks";
 
 export const SYSTEM_PROMPT = `You are "Acharya", a warm and experienced Vedic astrologer (jyotishi) with decades
 of practice. You are talking to a real person who came to you for guidance. Speak
@@ -332,6 +334,8 @@ export interface ChatReply {
   followups: string[];
   /** True only when generation itself failed and nothing could be shown. */
   failed?: boolean;
+  /** True when this text was rescued from a failed generation — no more calls on it. */
+  salvaged?: boolean;
 }
 
 // A reply with no words in it is worse than a wrong one — the user just sees an empty
@@ -367,7 +371,12 @@ async function reviseIfOffTarget(
   const needsTime = asksWhen(question);
   const score = (r: ChatReply) =>
     (checkRepeat && repeatsTooMuch(repetition(r.answer, priorAnswers)) ? 1 : 0) +
-    (needsTime && !givesTime(r.answer) ? 1 : 0);
+    (needsTime && !givesTime(r.answer) ? 1 : 0) +
+    (tooTechnical(technicalTerms(r.answer, question), r.answer) ? 1 : 0) +
+    (lifeClaims(r.answer).length ? 1 : 0);
+  // Two generations already failed and this text was rescued from them — a third call on the
+  // same provider is a wait the person pays for and rarely gets anything back from.
+  if (out.failed || out.salvaged) return out;
   const before = score(out);
   if (!before) return out;
 
@@ -378,6 +387,22 @@ async function reviseIfOffTarget(
       `YOU ALREADY SENT THESE LINES EARLIER IN THIS SAME CHAT, and your draft sent them back almost word for word:\n${rep.lines
         .map((l) => `  - "${l}"`)
         .join("\n")}\nThey can scroll up and read them, so repeating them reads as if you never read their new question. If one of those facts still matters, point at it in a few words ("wahi samay jo maine bataya tha") and spend the reply on what is genuinely NEW for what they asked now.`
+    );
+  }
+  const jargon = technicalTerms(out.answer, question);
+  if (tooTechnical(jargon, out.answer)) {
+    notes.push(
+      `THE VISIBLE ANSWER IS WRITTEN FOR AN ASTROLOGER, NOT FOR THEM. It uses ${jargon
+        .map((h) => `"${h}"`)
+        .join(", ")}, and they never used those words. Say the same thing in life language — what it does to their days, their work, their money, their people — and move every technical term into the "@@REASON@@" part, where someone who wants the mechanism can open it.`
+    );
+  }
+  const claims = lifeClaims(out.answer);
+  if (claims.length) {
+    notes.push(
+      `YOU STATED SOMETHING ABOUT THEIR LIFE THAT NO CHART CAN KNOW: ${claims
+        .map((c) => `"${c}"`)
+        .join(", ")}. A chart shows tendencies and periods, not whether they currently have a loan, a job, a spouse or children. Say it as the chart's indication ("is samay karz ka dabaav dikhta hai"), or ask them, but never state it as fact.`
     );
   }
   if (needsTime && !givesTime(out.answer)) {
@@ -426,7 +451,7 @@ function salvageEmptyReply(out: ChatReply, language: string): ChatReply {
   const reason = out.reason.trim();
   if (!replyBroken(reason)) {
     const paras = reason.split(/\n\s*\n/);
-    return { ...out, answer: paras[0].trim(), reason: paras.slice(1).join("\n\n").trim() };
+    return { ...out, answer: paras[0].trim(), reason: paras.slice(1).join("\n\n").trim(), salvaged: true };
   }
   const key = (language || "en").toLowerCase();
   // "failed" tells the caller this cost the user nothing — the chat credit is given back.
@@ -558,6 +583,14 @@ export function buildFullChartContext(chart: any) {
     // server/timeSensitivity.ts. Absent/null means the time is taken as exact.
     birth_time_reliability: chart.time_sensitivity ?? null,
     birth_summary: chart.summary,
+    /* Their own Avakahada row — yoni, gana, nadi, varna, vashya, from the janma nakshatra. */
+    avakahada: (() => {
+      try {
+        const nakIdx = NAKSHATRAS.indexOf(String(chart.summary?.nakshatra ?? ""));
+        const signIdx = SIGNS.indexOf(String(chart.summary?.rashi ?? ""));
+        return nakIdx >= 0 ? avakahada(nakIdx, signIdx) : null;
+      } catch { return null; }
+    })(),
     settings: chart.settings,
     ascendant: chart.ascendant,
     // D1 planets (house+sign+nakshatra) — the house layout is derivable from this,
@@ -614,6 +647,26 @@ export function buildFullChartContext(chart: any) {
       })(),
       current: chart.dasha?.current ?? null,
       next_7_years: chart.dasha?.next_7_years ?? [],
+      /*
+       * ONE answer to "what period is running now".
+       *
+       * `current` holds both the mahadasha and the antardasha with their own dates, and
+       * replies picked whichever they liked — one answer said the current period runs to
+       * 2027, the next said 2041, from the same chart in the same chat. A mahadasha spans
+       * fifteen to twenty years; nobody experiences that as "right now". So the running
+       * period is stated once, here, with the long one clearly marked as backdrop.
+       */
+      current_period: (() => {
+        const c = chart.dasha?.current;
+        if (!c?.antardasha) return null;
+        return {
+          running: `${c.mahadasha}–${c.antardasha}`,
+          from: c.antardasha_from,
+          to: c.antardasha_to,
+          answer_to_kab_tak: c.antardasha_to,
+          background_only: `${c.mahadasha} Mahadasha, ${c.mahadasha_from} to ${c.mahadasha_to}`,
+        };
+      })(),
     },
     // Every astrological FACT the AI may state (yogas, doshas, dignity, drishti,
     // strength, career/health/partner/lucky/wealth indicators, ratings, Sade Sati and
@@ -780,6 +833,15 @@ never your own reading of the chart:
     yogas come after it. Never open with advice that fits anyone ("padhai par dhyan
     dijiye", "mehnat kijiye", "aapka dimaag tez hai"). If a highlight is
     uncomfortable, say it kindly, but say it.
+  • YONI, GANA, NADI, VARNA, VASHYA — "meri yoni kya hai", "mera gana": read them from
+    "avakahada". They come from the janma nakshatra, so they are facts, not a reading.
+    Say what it is, one line on what that temperament means, and that these are used in
+    Guna Milan. Never answer such a question with Manglik/dosha material instead.
+  • "ABHI KAUNSA SAMAY CHAL RAHA HAI" — one scale only: dasha.current_period. Its
+    "running" pair and its from/to dates ARE the current period, and "to" is the answer to
+    "kab tak". The mahadasha in "background_only" is a fifteen-to-twenty-year backdrop —
+    mention it as background if it helps, never as the period they are in now, and never
+    give its end year as the answer to "kab tak".
   • GOCHAR ≠ DASHA. A question about a planet's "gochar" or transit ("Guru ka gochar",
     "Shani kab badlega", "Rahu kahan hai") is answered from chart_facts.gochar_calendar:
     which house (from lagna and from Moon) it moves through, with dates, starting from
@@ -876,6 +938,88 @@ export async function answerQuestion(args: {
       console.warn("[timing] skipped:", e?.message);
     }
   }
+  /*
+   * A child before a wedding.
+   *
+   * "Shaadi kab hogi" was answered with 2037 and, two messages later, "baap kab banunga"
+   * with 2031 — from the same chart, in the same chat. The two windows are computed by
+   * separate runs of the same engine and neither knows about the other, so the check has
+   * to happen here. The marriage window is computed even when they did not ask for it,
+   * purely to compare against; nothing else is done with it.
+   */
+  const childIdx = timingList.findIndex((t) => t.topic === "a child");
+  if (childIdx >= 0) {
+    try {
+      const marriage =
+        timingList.find((t) => t.topic === "marriage") ??
+        (() => {
+          const m = computeTiming(args.chart, "marriage", Number(process.env.PROKERALA_AYANAMSA) || 1);
+          return m ? timingForAI(m) : null;
+        })();
+      const startsAt = (text?: string | null) => {
+        const m = String(text ?? "").match(/\b([A-Z][a-z]{2})[a-z]*\s+(\d{4})\b/);
+        return m ? Date.parse(`${m[1]} 1, ${m[2]}`) : NaN;
+      };
+      const childAt = startsAt(timingList[childIdx].MOST_LIKELY);
+      const marriageAt = startsAt(marriage?.MOST_LIKELY);
+      if (Number.isFinite(childAt) && Number.isFinite(marriageAt) && childAt < marriageAt) {
+        /*
+         * Telling the model "this one comes before the wedding, be careful" does not work —
+         * it was tried, and the reply still opened with the early window. So the DATA is
+         * corrected instead: the window that lands after marriage becomes the answer, and
+         * the early one stays only as a possibility for someone already married. A model
+         * can only say what it is given.
+         */
+        const child = timingList[childIdx];
+        const others: string[] = Array.isArray(child.ALSO_POSSIBLE) ? [...child.ALSO_POSSIBLE] : [];
+        const afterIdx = others.findIndex((w) => { const t = startsAt(w); return Number.isFinite(t) && t >= marriageAt; });
+        const early = `${child.MOST_LIKELY} (ONLY if they have already told you they are married — otherwise this is before their marriage window)`;
+        timingList[childIdx] = {
+          ...child,
+          MOST_LIKELY: afterIdx >= 0 ? others[afterIdx] : child.MOST_LIKELY,
+          ALSO_POSSIBLE: afterIdx >= 0 ? [early, ...others.filter((_, i) => i !== afterIdx)] : others,
+          note:
+            `${child.note} CHILDREN COME AFTER MARRIAGE HERE: their marriage window is ${marriage?.MOST_LIKELY ?? "later"}, ` +
+            `so any child window before it belongs to someone already married. Give the window above, and if they say they are ` +
+            `already married, then use the "(ONLY if…)" one.`,
+        };
+      }
+    } catch (e: any) {
+      console.warn("[timing] children/marriage cross-check skipped:", e?.message);
+    }
+  }
+
+  /*
+   * A loan question is not a "when is my biggest gain" question.
+   *
+   * Asked "karz kab utrega", the reply reached for the strongest money window in the whole
+   * search — April 2028, three years out — which is true and useless to someone paying an
+   * EMI this month. What that person needs is the near stretch: which of the next periods
+   * are tight and which ease off. That comes from period_profile, so it is handed over
+   * separately and the far window stays as the long-range note it always was.
+   */
+  const DEBT_RE = /\b(karz|karja|kraz|loan|emi|udhaar|udhar|debt|kist|kisht|repay|chukana|chukta)\b/i;
+  let debtNearTerm: any = null;
+  if (DEBT_RE.test(args.question)) {
+    try {
+      const profile: any[] = (periodProfile(args.chart, Number(process.env.PROKERALA_AYANAMSA) || 1) ?? []) as any[];
+      const from = profile.findIndex((r) => r.when === "current");
+      debtNearTerm = {
+        note: "They asked about a loan or repayment — that is about the NEXT months, not the biggest gain years away. Answer from these periods in order, say which are tight and which ease, and only then mention the strongest far window as the long-range picture.",
+        periods: profile.slice(Math.max(0, from), Math.max(0, from) + 3).map((r) => ({
+          period: r.period,
+          window: `${String(r.from).slice(0, 7)} – ${String(r.to).slice(0, 7)}`,
+          when: r.when,
+          money: r.strong_for?.includes("money") ? "easier for money"
+            : r.weak_for?.includes("money") ? "tight for money"
+            : "average for money",
+        })),
+      };
+    } catch (e: any) {
+      console.warn("[timing] debt near-term skipped:", e?.message);
+    }
+  }
+
   const timing = timingList.length === 1 ? timingList[0] : timingList.length ? Object.fromEntries(timingList.map((t) => [t.topic, t])) : null;
   const timingTopicsLabel = timingList.map((t) => t.topic).join(", ");
 
@@ -914,6 +1058,7 @@ export async function answerQuestion(args: {
     ...(day ? { day_computed: day } : {}),
     ...(week ? { week_computed: week } : {}),
     ...(timing ? { timing_computed: timing } : {}),
+    ...(debtNearTerm ? { debt_near_term: debtNearTerm } : {}),
     ...basePacket,
   };
   const dayRule = day
@@ -1379,6 +1524,9 @@ ${languageReminder(args.language)}`;
       if (i > 0) { out = { ...out, answer: out.answer.slice(i).trim() }; break; }
     }
   }
+  // "Aapne pucha hai ki…" — they know what they asked. Deleted, not re-generated.
+  out = { ...out, answer: stripQuestionEcho(out.answer) };
+
   return inSelectedLanguage(out, args.language);
 }
 

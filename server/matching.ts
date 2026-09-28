@@ -143,6 +143,25 @@ const VASHYA_MATRIX = [
 
 // Yoni (animal) per nakshatra (0-based). 14 yonis.
 // 0 Horse 1 Elephant 2 Sheep 3 Serpent 4 Dog 5 Cat 6 Rat 7 Cow 8 Buffalo 9 Tiger 10 Deer 11 Monkey 12 Mongoose 13 Lion
+/**
+ * One person's own Avakahada details — yoni, gana, nadi, varna, vashya.
+ *
+ * These tables were built for Guna Milan, where they only ever describe a PAIR. Asked
+ * "meri yoni kya hai" the chat had nothing to read and answered about Manglik dosha
+ * instead. A person's own yoni is simply their nakshatra's row.
+ */
+export function avakahada(nakIndex: number, moonSignIndex: number) {
+  if (!Number.isInteger(nakIndex) || nakIndex < 0 || nakIndex > 26) return null;
+  return {
+    yoni: YONI_NAME[YONI_OF_NAK[nakIndex]],
+    gana: GANA_NAME[GANA_OF_NAK[nakIndex]],
+    nadi: NADI_NAME[NADI_PATTERN[nakIndex % 6]],
+    varna: Number.isInteger(moonSignIndex) ? VARNA_NAME[VARNA[moonSignIndex]] : null,
+    vashya: Number.isInteger(moonSignIndex) ? VASHYA_NAME[VASHYA_GROUP[moonSignIndex]] : null,
+    note: "Avakahada details — ye Guna Milan mein use hote hain; akele mein ye swabhav ka ishara hain, koi bhavishya nahi.",
+  };
+}
+
 const YONI_OF_NAK = [
   0, 1, 2, 3, 3, 4, 5, 2, 5, 6, 6, 7, 8, 9, 8, 9, 10, 10, 4, 11, 12, 11, 13, 0, 13, 7, 1,
 ];

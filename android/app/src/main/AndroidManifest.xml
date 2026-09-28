@@ -41,6 +41,19 @@
     <!-- Voice input: speech-to-text for asking questions (runtime-requested) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Daily reading, remedy and dasha reminders.
+         These are what actually make a scheduled notification arrive ON TIME.
+         The app schedules with allowWhileIdle, which on Android 12+ (API 31)
+         is an EXACT alarm: without these the system refuses the alarm outright,
+         the plugin's exception was being swallowed, and the reminder simply
+         never appeared — the "time ho gaya par notification nahi aaya" bug.
+         SCHEDULE_EXACT_ALARM covers 12 and 12L; USE_EXACT_ALARM covers 13+.
+         Without RECEIVE_BOOT_COMPLETED every pending reminder is also lost the
+         moment the phone restarts, and never comes back. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Updating in place: the app downloads its own APK and hands it to
          Android's installer. This does NOT install silently — the system still
          shows its install screen — it only removes the trip to the browser. -->

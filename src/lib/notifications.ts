@@ -62,18 +62,49 @@ export async function remindAt(
   if (!(await ensureNotifPermission())) return false;
   try {
     await LocalNotifications.cancel({ notifications: [{ id: ID.window }] });
-    await LocalNotifications.schedule({
-      notifications: [{
-        id: ID.window,
-        title: opts.title,
-        body: opts.body,
-        schedule: { at, allowWhileIdle: true },
-        extra: opts.route ? { route: opts.route } : undefined,
-      }],
-    });
-    return true;
+    return await scheduleOrDrift([{
+      id: ID.window,
+      title: opts.title,
+      body: opts.body,
+      schedule: { at, allowWhileIdle: true },
+      extra: opts.route ? { route: opts.route } : undefined,
+    }]);
   } catch {
     return false;
+  }
+}
+
+/**
+ * Schedule, and if the system refuses the EXACT alarm, schedule anyway without it.
+ *
+ * Every call here asks for `allowWhileIdle`, which on Android 12+ is an exact alarm and
+ * needs a permission the app may not hold (the manifest now declares it, but a user can
+ * still revoke it, and some OEM builds deny it outright). The plugin throws in that case,
+ * and every call site was swallowing the exception — so the reminder was never scheduled
+ * at all and nothing anywhere said so. That is the "notification time par nahi aaya" bug.
+ *
+ * An inexact alarm can drift by a few minutes. For a daily reading reminder that is
+ * completely fine, and it is enormously better than silence.
+ */
+async function scheduleOrDrift(notifications: any[]): Promise<boolean> {
+  if (!notifications.length) return true;
+  try {
+    await LocalNotifications.schedule({ notifications });
+    return true;
+  } catch (e) {
+    console.warn("[notify] exact alarm refused, retrying inexact:", e);
+    try {
+      await LocalNotifications.schedule({
+        notifications: notifications.map((n) => ({
+          ...n,
+          schedule: n.schedule ? { ...n.schedule, allowWhileIdle: false } : n.schedule,
+        })),
+      });
+      return true;
+    } catch (e2) {
+      console.error("[notify] could not schedule at all:", e2);
+      return false;
+    }
   }
 }
 
@@ -162,9 +193,7 @@ export async function applyNotifications(opts: {
     }
   }
 
-  if (notifications.length) {
-    try { await LocalNotifications.schedule({ notifications }); } catch { /* ignore */ }
-  }
+  if (notifications.length) await scheduleOrDrift(notifications);
 }
 
 type PlanDay = {
@@ -274,9 +303,7 @@ async function scheduleDayPlanQueue(
   // Swap: clear the three blocks, then schedule the fresh set.
   try { await LocalNotifications.cancel({ notifications: PLAN_IDS.map((id) => ({ id })) }); } catch { /* ignore */ }
   if (!notifications.length) return;
-  try {
-    await LocalNotifications.schedule({ notifications });
-  } catch { /* ignore */ }
+  await scheduleOrDrift(notifications);
 }
 
 /*
@@ -322,12 +349,10 @@ export async function scheduleFollowUp(o: { chartId: string; topic: string; name
     const p = await LocalNotifications.checkPermissions();
     if (p.display !== "granted") return;
     await LocalNotifications.cancel({ notifications: [{ id: FOLLOWUP_ID }] });
-    await LocalNotifications.schedule({
-      notifications: [{
-        id: FOLLOWUP_ID, title, body,
-        schedule: { at, allowWhileIdle: true },
-        extra: { route: `/chat/${o.chartId}?from=followup` },
-      }],
-    });
+    await scheduleOrDrift([{
+      id: FOLLOWUP_ID, title, body,
+      schedule: { at, allowWhileIdle: true },
+      extra: { route: `/chat/${o.chartId}?from=followup` },
+    }]);
   } catch { /* ignore */ }
 }

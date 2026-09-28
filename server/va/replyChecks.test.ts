@@ -106,3 +106,66 @@ describe("the birth nakshatra must be theirs", () => {
     expect(wrongBirthNakshatra("", "Revati")).toEqual([]);
   });
 });
+
+describe("the visible answer stays in life language", () => {
+  it("catches machinery the person never asked about", async () => {
+    const { technicalTerms, tooTechnical } = await import("./replyChecks");
+    // Live 25 Sep 2026, in a plain "aaj ka din" reply.
+    const a = "Din bhar Moon ki sthiti aapke janm Moon sign se 12th house hone ke karan mood mein utar-chadhav rahega.";
+    const hits = technicalTerms(a, "aaj ka din kaisa rahega");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(tooTechnical(hits, a)).toBe(true);
+
+    const b = "Abhi aapki Venus Mahadasha aur Moon Antardasha chal rahi hai, aur gochar mein Saturn bhi asar de raha hai.";
+    expect(tooTechnical(technicalTerms(b, "mera time kaisa hai"), b)).toBe(true);
+  });
+
+  it("leaves a plain answer alone, and answers the person's own technical question", async () => {
+    const { technicalTerms, tooTechnical } = await import("./replyChecks");
+    const plain = "Vansh, aaj ka din theek rahega — subah ka samay sabse achha hai, aur shaam tak kaam ban jayega.";
+    expect(technicalTerms(plain, "aaj ka din kaisa rahega")).toEqual([]);
+    // They used the words themselves, so the reply may use them back.
+    const tech = "Aapki Venus Mahadasha 2041 tak chalegi, usmein Moon Antardasha abhi chal rahi hai.";
+    expect(technicalTerms(tech, "meri mahadasha kya chal rahi hai")).toEqual([]);
+    // One stray word in an otherwise plain answer is not worth a rewrite.
+    const oneWord = "Vansh, is samay aapke gochar ka asar halka hai, baaki sab theek chal raha hai aaj.";
+    expect(tooTechnical(technicalTerms(oneWord, "aaj kaisa din hai"), oneWord)).toBe(false);
+  });
+});
+
+describe("the reply does not read the question back", () => {
+  it("drops a 'you asked' opener and keeps the answer", async () => {
+    const { stripQuestionEcho } = await import("./replyChecks");
+    // Live openers, 21-25 Sep 2026.
+    const a = "Vansh, aapke is sawal ko dekh kar lagta hai ki aap jaanna chahte hain. Abhi aapke jeevan mein kuch bade badlav chal rahe hain, khaas kar rishton ke maamle mein, aur ye samay February 2027 tak aise hi rahega.";
+    expect(stripQuestionEcho(a)).toBe("Vansh, abhi aapke jeevan mein kuch bade badlav chal rahe hain, khaas kar rishton ke maamle mein, aur ye samay February 2027 tak aise hi rahega.");
+
+    const b = "Aapne pucha hai ki aapki kundli mein abhi kya problems chal rahi hain. Abhi ka samay aapke liye thoda chunautipoorn hai aur kaam mein deri dikh rahi hai, lekin March 2027 ke baad haalat sudhrenge.";
+    expect(stripQuestionEcho(b).startsWith("Abhi ka samay")).toBe(true);
+  });
+
+  it("leaves a real opening alone", async () => {
+    const { stripQuestionEcho } = await import("./replyChecks");
+    const good = "Vansh, aapki shaadi ke liye sabse mazboot samay February 2037 se September 2038 ke beech dikh raha hai, aur usme peak months February 2037 se May 2038 hain.";
+    expect(stripQuestionEcho(good)).toBe(good);
+    // An answer that is ONLY the echo is left for the empty-reply check, not gutted here.
+    const tiny = "Aapne pucha hai ki shaadi kab hogi.";
+    expect(stripQuestionEcho(tiny)).toBe(tiny);
+  });
+});
+
+describe("no claims about a life the chart cannot see", () => {
+  it("catches flat statements about their present", async () => {
+    const { lifeClaims } = await import("./replyChecks");
+    expect(lifeClaims("Achhi baat ye hai ki aapka koi karz nahi hai abhi.").length).toBe(1);
+    expect(lifeClaims("Kyunki aapki shaadi ho chuki hai, ab santan ka samay dekhte hain.").length).toBe(1);
+    expect(lifeClaims("Aap abhi single hain, isliye ye samay milne-julne ka hai.").length).toBe(1);
+  });
+
+  it("lets a reading through", async () => {
+    const { lifeClaims } = await import("./replyChecks");
+    expect(lifeClaims("Is samay naya karz lene se bachiye, kyunki kharche badh sakte hain.")).toEqual([]);
+    expect(lifeClaims("Shaadi ke liye sabse mazboot samay February 2037 se September 2038 hai.")).toEqual([]);
+    expect(lifeClaims("Aapke chart mein santan ka yog October 2031 ke baad mazboot hota hai.")).toEqual([]);
+  });
+});

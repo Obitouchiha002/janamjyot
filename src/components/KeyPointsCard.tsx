@@ -51,16 +51,16 @@ function PointRow({ point, tone }: { point: KeyPoint; tone: "problem" | "strengt
 
           <div className="flex flex-wrap items-center gap-1.5 mt-2">
             {point.active_now && (
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.chip}`}>Abhi chal raha hai</span>
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.chip}`}>Running now</span>
             )}
             {point.until && (
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/70 text-slate-700 border">
-                {point.until} tak
+                until {point.until}
               </span>
             )}
             {!point.until && point.background_until && (
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/70 text-slate-700 border">
-                background: {point.background_until} tak
+                background: until {point.background_until}
               </span>
             )}
           </div>
@@ -72,7 +72,7 @@ function PointRow({ point, tone }: { point: KeyPoint; tone: "problem" | "strengt
                 onClick={() => setOpen((o) => !o)}
                 className={`mt-2 inline-flex items-center gap-1 text-xs font-semibold active:opacity-70 ${c.sub}`}
               >
-                Kyun? <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                Why? <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
               </button>
               {open && (
                 <p className={`mt-1.5 pt-1.5 border-t border-black/5 text-[13px] leading-relaxed break-words ${c.sub}`}>
@@ -96,24 +96,24 @@ export default function KeyPointsCard({ data }: { data: KeyPointsData }) {
   return (
     <section className="rounded-3xl border bg-card shadow-sm overflow-hidden">
       <div className="px-4 py-3.5 border-b bg-secondary/30">
-        <h2 className="text-base sm:text-lg font-bold text-foreground">Aapki kundli abhi kya keh rahi hai</h2>
+        <h2 className="text-base sm:text-lg font-bold text-foreground">What your chart is saying right now</h2>
         <p className="text-[11px] sm:text-xs text-muted-foreground flex items-start gap-1.5 mt-1">
           <Calculator className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <span>Ye hissa seedha calculation se banta hai — dates aur wajah, dono asli hisaab se.</span>
+          <span>This part comes straight from the calculation — the dates and the reasons both.</span>
         </p>
       </div>
 
       <div className="p-3 sm:p-5 space-y-4">
         {problems.length > 0 && (
           <div className="space-y-2.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Sabse badi dikkatein</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Main problems right now</p>
             {problems.map((p, i) => <PointRow key={`p${i}`} point={p} tone="problem" />)}
           </div>
         )}
 
         {strengths.length > 0 && (
           <div className="space-y-2.5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Aapki asli taakat</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Your real strengths</p>
             {strengths.map((p, i) => <PointRow key={`s${i}`} point={p} tone="strength" />)}
           </div>
         )}
@@ -121,7 +121,7 @@ export default function KeyPointsCard({ data }: { data: KeyPointsData }) {
         {patterns.length > 0 && (
           <div className="space-y-2.5">
             <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Aapka swabhav — jo baar baar dohrata hai
+              Your pattern — what keeps repeating
             </p>
             {patterns.map((t, i) => (
               <div key={`t${i}`} className="rounded-2xl border bg-secondary/20 p-3 sm:p-3.5">
@@ -131,12 +131,12 @@ export default function KeyPointsCard({ data }: { data: KeyPointsData }) {
                     <p className="text-[15px] leading-relaxed font-medium text-foreground break-words">{t.pattern}</p>
                     {t.shows_up_as && (
                       <p className="text-[13px] leading-relaxed text-muted-foreground break-words">
-                        <span className="font-semibold text-foreground">Dikhta hai: </span>{t.shows_up_as}
+                        <span className="font-semibold text-foreground">Shows up as: </span>{t.shows_up_as}
                       </p>
                     )}
                     {t.gift && (
                       <p className="text-[13px] leading-relaxed text-emerald-900 break-words">
-                        <span className="font-semibold">Isi ka accha pehlu: </span>{t.gift}
+                        <span className="font-semibold">The gift in it: </span>{t.gift}
                       </p>
                     )}
                   </div>
