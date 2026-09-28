@@ -614,17 +614,6 @@ html.kb-open .app-tabbar { transform: translateY(120%); }
   .app-desktop { --kb-inset: 0px; }
 }
 
-/* Home's two column wrappers do not exist on a phone: `display: contents`
-   drops them, and the cards keep the order a phone reads them in. */
-.home-grid { display: flex; flex-direction: column; gap: 22px; }
-.home-main, .home-side { display: contents; }
-.home-hero { order: 1; }
-.home-today { order: 2; }
-.home-actions { order: 3; }
-.home-value { order: 4; }
-.home-kundlis { order: 5; }
-.home-jump { order: 6; }
-
 /* ── Desktop: Home becomes a dashboard ─────────────────────────────────────
    The same sections, laid out for a screen: the hero and what you DO on the
    left, the day and who you read for on the right. On a phone the order top to
