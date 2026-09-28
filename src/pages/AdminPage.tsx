@@ -1418,6 +1418,68 @@ function Reviews() {
   );
 }
 
+
+/**
+ * "See the app the way a free user does."
+ *
+ * An admin bypasses every quota, so the person setting the prices is the one
+ * person who can never reach the paywall, the limit sheets or a credit being
+ * spent. This switch turns that bypass off for their own account — nothing
+ * else changes, and turning it back on is the same tap.
+ */
+function ActAsFree() {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/me/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setOn(!!d?.act_as_free))
+      .catch(() => setOn(false));
+  }, []);
+
+  const toggle = async () => {
+    if (on === null || busy) return;
+    setBusy(true);
+    haptic.tap();
+    try {
+      const r = await fetch("/api/admin/act-as-free", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ on: !on }),
+      });
+      if (r.ok) setOn(!on);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <section className="m-card p-4">
+      <div className="flex items-start gap-3">
+        <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${on ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
+          <Shield className="h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[14.5px] font-bold leading-tight">Use the app as a free user</p>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+            {on
+              ? "On — your account is being metered like everyone else's: free limits apply, the paywall appears, and credits are spent."
+              : "Off — as an admin you are unlimited, so you never see a quota, a paywall or a credit being spent."}
+          </p>
+        </div>
+        <Pressable
+          onClick={toggle}
+          subtle
+          disabled={busy || on === null}
+          className={`mt-0.5 h-7 w-12 shrink-0 rounded-full p-0.5 transition-colors ${on ? "bg-accent" : "bg-muted"}`}
+          aria-label="Toggle free-user mode"
+        >
+          <span className={`block h-6 w-6 rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : ""}`} />
+        </Pressable>
+      </div>
+    </section>
+  );
+}
+
 export default function AdminPage() {
   const [section, setSection] = useState<SectionKey>("overview");
 
@@ -1445,6 +1507,8 @@ export default function AdminPage() {
           );
         })}
       </div>
+
+      {section === "overview" && <ActAsFree />}
 
       <div className="m-enter" key={section}>
         {section === "overview" && <Overview />}

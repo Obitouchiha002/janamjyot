@@ -701,11 +701,19 @@ export interface Quotas {
 
 /** -1 means unlimited. Tuned for free AI provider quotas — accuracy over volume. */
 export const PLANS: Record<PlanId, Quotas> = {
-  // Free: questions and matches counted per WEEK (see PLAN_WINDOW) — enough to
-  // judge the app, not enough to live in it. Daily readings stay per-day and
-  // generous, because they are the habit worth building and cost us almost
-  // nothing to serve.
-  free: { chart: 2, report: 2, ask: 5, match: 3, decide: 3, daily: 40 },
+  /*
+   * Free: enough to judge the app, not enough to live in it.
+   *
+   * Measured after a month: 42 people asked 54 questions between them and the
+   * wallet had never once been used — not because nobody would pay, but
+   * because nothing ever ran out. Two life reports a MONTH meant the most
+   * expensive thing the app makes was free, forever, to everyone.
+   *
+   * So the reading is now one in a lifetime — the one that shows what this is
+   * worth — and the rest is a week's worth of curiosity. Daily readings stay
+   * generous: they are the habit worth building and cost almost nothing.
+   */
+  free: { chart: 2, report: 1, ask: 3, match: 1, decide: 2, daily: 40 },
   pro: { chart: 25, report: 20, ask: 100, match: 25, decide: 20, daily: 200 },
   unlimited: { chart: -1, report: -1, ask: -1, match: -1, decide: -1, daily: -1 },
 };
@@ -731,7 +739,10 @@ export const PLAN_WINDOW: Record<PlanId, Partial<Record<QuotaAction, QuotaWindow
   // Decisions are three in a LIFETIME on free, not three a week: this is the
   // feature someone is meant to try, feel understood by, and then pay for —
   // and a weekly refill is exactly enough to never need to.
-  free: { ask: "week", match: "week", decide: "total" },
+  // A life report and a matching are the things worth paying for, so on free
+  // they are a lifetime allowance, not a refilling one: one report, one match,
+  // two decisions — each enough to see what it does, once.
+  free: { ask: "week", match: "total", decide: "total", report: "total" },
   pro: {},
   unlimited: {},
 };
@@ -1544,14 +1555,28 @@ export const REFERRAL = {
   maxPaid: 20,
 } as const;
 
+/*
+ * What each thing costs, in credits — a credit being about ₹0.90.
+ *
+ * Measured against what these actually cost to serve (the `ai_calls` table
+ * prices every call): a question is ~₹0.12, a full life report ~₹3.30 across
+ * its eight calls, a focused report ~₹0.30. The old prices were 7–55× that,
+ * which sounds healthy until you compare them to the world outside: an
+ * astrologer charges ₹20–50 a question, ₹200–1,000 for a written life reading
+ * and ₹100–500 for a matching. We were charging ₹0.90, ₹26 and ₹17.
+ *
+ * So these are still well under the market and still many times our cost — but
+ * a thousand credits is now about ten life readings instead of thirty-four,
+ * which is a balance someone can actually spend.
+ */
 export const CREDIT_PRICES: Record<string, number> = {
-  chat: 1,          // one question and its answer
-  life_report: 29,  // the long report + PDF
-  report: 19,       // a focused report (career, wealth, marriage…)
-  matching: 19,     // full Ashtakoot + PDF
-  timeline: 15,
-  chart: 10,        // a kundli beyond the free ones
-  decide: 5,        // one decision card, with its timing and its draft
+  chat: 3,           // one question and its answer  (~₹2.70)
+  life_report: 99,   // the long report + PDF        (~₹89)
+  report: 39,        // a focused report (career, wealth, marriage…)
+  matching: 49,      // full Ashtakoot + PDF
+  timeline: 29,
+  chart: 20,         // a kundli beyond the free ones
+  decide: 15,        // one decision card, with its timing and its draft
 };
 
 /**
@@ -1569,7 +1594,9 @@ export const CREDIT_PRICES: Record<string, number> = {
 export const TRIAL = {
   paise: 100,
   days: 3,
-  limits: { life_report: 5, chat: 100, matching: 5, report: 5, timeline: 5, chart: 5 },
+  // Re-cut with the new prices: five life readings for one rupee was ₹445 of
+  // product, which is not a trial, it is the whole thing for free.
+  limits: { life_report: 2, chat: 60, matching: 3, report: 3, timeline: 3, chart: 3 },
 } as const;
 
 export interface TrialState {

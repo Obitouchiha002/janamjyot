@@ -2077,7 +2077,13 @@
     var modal = $('buyModal'), grid = $('plans');
     if(!modal || !grid) return;
 
-    var RATE = { life_report:29, report:19, matching:19, chat:1, chart:10, timeline:15 };
+    /* The price list, in credits. Kept in step with the server's CREDIT_PRICES
+       by the fetch below — these values are only what the page shows in the
+       fraction of a second before that answers, and if it never answers. */
+    var RATE = { life_report:99, report:39, matching:49, chat:3, chart:20, timeline:29 };
+    fetch('/api/billing/packs').then(function(r){ return r.json(); }).then(function(d){
+      if (d && d.prices) { Object.keys(d.prices).forEach(function(k){ RATE[k] = d.prices[k]; }); }
+    }).catch(function(){});
 
     var PLANS = [
       { id:'trial', hero:true, flag:'Best way to start',
@@ -2090,15 +2096,15 @@
           'Career, wealth and marriage reports',
           'Life Timeline — 5 years ahead',
         ],
-        fine:'Fair-use caps apply during the trial (5 life reports, 100 questions, 5 matchings) so it cannot be abused. It ends on its own after 3 days — there is nothing to cancel and no card is saved.' },
+        fine:'Fair-use caps apply during the trial (2 life reports, 60 questions, 3 matchings) so it cannot be abused. It ends on its own after 3 days — there is nothing to cancel and no card is saved.' },
       { id:'starter', name:'Starter', rs:49, credits:50, unit:'50 credits',
-        tag:'A little top-up. Good for one deep reading plus a long conversation.',
+        tag:'A little top-up. Good for a focused report, or a dozen questions.',
         list:['50 credits','Credits never expire','Use them on anything below'] },
       { id:'popular', flag:'Most popular', name:'Popular', rs:149, credits:165, bonus:16, unit:'165 credits',
-        tag:'The usual choice — a few reports and plenty of questions.',
+        tag:'The usual choice — a full life reading, with questions left over.',
         list:['149 credits + 16 free','Credits never expire','Use them on anything below'] },
       { id:'value', name:'Value', rs:399, credits:460, bonus:61, unit:'460 credits',
-        tag:'Best rate per credit. For a whole family\u2019s charts.',
+        tag:'Best rate per credit — several full readings, or the whole family\u2019s charts.',
         list:['399 credits + 61 free','Credits never expire','Use them on anything below'] },
     ];
 

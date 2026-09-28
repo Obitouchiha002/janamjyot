@@ -1168,6 +1168,21 @@ app.post("/api/admin/user/:id/limits", requireAdmin, async (req: any, res) => {
   res.json({ ok: true, user: u });
 });
 
+/**
+ * "Treat me like a normal user" — the switch an admin needs to see their own
+ * product. It writes act_as_free onto the caller's own account (never anyone
+ * else's), so quotas, the paywall and the credit spend all apply to them until
+ * they turn it off.
+ */
+app.post("/api/admin/act-as-free", requireAdmin, async (req: any, res) => {
+  const on = req.body?.on === true;
+  const current = (req.user?.limits_json && typeof req.user.limits_json === "object") ? { ...req.user.limits_json } : {};
+  if (on) current.act_as_free = true; else delete current.act_as_free;
+  const u = await setUserLimits(req.user.id, Object.keys(current).length ? current : null);
+  await audit({ actorId: req.user.id, actorEmail: req.user.email, action: "admin.act_as_free", target: req.user.id, detail: { on } });
+  res.json({ ok: true, act_as_free: on, user: u });
+});
+
 /** Block (reversible) or ban (permanent), with a reason the user will see. */
 app.post("/api/admin/user/:id/status", requireAdmin, async (req: any, res) => {
   const status = String(req.body?.status) as AccountStatus;
@@ -1395,7 +1410,12 @@ app.get("/api/me/usage", async (req: any, res) => {
       window: windowFor(a, myPlan),
     };
   }
-  res.json({ plan: req.user?.role === "admin" ? "unlimited" : req.user?.plan ?? "free", usage: out });
+  const asFree = !!(req.user as any)?.limits_json?.act_as_free;
+  res.json({
+    plan: req.user?.role === "admin" && !asFree ? "unlimited" : asFree ? "free" : req.user?.plan ?? "free",
+    act_as_free: asFree || undefined,
+    usage: out,
+  });
 });
 app.get("/api/admin/maintenance", requireAdmin, (_req, res) => res.json(getSetting("maintenance") || { enabled: false, message: "" }));
 app.post("/api/admin/maintenance", requireAdmin, async (req, res) => {
@@ -2151,13 +2171,43 @@ async function checkQuota(
   action: QuotaAction,
 ): Promise<{ error: string; limit: number; used: number; action: QuotaAction; plan: string } | null> {
   const user = req.user ?? null;
-  if (user?.role === "admin") return null;
+  /*
+   * An admin is unlimited — unless they have asked to be treated like everyone
+   * else. Without that switch the person who decides the pricing is the one
+   * person who can never see it: quotas, the paywall, the "you have used your
+   * free report" sheet, none of it can be reached from an admin account, so
+   * the whole paid path went a month without being looked at by its owner.
+   * Stored on the account itself (limits_json.act_as_free), so it survives a
+   * reload and can be turned off from the same screen.
+   */
+  const actAsFree = !!(user as any)?.limits_json?.act_as_free;
+  if (user?.role === "admin" && !actAsFree) return null;
 
-  const limits = quotasFor(user);
+  const limits = quotasFor(actAsFree ? { ...user, role: "user", plan: "free" } as any : user);
   const limit = limits[action];
   if (limit < 0) return null; // -1 = unlimited
 
-  const plan = (user?.plan ?? "free") as PlanId;
+  /*
+   * A guest gets one kundli; signing in gives them the second.
+   *
+   * The free plan's two charts are an account's allowance, and a guest has no
+   * account — so without this one device could make two, sign in, and find the
+   * allowance already spent. One is enough to see a real chart, and "sign in
+   * for another" is the first honest reason the app has to ask.
+   */
+  if (action === "chart" && !user) {
+    const me = identityOf(req);
+    const made = await usageCount({ userId: undefined, deviceId: me.deviceId, plan: "free" }, "chart");
+    if (made >= 1) {
+      return {
+        error: "Sign in to make another kundli — your first one stays with you.",
+        limit: 1, used: made, action, plan: "guest",
+      };
+    }
+    return null;
+  }
+
+  const plan = (actAsFree ? "free" : user?.plan ?? "free") as PlanId;
   const me = identityOf(req);
   const used = await usageCount({ userId: me.userId, deviceId: me.deviceId, plan }, action);
   if (used < limit) return null;
