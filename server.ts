@@ -661,15 +661,30 @@ app.post("/api/auth/otp/request", async (req, res) => {
   if (!isMailConfigured()) {
     return res.status(503).json({ error: "Email sign-in isn't configured on the server yet." });
   }
-  // Same throttle as password reset: 3 codes per address per 15 minutes.
+  /*
+   * Three codes per address per 15 minutes — and it SAYS so.
+   *
+   * It used to answer "Code sent. Please check your email." and send nothing,
+   * which is indistinguishable from mail being broken: tap resend twice while
+   * waiting and every later attempt is a silent no-op with a reassuring
+   * message. (Unlike password reset, this cannot leak who has an account: a
+   * code is sent to any address that asks.)
+   */
   if (resetThrottled(`otp:${email}`)) {
-    return res.json({ ok: true, message: "Code sent. Please check your email." });
+    return res.status(429).json({
+      error: "You've asked for 3 codes in the last 15 minutes. Check your inbox and spam folder — the last code is still valid — or try again in a few minutes.",
+      throttled: true,
+    });
   }
   try {
     const code = String(crypto.randomInt(100000, 1000000)); // always 6 digits
     const expires = new Date(Date.now() + OTP_TTL_MIN * 60_000).toISOString();
     await saveLoginCode(email, hashToken(code), expires);
-    await sendLoginCodeEmail({ to: email, code, minutes: OTP_TTL_MIN });
+    // The SMTP server's own verdict, in the log: "accepted" is the only proof
+    // that the message left here, and without it "mail nahi aayi" cannot be
+    // told apart from "we never sent one".
+    const sent: any = await sendLoginCodeEmail({ to: email, code, minutes: OTP_TTL_MIN });
+    console.log(`[auth/otp] to=${email.replace(/^(.).*(@.*)$/, "$1***$2")} accepted=${sent?.accepted?.length ?? "?"} rejected=${sent?.rejected?.length ?? "?"} id=${sent?.messageId ?? "?"} smtp=${String(sent?.response ?? "").slice(0, 60)}`);
     res.json({ ok: true, message: "Code sent. Please check your email." });
   } catch (err: any) {
     console.error("[auth/otp/request] ", err?.message);
@@ -1181,6 +1196,48 @@ app.post("/api/admin/act-as-free", requireAdmin, async (req: any, res) => {
   const u = await setUserLimits(req.user.id, Object.keys(current).length ? current : null);
   await audit({ actorId: req.user.id, actorEmail: req.user.email, action: "admin.act_as_free", target: req.user.id, detail: { on } });
   res.json({ ok: true, act_as_free: on, user: u });
+});
+
+/**
+ * Does mail actually leave this server? — the question logs could not answer.
+ *
+ * Sends one real message and hands back exactly what the SMTP server said:
+ * whether it authenticated, which addresses it accepted, which it rejected and
+ * its response line. "Mail nahi aa rahi" then splits into three answers that
+ * need different fixes — not configured, refused by the server, or accepted
+ * here and lost on the way (spam, filters, a wrong address).
+ */
+app.post("/api/admin/mail-test", requireAdmin, async (req: any, res) => {
+  const to = normalizeEmail(req.body?.to) || req.user.email;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return res.status(400).json({ error: "Please give a valid address to send to." });
+  }
+  if (!isMailConfigured()) {
+    return res.status(503).json({ error: "SMTP_USER / SMTP_PASS are not set on this server.", configured: false });
+  }
+  const started = Date.now();
+  try {
+    const info: any = await sendLoginCodeEmail({ to, code: "123456", minutes: 10 });
+    res.json({
+      ok: true,
+      configured: true,
+      ms: Date.now() - started,
+      accepted: info?.accepted ?? [],
+      rejected: info?.rejected ?? [],
+      messageId: info?.messageId ?? null,
+      response: String(info?.response ?? ""),
+      note: "Accepted means the mail server took it. If it never arrives, look in spam — the problem is delivery, not sending.",
+    });
+  } catch (e: any) {
+    res.status(502).json({
+      ok: false,
+      configured: true,
+      ms: Date.now() - started,
+      error: String(e?.message || e),
+      code: e?.code ?? null,
+      responseCode: e?.responseCode ?? null,
+    });
+  }
 });
 
 /** Block (reversible) or ban (permanent), with a reason the user will see. */

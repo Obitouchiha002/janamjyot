@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Shield, Users, FileText, MessageSquare, Sparkles, Activity, KeyRound,
   Power, Megaphone, ToggleLeft, Search, X, Ban, ShieldCheck, UserCog,
-  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee, Smartphone, Download
+  Trash2, Plus, TrendingUp, Gauge, Star, Check, EyeOff, IndianRupee, Smartphone, Download, Mail,
 } from "lucide-react";
 import { Pressable } from "@/components/mobile/Pressable";
 import Switch from "@/components/mobile/Switch";
@@ -1427,6 +1427,88 @@ function Reviews() {
  * spent. This switch turns that bypass off for their own account — nothing
  * else changes, and turning it back on is the same tap.
  */
+
+/**
+ * "Does mail actually leave the server?"
+ *
+ * Sign-in codes go by email, and when one does not arrive there is nothing on
+ * screen to say whether the server refused, the mail server refused, or it was
+ * delivered and filtered. This sends one real message and shows exactly what
+ * the mail server answered.
+ */
+function MailTest() {
+  const [to, setTo] = useState("");
+  const [out, setOut] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    setBusy(true); setOut(null);
+    haptic.tap();
+    try {
+      const r = await fetch("/api/admin/mail-test", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ to: to.trim() || undefined }),
+      });
+      setOut({ status: r.status, ...(await r.json().catch(() => ({}))) });
+    } catch (e: any) {
+      setOut({ status: 0, error: String(e?.message || e) });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <section className="m-card p-4">
+      <div className="flex items-center gap-2.5">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent">
+          <Mail className="h-[18px] w-[18px]" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[14.5px] font-bold leading-tight">Email delivery</p>
+          <p className="text-[12.5px] text-muted-foreground">Send a real sign-in code and see what the mail server says.</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <input
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="your@email.com (blank = your own)"
+          className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3 py-2.5 text-[13.5px] outline-none focus:border-accent"
+        />
+        <Pressable
+          onClick={send}
+          disabled={busy}
+          className="shrink-0 rounded-xl bg-accent px-4 py-2.5 text-[13.5px] font-bold text-accent-foreground disabled:opacity-60"
+        >
+          {busy ? "Sending…" : "Send test"}
+        </Pressable>
+      </div>
+
+      {out && (
+        <div className={`mt-3 rounded-xl border px-3 py-2.5 text-[12.5px] leading-relaxed ${
+          out.ok ? "border-emerald-300/60 bg-emerald-500/10" : "border-rose-300/60 bg-rose-500/10"
+        }`}>
+          {out.ok ? (
+            <>
+              <p className="font-bold">Mail server accepted it ({out.ms}ms)</p>
+              <p className="mt-1">Accepted: {(out.accepted || []).join(", ") || "—"}</p>
+              {!!(out.rejected || []).length && <p>Rejected: {out.rejected.join(", ")}</p>}
+              <p className="mt-1 break-all text-muted-foreground">{out.response}</p>
+              <p className="mt-1.5 text-muted-foreground">{out.note}</p>
+            </>
+          ) : (
+            <>
+              <p className="font-bold">Not sent — {out.status}</p>
+              <p className="mt-1 break-all">{out.error}</p>
+              {out.code && <p className="text-muted-foreground">code: {out.code}{out.responseCode ? ` · SMTP ${out.responseCode}` : ""}</p>}
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ActAsFree() {
   const [on, setOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1509,6 +1591,7 @@ export default function AdminPage() {
       </div>
 
       {section === "overview" && <ActAsFree />}
+      {section === "overview" && <MailTest />}
 
       <div className="m-enter" key={section}>
         {section === "overview" && <Overview />}

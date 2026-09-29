@@ -40,9 +40,11 @@ export async function sendLoginCodeEmail(args: {
   to: string;
   code: string;
   minutes: number;
-}): Promise<void> {
+}): Promise<nodemailer.SentMessageInfo> {
   const from = env("SMTP_USER")!;
-  await transporter().sendMail({
+  // Returned, not swallowed: the caller logs what the mail server said, which
+  // is the difference between "we sent it" and "we think we sent it".
+  return await transporter().sendMail({
     from: `"JanamJyot" <${from}>`,
     to: args.to,
     subject: `${args.code} is your JanamJyot sign-in code`,
