@@ -411,6 +411,29 @@ const slowLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+/*
+ * Sign-in codes are limited per ADDRESS, not per IP.
+ *
+ * The reset limiter (3 an hour per IP) was doing this job, and on an Indian
+ * mobile network that is a bug: carrier NAT puts thousands of people behind one
+ * address, so three strangers asking for a code could lock everyone else on
+ * that IP out of signing in for an hour — with "Too many requests", which
+ * reads as the mail being broken.
+ *
+ * The real protection is per-email (three codes per fifteen minutes, in the
+ * route), which an attacker cannot dodge by changing IP. This ceiling is only
+ * against a flood from one machine, so it can be generous.
+ */
+const otpLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    error: "Too many sign-in codes from this connection. Please wait a few minutes — any code you already received is still valid.",
+  },
+});
+
 const previewLimiter = rateLimit({
   windowMs: 60 * 60_000,
   limit: 12,                      // 12 free preview charts per hour per IP
@@ -430,7 +453,7 @@ app.use("/api/auth/google", authLimiter);
 app.use("/api/auth/otp/verify", authLimiter);
 app.use("/api/auth/forgot-password", slowLimiter);
 app.use("/api/auth/reset-password", slowLimiter);
-app.use("/api/auth/otp/request", slowLimiter);
+app.use("/api/auth/otp/request", otpLimiter);
 
 /**
  * Everything under /api needs an account, except this allowlist.
