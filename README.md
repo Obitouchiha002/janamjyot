@@ -1,102 +1,54 @@
-# Vedic Astra
+# JanamJyot
 
-A Vedic astrology web app. Real chart data is calculated by the **Prokerala
-Astrology API**, normalized and stored by our backend, and interpreted by
-**Gemini** (chat + life reports). The app never fabricates chart data.
+A Vedic astrology app for Android and the web. Charts are computed by the app's
+own calculation engine — lagna, rashi, nakshatra, divisional charts and the
+running dasha — and a language model is used only to put those already-computed
+results into plain words.
 
-## Architecture
+**Live:** [janamjyot.lzworth.in](https://janamjyot.lzworth.in)
+
+## What it does
+
+- **Free Janam Kundli** — lagna, moon sign, nakshatra and dasha from date, time
+  and place of birth
+- **Dasha periods** — which period is running, how long it lasts, what follows
+- **Kundli matching** — Ashtakoot guna milan, all 36 points
+- **Life Timeline** — 30 days to 5 years ahead
+- **Ask by voice** — speak the question instead of typing it
+- **PDF reports** — generated on the device, shareable
+- **App lock** — fingerprint / biometric
+- **Hindi, Hinglish and English**
+
+## How it is built
+
+React + TypeScript, wrapped for Android with **Capacitor**, with an Express API
+deployed as a single Vercel serverless function.
 
 ```
-Frontend (React + Vite + Tailwind + shadcn, PWA)
-        │  fetch only our own /api/* routes
+React + Vite + Tailwind  (web + Capacitor Android shell)
+        │  calls only our own /api/* routes
         ▼
-Express backend (server.ts)            ← secrets live here ONLY
-  ├─ server/prokerala.ts   OAuth2 token cache + Prokerala v2 calls
-  ├─ server/normalize.ts   raw Prokerala → internal normalized JSON (+ D9/nakshatra)
-  ├─ server/gemini.ts      system prompt, category packet builder, report/chat
-  ├─ server/validate.ts    input validation + ISO datetime/offset helper
-  └─ server/db.ts          Postgres/Supabase persistence (schema.sql)
-        │
-        ├─► Prokerala API   (chart calculation — the "calculation brain")
-        ├─► Gemini API      (interpretation only — reads saved normalized data)
-        └─► Postgres/Supabase
+Express API (bundled, deployed as one Vercel function)
+        ├─► calculation engine   — the chart, computed
+        ├─► LLM                  — interpretation only, over computed data
+        └─► Postgres             — saved profiles and reports
 ```
 
-**Security:** `PROKERALA_CLIENT_ID`, `PROKERALA_CLIENT_SECRET`, `GEMINI_API_KEY`,
-and `DATABASE_URL` are read from the environment by the backend only. They are
-never bundled into the frontend, and the browser never calls Prokerala/Gemini
-directly — it only calls our `/api/*` routes.
+The rule the app is built around: **the engine decides the facts, the model only
+phrases them.** The language model never receives raw inputs to reason about
+astrologically — it receives already-computed chart data and writes about that.
+That is what keeps a reading from contradicting the chart it is supposedly based
+on.
 
-## Data flow
+Native capabilities come through Capacitor: speech recognition for voice input,
+local notifications for daily readings, biometric auth for the app lock,
+filesystem for PDF export.
 
-1. User submits birth details (incl. latitude, longitude, IANA timezone).
-2. `POST /api/create-chart` validates input, gets a cached Prokerala token,
-   and calls `planet-position`, `birth-details`, `dasha-periods`.
-3. The backend normalizes the responses into our provider-agnostic format
-   (D1 houses, D9 navamsa computed from real longitudes, dasha timeline,
-   per-planet nakshatra) and saves it.
-4. Frontend renders from the **normalized** data only.
-5. Gemini receives only a relevant slice of the normalized data — never the raw
-   Prokerala response — for reports and chat.
+## Licence
 
-## API routes
+Proprietary — All Rights Reserved. The source is published for portfolio and
+demonstration purposes only. See [LICENSE](LICENSE).
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| POST | `/api/create-chart` | Calculate + normalize + save; returns `chartId` |
-| GET | `/api/chart/:chartId` | Full normalized chart |
-| GET | `/api/chart/:chartId/d1` | D1 chart (houses) |
-| GET | `/api/chart/:chartId/d9` | D9 navamsa (houses) |
-| GET | `/api/chart/:chartId/dasha` | Dasha timeline |
-| POST | `/api/generate-report` | AI life report (Health/Wealth/Career/Marriage/Relationships) |
-| POST | `/api/chat` | Category-aware chart Q&A |
-| GET | `/api/chat-history/:chartId` | Previous chat messages |
-| GET | `/api/profiles` · DELETE `/api/profiles/:chartId` | List / delete charts |
+---
 
-## Run locally
-
-**Prerequisites:** Node.js, a Postgres database (e.g. Supabase), Prokerala API
-credentials, and a Gemini API key.
-
-1. Install dependencies: `npm install`
-2. Copy `.env.example` to `.env.local` and fill in:
-   - `PROKERALA_CLIENT_ID`, `PROKERALA_CLIENT_SECRET`
-   - `GEMINI_API_KEY`
-   - `DATABASE_URL` (Supabase: Settings → Database → Connection string),
-     and `DATABASE_SSL=true` for managed Postgres
-   - optional: `PROKERALA_AYANAMSA` (1 = Lahiri, default)
-3. Run the app: `npm run dev` (the schema is created automatically on boot;
-   the equivalent SQL is in [server/schema.sql](server/schema.sql)).
-
-Set `LOG_CHART_DEBUG=true` to log raw vs. normalized chart data when verifying
-against a known birth chart.
-
-## Secrets & configuration
-
-All credentials live in environment variables — there are no secrets in the
-source. Copy `.env.example` to `.env.local` and fill in real values.
-
-**Server-only** (never sent to the browser or bundled into the APK):
-`AUTH_SECRET`, `DATABASE_URL`, `SMTP_USER` / `SMTP_PASS`, `GEMINI_API_KEY`
-(and the other AI provider keys), `PROKERALA_CLIENT_ID` / `PROKERALA_CLIENT_SECRET`,
-`ELEVENLABS_API_KEY`, `GOOGLE_CLIENT_IDS`.
-
-**Client-exposed** — anything prefixed `VITE_` is compiled into the shipped
-JavaScript and is readable by anyone. Only public-safe values belong here:
-`VITE_API_BASE` (a URL), `VITE_GOOGLE_CLIENT_ID` (an OAuth *web* client id, public
-by design), `VITE_APP_DOWNLOAD_URL` (a URL). **Never** put an API key, database
-URL, or signing secret behind a `VITE_` prefix.
-
-Notes:
-- `AUTH_SECRET` **must** be set in production. Without it the server derives a
-  per-machine fallback, so sessions break across serverless instances.
-- `.env*` is git-ignored (except `.env.example`).
-- The database is reached only from the server with a full connection string —
-  no database credentials or client SDK keys ship to the app.
-
-### If you ever hardcode a secret
-
-Anything committed to git stays in the history even after you delete it.
-If a key was ever hardcoded or pasted into a commit, **rotate it immediately**
-(issue a new key at the provider and revoke the old one) — removing the line is
-not enough. The same applies to any secret shared in a screenshot or chat.
+Built by **Vansh Kashyap** — [vanshkashyap.lzworth.in](https://vanshkashyap.lzworth.in)
