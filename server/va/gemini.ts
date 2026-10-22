@@ -908,6 +908,12 @@ export async function answerQuestion(args: {
   // JanamJyot: a correction naming false chart claims in a previous draft, added
   // by its accuracy checker before one regeneration.
   correction?: string;
+  // JanamJyot: the antardashas this person actually lived through, computed
+  // (server/past-timeline). A question about a past year used to be answered
+  // from memory — "Moon–Rahu, jo 2015 se 2016 tak thi" for a chart where that
+  // period never existed — because nothing in the prompt said which periods
+  // were real.
+  pastContext?: any;
 }): Promise<ChatReply> {
   const basePacket = buildChartPacket(args.chart, args.category, args.transit);
   const priorTurns = (args.history ?? []).filter((m) => m.message).slice(-8);
@@ -1058,9 +1064,20 @@ export async function answerQuestion(args: {
     ...(day ? { day_computed: day } : {}),
     ...(week ? { week_computed: week } : {}),
     ...(timing ? { timing_computed: timing } : {}),
+    ...(args.pastContext?.length ? { past_computed: args.pastContext } : {}),
     ...(debtNearTerm ? { debt_near_term: debtNearTerm } : {}),
     ...basePacket,
   };
+  const pastRule = args.pastContext?.length
+    ? `\nTHE PAST — HARD RULE: "past_computed" lists the antardashas this person ACTUALLY
+lived through, with their real dates and what each lord rules in this chart. It is the
+ONLY source for which period was running when: name one of these, with its dates as
+given, and no other. If it holds two, the year they asked about spans both — say which
+ran until when. Never recall a period from memory and never date one yourself: a wrong past is the one thing the
+person can check against their own life, and getting it wrong discredits everything else
+you say. If the year they asked about is not in the list, say what the chart does show
+and leave the rest alone.\n`
+    : "";
   const dayRule = day
     ? `\nTODAY / TOMORROW — HARD RULE: they asked about ${dayLabel}. "day_computed" at the top of
 the data is the CALCULATED reading of that day for this person, from the same engine as
@@ -1175,7 +1192,7 @@ ${JSON.stringify(args.reportContext, null, 2)}\n`
 They asked: "${args.question}"
 
 ${timingRule}
-${dayRule}
+${dayRule}${pastRule}
 ${KUNDLI_FACTS_RULE}
 (In this widget, say all of this plainly, without planet, dasha or yoga names.)
 
@@ -1389,7 +1406,7 @@ ${askList}${saidBlock}
 ${intentGuidance}
 
 ${timingRule}
-${dayRule}
+${dayRule}${pastRule}
 ${KUNDLI_FACTS_RULE}
 
 ${PLAIN_LANGUAGE_RULE}

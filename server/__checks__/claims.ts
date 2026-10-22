@@ -65,6 +65,11 @@ const dashaCases: Array<[string, string, number]> = [
   ["false running antardasha",             "Currently Rahu antardasha running hai.",                  1],
   ["past period, then a clause about now", "Pichhle saal Rahu antardasha thi, abhi samay behtar hai.", 0],
   ["a future period beside the word abhi",  "Venus-Mercury (2027-2029) ki antardasha ke liye abhi se taiyari rakhein.", 0],
+  // A correct answer about a past year reads as "X chal raha tha" — dated, and
+  // not a claim about today. It was being flagged, and the "correction" that
+  // followed replaced a right answer with a wrong one.
+  ["past period, correctly dated",         "2019 mein Venus-Mercury antardasha chal raha tha, 2018 se 2019 tak.", 0],
+  ["wrong running period, no dates",       "Abhi Venus-Mercury antardasha chal rahi hai.",            1],
 ];
 for (const [label, text, want] of dashaCases) {
   const got = wrongDashaClaims(text, dchart).length;

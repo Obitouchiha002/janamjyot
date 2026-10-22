@@ -163,7 +163,16 @@ export function wrongDashaClaims(text: string, chart: any): WrongDasha[] {
        * never said.
        */
       const years = [...clause.matchAll(/\b(20\d\d)\b/g)].map((y) => Number(y[1]));
-      if (years.length && Math.min(...years) > new Date().getFullYear()) continue;
+      const thisYear = new Date().getFullYear();
+      if (years.length && Math.min(...years) > thisYear) continue;
+      /*
+       * …and a period dated entirely in the PAST is not a claim about now
+       * either. "2019 mein Moon–Saturn chal raha tha, December 2017 se July
+       * 2019 tak" is a correct answer about a past year, and it was being
+       * reported as a false claim that Saturn's antardasha is running today —
+       * so the reply went back for a "correction" that made it wrong.
+       */
+      if (years.length && Math.max(...years) < thisYear) continue;
       const lead = before.match(/([A-Za-z]+)\s*[-–/]\s*([A-Za-z]+)\s*(?:ki|ka|ke|ke\s+)?\s*$/);
       let raw: string | undefined;
       if (lead && IS_PLANET.test(lead[1]) && IS_PLANET.test(lead[2])) {

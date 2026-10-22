@@ -4696,6 +4696,8 @@ const TODAY_RE = /\b(today|aaj|tonight|abhi)\b/i;
 const TOMORROW_RE = /\b(tomorrow|kal|agle din)\b/i;
 // "pichhle 5 saal", "past few years", "beete saal", "last 3 years" → the past.
 const PAST_RE = /\b(pichh?le|pichh?li|beete|beeta|guzre|past|last|previous|ab tak)\b[^?]{0,25}\b(saal|sal|years?|varsh|mahine|months?)\b/i;
+/** A named year that has already happened — "2019 mein bimar kyun tha". */
+const PAST_YEAR_RE = /\b(19\d{2}|20\d{2})\b/;
 // "aap kya kya kar sakte ho" is the most common opening question and the one
 // most likely to be answered vaguely, so it routes to the real feature list
 // rather than to the model's imagination.
@@ -4930,9 +4932,27 @@ app.post("/api/chat/universal", async (req, res) => {
     // A question about the past gets the periods actually lived through, the
     // way a question about today gets the day's computed signals.
     let pastContext: any = undefined;
-    if (PAST_RE.test(question)) {
-      const n = Number(question.match(/(\d{1,2})\s*(?:saal|sal|years?|varsh)/i)?.[1]) || 5;
-      pastContext = recentPastPeriods(chart, Math.min(20, Math.max(1, n)));
+    const namedYear = Number(question.match(PAST_YEAR_RE)?.[1] ?? 0);
+    const thisYear = new Date().getFullYear();
+    if (PAST_RE.test(question) || (namedYear && namedYear < thisYear)) {
+      // Far enough back to include the year they named; five years otherwise.
+      const asked = Number(question.match(/(\d{1,2})\s*(?:saal|sal|years?|varsh)/i)?.[1]) || 5;
+      const span = namedYear ? thisYear - namedYear + 1 : asked;
+      pastContext = recentPastPeriods(chart, Math.min(30, Math.max(1, span)));
+      /*
+       * Asked about ONE year, hand over that year — not thirty.
+       *
+       * With seven years of antardashas in the packet the model kept naming a
+       * period that was in the list but not in the year asked about ("2019
+       * mein Moon–Jupiter", when 2019 was Moon–Saturn then Moon–Mercury). Two
+       * rows it cannot misread beat thirty it can.
+       */
+      if (namedYear) {
+        const inYear = pastContext.filter(
+          (p: any) => Number(String(p.to).slice(0, 4)) >= namedYear && Number(String(p.from).slice(0, 4)) <= namedYear,
+        );
+        if (inYear.length) pastContext = inYear;
+      }
     }
 
     /*
@@ -4961,6 +4981,10 @@ app.post("/api/chat/universal", async (req, res) => {
     const askVA = (correction?: string) => vaAnswerQuestion({
       chart, question, language, category: vaDetectCategory(question), transit,
       history: vaHistory, place, correction,
+      // Computed above and, until now, thrown away: the port to the VA chat
+      // dropped the wiring, so every question about a past year was answered
+      // from the model's memory of periods it had never been shown.
+      pastContext,
     });
     const vaStarted = Date.now();
     let va = await askVA();
