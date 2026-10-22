@@ -2023,7 +2023,9 @@ export async function startTrial(userId: string): Promise<boolean> {
 }
 
 export const CREDIT_PACKS: Record<string, { paise: number; credits: number; label: string }> = {
-  starter: { paise: 4900,  credits: 50,  label: "50 credits" },
+  // ₹99, not ₹49: at 99 credits a life report, the cheapest pack could not buy
+  // the thing most people come to buy, which is a strange shop to run.
+  starter: { paise: 9900,  credits: 110, label: "110 credits" },
   popular: { paise: 14900, credits: 165, label: "165 credits" },
   value:   { paise: 39900, credits: 460, label: "460 credits" },
 };
